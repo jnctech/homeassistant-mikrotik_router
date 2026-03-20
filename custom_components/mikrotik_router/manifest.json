@@ -13,5 +13,5 @@
         "librouteros>=3.4.1",
         "mac-vendor-lookup>=0.1.12"
     ],
-    "version": "2.3.7"
+    "version": "2.3.8"
 }

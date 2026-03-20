@@ -689,7 +689,11 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
         if not self.api.connected():
             raise UpdateFailed("Mikrotik Disconnected")
 
-        async_dispatcher_send(self.hass, "update_sensors", self)
+        # Disabled: causes duplicate entity registration errors on every update cycle.
+        # _check_entity_exists() does not properly guard against re-adding existing
+        # entities. New device discovery will be addressed in a future release with
+        # a proper guard that only fires when new UIDs appear in ds.
+        # async_dispatcher_send(self.hass, "update_sensors", self)
         return self.ds
 
     # ---------------------------
