@@ -2,40 +2,41 @@ name: SonarCloud
 
 on:
   push:
-    paths:
-      - 'custom_components/**'
-      - 'tests/**'
+    branches: [master, dev]
   pull_request:
-    types: [opened, synchronize, reopened]
-    paths:
-      - 'custom_components/**'
-      - 'tests/**'
-  workflow_dispatch:
+    branches: [master, dev]
+
+permissions: {}
 
 jobs:
-
   sonarcloud:
-    name: SonarCloud
+    name: SonarCloud Analysis
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
     steps:
-      - name: Check out code from GitHub
-        uses: "actions/checkout@v4"
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
         with:
           fetch-depth: 0
-      - name: Set up Python
-        uses: actions/setup-python@v5
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
         with:
-          python-version: '3.13'
-      - name: Generate coverage report
+          python-version: "3.13"
+
+      - name: Install dependencies
         run: |
           pip install pytest pytest-homeassistant-custom-component pytest-cov
           pip install mac-vendor-lookup librouteros
-          pytest --cov=custom_components/mikrotik_router --cov-report=xml
-      - name: SonarCloud Code Analysis
-        uses: sonarsource/sonarcloud-github-action@master
+
+      - name: Run tests with coverage for SonarCloud
+        run: >
+          pytest --cov=custom_components/mikrotik_router
+          --cov-report=xml:coverage.xml
+
+      - name: SonarCloud Scan
+        uses: sonarsource/sonarcloud-github-action@383f39a419796a15f1c47d3345e2c8a726e56aab  # v5
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-        with:
-          args: >
-            -Dsonar.qualitygate.wait=false

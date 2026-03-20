@@ -3,13 +3,19 @@ name: Check for PR merge conflicts
 on:
   push:
   pull_request:
-      types: [opened, synchronize, reopened]
+    types: [opened, synchronize, reopened]
+
+permissions: {}
+
 jobs:
   check_conflicts:
     name: Check for PR merge conflicts
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
     steps:
-      - uses: mschilde/auto-label-merge-conflicts@master
+      - uses: mschilde/auto-label-merge-conflicts@58ede5adca13feaee43e2bfb4bed1ece51e89673  # v3.0.1
         with:
           CONFLICT_LABEL_NAME: "conflict"
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

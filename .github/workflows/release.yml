@@ -4,45 +4,45 @@ on:
   release:
     types: [published]
 
+permissions: {}
+
 jobs:
-
-  release_zip:
-    name: Prepare release
+  release:
+    name: Build and Upload Release Asset
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
 
-      - name: Zip mikrotik_router dir
+      - name: Get version from manifest
+        id: version
         run: |
-          cd ${{ github.workspace }}/custom_components/mikrotik_router
-          zip mikrotik_router.zip -r ./
-      - name: Upload zip to release
-        uses: svenstaro/upload-release-action@v2
+          VERSION=$(python3 -c "import json; d=json.load(open('custom_components/mikrotik_router/manifest.json')); print(d['version'])")
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
 
+      - name: Create release zip
+        run: cd custom_components && zip -r ../mikrotik_router.zip mikrotik_router/
+
+      - name: Generate SBOM
+        uses: anchore/sbom-action@57aae528053a48a3f6235f2d9461b05fbcb7366d  # v0
+        with:
+          path: custom_components/mikrotik_router/
+          format: spdx-json
+          output-file: sbom.spdx.json
+
+      - name: Upload release asset
+        uses: svenstaro/upload-release-action@b98a3b12e86552593f3e4e577ca8a62aa2f3f22b  # v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: ${{ github.workspace }}/custom_components/mikrotik_router/mikrotik_router.zip
-          asset_name: mikrotik_router.zip
+          file: mikrotik_router.zip
+          asset_name: mikrotik_router-${{ steps.version.outputs.version }}.zip
           tag: ${{ github.ref }}
           overwrite: true
 
-  releasenotes:
-    name: Prepare releasenotes
-    runs-on: ubuntu-latest
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-
-      - name: Set up Python 3.13
-        uses: actions/setup-python@v5
+      - name: Upload SBOM artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
         with:
-          python-version: '3.13'
-
-      - name: Install requirements
-        run: |
-          python3 -m pip install setuptools wheel PyGithub
-
-      - name: Update release notes
-        run: |
-          python3 ${{ github.workspace }}/.github/generate_releasenotes.py --token ${{ secrets.GITHUB_TOKEN }} --release yes --tag ${{ github.ref }}
+          name: sbom-${{ steps.version.outputs.version }}
+          path: sbom.spdx.json
+          retention-days: 90
