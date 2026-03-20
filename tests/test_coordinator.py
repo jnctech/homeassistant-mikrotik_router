@@ -763,3 +763,198 @@ def test_as_local_attaches_utc_to_naive_datetime_when_tz_configured(monkeypatch)
     naive = datetime(2024, 1, 15, 12, 0, 0)
     result = as_local(naive)
     assert result.tzinfo is not None
+
+
+# ---------------------------------------------------------------------------
+# Group F: get_arp — ARP table processing and failed entry filtering
+# ---------------------------------------------------------------------------
+
+
+def test_get_arp_filters_failed_entries():
+    """ARP entries with status 'failed' must be excluded from tracking."""
+    coordinator = make_coordinator(
+        api_responses={
+            "/ip/arp": [
+                {
+                    "mac-address": "AA:BB:CC:DD:EE:01",
+                    "address": "10.0.0.1",
+                    "interface": "ether1",
+                    "status": "",
+                },
+                {
+                    "mac-address": "AA:BB:CC:DD:EE:02",
+                    "address": "10.0.0.2",
+                    "interface": "ether1",
+                    "status": "failed",
+                },
+            ]
+        }
+    )
+    coordinator.ds["bridge"] = {}
+    coordinator.ds["bridge_host"] = {}
+    coordinator.ds["dhcp-client"] = {}
+    coordinator.get_arp()
+    assert "AA:BB:CC:DD:EE:01" in coordinator.ds["arp"]
+    assert "AA:BB:CC:DD:EE:02" not in coordinator.ds["arp"]
+
+
+def test_get_arp_keeps_entries_without_status():
+    """ARP entries without a status field (or empty status) should be kept."""
+    coordinator = make_coordinator(
+        api_responses={
+            "/ip/arp": [
+                {
+                    "mac-address": "AA:BB:CC:DD:EE:01",
+                    "address": "10.0.0.1",
+                    "interface": "ether1",
+                },
+            ]
+        }
+    )
+    coordinator.ds["bridge"] = {}
+    coordinator.ds["bridge_host"] = {}
+    coordinator.ds["dhcp-client"] = {}
+    coordinator.get_arp()
+    assert "AA:BB:CC:DD:EE:01" in coordinator.ds["arp"]
+
+
+def test_get_arp_removes_dhcp_client_interfaces():
+    """ARP entries on DHCP client interfaces should be excluded."""
+    coordinator = make_coordinator(
+        api_responses={
+            "/ip/arp": [
+                {
+                    "mac-address": "AA:BB:CC:DD:EE:01",
+                    "address": "10.0.0.1",
+                    "interface": "ether1-wan",
+                    "status": "",
+                },
+                {
+                    "mac-address": "AA:BB:CC:DD:EE:02",
+                    "address": "10.0.0.2",
+                    "interface": "ether2",
+                    "status": "",
+                },
+            ]
+        }
+    )
+    coordinator.ds["bridge"] = {}
+    coordinator.ds["bridge_host"] = {}
+    coordinator.ds["dhcp-client"] = {"ether1-wan": {"interface": "ether1-wan"}}
+    coordinator.get_arp()
+    assert "AA:BB:CC:DD:EE:01" not in coordinator.ds["arp"]
+    assert "AA:BB:CC:DD:EE:02" in coordinator.ds["arp"]
+
+
+def test_get_arp_resolves_bridge_interface():
+    """ARP entries on bridge interfaces get bridge field set and real port resolved."""
+    coordinator = make_coordinator(
+        api_responses={
+            "/ip/arp": [
+                {
+                    "mac-address": "AA:BB:CC:DD:EE:01",
+                    "address": "10.0.0.1",
+                    "interface": "bridge",
+                    "status": "",
+                },
+            ]
+        }
+    )
+    coordinator.ds["bridge"] = {"bridge": {"name": "bridge"}}
+    coordinator.ds["bridge_host"] = {
+        "AA:BB:CC:DD:EE:01": {"interface": "ether3"}
+    }
+    coordinator.ds["dhcp-client"] = {}
+    coordinator.get_arp()
+    entry = coordinator.ds["arp"]["AA:BB:CC:DD:EE:01"]
+    assert entry["bridge"] == "bridge"
+    assert entry["interface"] == "ether3"
+
+
+# ---------------------------------------------------------------------------
+# Group G: get_dns — static DNS processing
+# ---------------------------------------------------------------------------
+
+
+def test_get_dns_parses_entries():
+    """Static DNS entries are parsed with name, address, comment."""
+    coordinator = make_coordinator(
+        api_responses={
+            "/ip/dns/static": [
+                {
+                    "name": "router.lan",
+                    "address": "10.0.0.1",
+                    "comment": "Main Router",
+                },
+            ]
+        }
+    )
+    coordinator.get_dns()
+    assert "router.lan" in coordinator.ds["dns"]
+    assert coordinator.ds["dns"]["router.lan"]["address"] == "10.0.0.1"
+    assert coordinator.ds["dns"]["router.lan"]["comment"] == "Main Router"
+
+
+def test_get_dns_comment_converted_to_string():
+    """DNS comment field is always converted to string."""
+    coordinator = make_coordinator(
+        api_responses={
+            "/ip/dns/static": [
+                {"name": "test.lan", "address": "10.0.0.2", "comment": 12345},
+            ]
+        }
+    )
+    coordinator.get_dns()
+    assert coordinator.ds["dns"]["test.lan"]["comment"] == "12345"
+
+
+# ---------------------------------------------------------------------------
+# Group H: coordinator option properties
+# ---------------------------------------------------------------------------
+
+
+def test_option_sensor_port_traffic_enabled():
+    coordinator = make_coordinator(options={CONF_SENSOR_PORT_TRAFFIC: True})
+    assert coordinator.option_sensor_port_traffic is True
+
+
+def test_option_sensor_port_traffic_default():
+    coordinator = make_coordinator(options={})
+    assert coordinator.option_sensor_port_traffic == DEFAULT_SENSOR_PORT_TRAFFIC
+
+
+def test_option_sensor_poe_enabled():
+    coordinator = make_coordinator(options={CONF_SENSOR_POE: True})
+    assert coordinator.option_sensor_poe is True
+
+
+def test_option_sensor_poe_default():
+    coordinator = make_coordinator(options={})
+    assert coordinator.option_sensor_poe == DEFAULT_SENSOR_POE
+
+
+# ---------------------------------------------------------------------------
+# Group I: set_value and execute wrappers
+# ---------------------------------------------------------------------------
+
+
+def test_set_value_delegates_to_api():
+    """Coordinator.set_value passes through to api.set_value."""
+    coordinator = make_coordinator()
+    coordinator.api.set_value = MagicMock(return_value=True)
+    result = coordinator.set_value("/interface", "name", "ether1", "disabled", True)
+    coordinator.api.set_value.assert_called_once_with(
+        "/interface", "name", "ether1", "disabled", True
+    )
+    assert result is True
+
+
+def test_execute_delegates_to_api():
+    """Coordinator.execute passes through to api.execute."""
+    coordinator = make_coordinator()
+    coordinator.api.execute = MagicMock(return_value=True)
+    result = coordinator.execute("/system", "reboot", None, None)
+    coordinator.api.execute.assert_called_once_with(
+        "/system", "reboot", None, None, None
+    )
+    assert result is True
