@@ -1883,15 +1883,6 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
             ensure_vals=[{"name": "bridge", "default": ""}],
         )
 
-        # Remove ARP entries with failed status — device is not reachable
-        to_remove = [
-            uid
-            for uid, vals in self.ds["arp"].items()
-            if vals.get("status") == "failed"
-        ]
-        for uid in to_remove:
-            self.ds["arp"].pop(uid)
-
         for uid, vals in self.ds["arp"].items():
             if vals["interface"] in self.ds["bridge"] and uid in self.ds["bridge_host"]:
                 self.ds["arp"][uid]["bridge"] = vals["interface"]
@@ -2207,9 +2198,14 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
                 self.ds["host"][uid][key] = vals[key]
 
         # Add hosts from ARP
+        # Only count non-failed ARP entries as detected — failed entries
+        # indicate the device is unreachable (#17).  We keep failed entries
+        # in ds["arp"] so that bridge-interface lookups still work for the
+        # tracker coordinator's ping logic.
         arp_detected = {}
         for uid, vals in self.ds["arp"].items():
-            arp_detected[uid] = True
+            if vals.get("status") != "failed":
+                arp_detected[uid] = True
             if uid not in self.ds["host"]:
                 self.ds["host"][uid] = {"source": "arp"}
             elif self.ds["host"][uid]["source"] != "arp":

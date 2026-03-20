@@ -577,6 +577,107 @@ async def test_wireless_host_not_counted_as_wired():
     assert coordinator.ds["resource"]["clients_wireless"] == 1
 
 
+@pytest.mark.asyncio
+async def test_arp_failed_status_not_detected_but_host_created():
+    """ARP entry with status 'failed' is NOT counted in arp_detected (#17).
+
+    The host entry IS still created (so it appears in the UI as 'away'),
+    but it is not marked available.  The failed entry stays in ds['arp']
+    so the tracker coordinator can still look up bridge interfaces.
+    """
+    mac = "AA:BB:CC:DD:EE:F1"
+    coordinator = make_coordinator_for_host(
+        arp_entries={
+            mac: {
+                "mac-address": mac,
+                "address": "192.168.1.50",
+                "interface": "ether1",
+                "status": "failed",
+                "bridge": "bridge",
+            }
+        }
+    )
+
+    await coordinator.async_process_host()
+
+    # Host entry created (visible in UI) but marked unavailable
+    assert mac in coordinator.ds["host"]
+    assert coordinator.ds["host"][mac]["available"] is False
+
+    # Failed entry kept in ds["arp"] for bridge lookups
+    assert mac in coordinator.ds["arp"]
+    assert coordinator.ds["arp"][mac]["bridge"] == "bridge"
+
+
+@pytest.mark.asyncio
+async def test_arp_reachable_status_detected():
+    """ARP entry with non-failed status is counted as detected and available."""
+    mac = "AA:BB:CC:DD:EE:F2"
+    coordinator = make_coordinator_for_host(
+        arp_entries={
+            mac: {
+                "mac-address": mac,
+                "address": "192.168.1.51",
+                "interface": "ether1",
+                "status": "reachable",
+            }
+        }
+    )
+
+    await coordinator.async_process_host()
+
+    assert coordinator.ds["host"][mac]["available"] is True
+    assert coordinator.ds["host"][mac]["last-seen"] is not False
+
+
+@pytest.mark.asyncio
+async def test_arp_empty_status_detected():
+    """ARP entry with empty/missing status (static entry) is detected and available."""
+    mac = "AA:BB:CC:DD:EE:F3"
+    coordinator = make_coordinator_for_host(
+        arp_entries={
+            mac: {
+                "mac-address": mac,
+                "address": "192.168.1.52",
+                "interface": "ether1",
+                "status": "",
+            }
+        }
+    )
+
+    await coordinator.async_process_host()
+
+    assert coordinator.ds["host"][mac]["available"] is True
+
+
+@pytest.mark.asyncio
+async def test_mixed_arp_statuses_only_failed_excluded():
+    """Only 'failed' ARP entries are excluded from detection; others are detected."""
+    mac_ok = "AA:BB:CC:DD:EE:A1"
+    mac_failed = "AA:BB:CC:DD:EE:A2"
+    coordinator = make_coordinator_for_host(
+        arp_entries={
+            mac_ok: {
+                "mac-address": mac_ok,
+                "address": "192.168.1.60",
+                "interface": "ether1",
+                "status": "stale",
+            },
+            mac_failed: {
+                "mac-address": mac_failed,
+                "address": "192.168.1.61",
+                "interface": "ether1",
+                "status": "failed",
+            },
+        }
+    )
+
+    await coordinator.async_process_host()
+
+    assert coordinator.ds["host"][mac_ok]["available"] is True
+    assert coordinator.ds["host"][mac_failed]["available"] is False
+
+
 # ---------------------------------------------------------------------------
 # Group E: bug-fix regression tests
 # ---------------------------------------------------------------------------
