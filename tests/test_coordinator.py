@@ -4109,3 +4109,98 @@ def test_container_defaults():
     assert c["status"] == "stopped"
     assert c["running"] is False
     assert c["comment"] == ""
+
+
+# =====================================================================
+# _is_wireless_host — bridge/interface-based wireless detection
+# =====================================================================
+
+
+def test_is_wireless_host_source_wireless():
+    """Host with source 'wireless' is always wireless."""
+    coordinator = make_coordinator_for_host()
+    vals = {"source": "wireless", "interface": "ether1"}
+    assert coordinator._is_wireless_host("AA:BB:CC:DD:EE:01", vals) is True
+
+
+def test_is_wireless_host_source_capsman():
+    """Host with source 'capsman' is always wireless."""
+    coordinator = make_coordinator_for_host()
+    vals = {"source": "capsman", "interface": "ether1"}
+    assert coordinator._is_wireless_host("AA:BB:CC:DD:EE:01", vals) is True
+
+
+def test_is_wireless_host_direct_interface():
+    """ARP host on a wireless interface is detected as wireless."""
+    coordinator = make_coordinator_for_host()
+    coordinator.ds["wireless"] = {"wlan1": {"name": "wlan1"}}
+    vals = {"source": "arp", "interface": "wlan1"}
+    assert coordinator._is_wireless_host("AA:BB:CC:DD:EE:01", vals) is True
+
+
+def test_is_wireless_host_bridge_lookup():
+    """ARP host on a bridge is detected as wireless via bridge host table."""
+    mac = "AA:BB:CC:DD:EE:01"
+    coordinator = make_coordinator_for_host()
+    coordinator.ds["wireless"] = {"wlan1": {"name": "wlan1"}}
+    coordinator.ds["bridge_host"] = {
+        mac: {"interface": "wlan1", "bridge": "bridge1", "enabled": True}
+    }
+    vals = {"source": "arp", "interface": "bridge1"}
+    assert coordinator._is_wireless_host(mac, vals) is True
+
+
+def test_is_wireless_host_wired():
+    """ARP host on a wired interface is not wireless."""
+    coordinator = make_coordinator_for_host()
+    coordinator.ds["wireless"] = {"wlan1": {"name": "wlan1"}}
+    coordinator.ds["bridge_host"] = {}
+    vals = {"source": "arp", "interface": "ether1"}
+    assert coordinator._is_wireless_host("AA:BB:CC:DD:EE:01", vals) is False
+
+
+def test_is_wireless_host_no_wireless_interfaces():
+    """Host is not wireless when no wireless interfaces exist."""
+    coordinator = make_coordinator_for_host()
+    coordinator.ds["wireless"] = {}
+    vals = {"source": "arp", "interface": "ether1"}
+    assert coordinator._is_wireless_host("AA:BB:CC:DD:EE:01", vals) is False
+
+
+@pytest.mark.asyncio
+async def test_hapac2_wireless_count_via_bridge():
+    """hAP ac2 scenario: empty registration table, clients detected via bridge.
+
+    When the WiFi package registration table returns no entries (hAP ac2),
+    clients discovered via ARP/DHCP should still be counted as wireless
+    if the bridge host table shows them on a wireless interface.
+    """
+    mac_wifi = "AA:BB:CC:DD:EE:W1"
+    mac_wired = "AA:BB:CC:DD:EE:E1"
+    coordinator = make_coordinator_for_host(
+        arp_entries={
+            mac_wifi: {
+                "mac-address": mac_wifi,
+                "address": "192.168.1.10",
+                "interface": "bridge1",
+            },
+            mac_wired: {
+                "mac-address": mac_wired,
+                "address": "192.168.1.11",
+                "interface": "bridge1",
+            },
+        }
+    )
+    # WiFi interfaces exist but registration table is empty (hAP ac2 issue)
+    coordinator.support_wireless = True
+    coordinator.ds["wireless_hosts"] = {}
+    coordinator.ds["wireless"] = {"wlan1": {"name": "wlan1"}, "wlan2": {"name": "wlan2"}}
+    coordinator.ds["bridge_host"] = {
+        mac_wifi: {"interface": "wlan1", "bridge": "bridge1", "enabled": True},
+        mac_wired: {"interface": "ether2", "bridge": "bridge1", "enabled": True},
+    }
+
+    await coordinator.async_process_host()
+
+    assert coordinator.ds["resource"]["clients_wireless"] == 1
+    assert coordinator.ds["resource"]["clients_wired"] == 1

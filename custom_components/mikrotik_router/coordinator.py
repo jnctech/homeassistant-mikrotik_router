@@ -2596,6 +2596,34 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
             del self.ds["host"][uid]["bypassed"]
 
     # ---------------------------
+    #   _is_wireless_host
+    # ---------------------------
+    def _is_wireless_host(self, uid: str, vals: dict) -> bool:
+        """Check if a host is connected via a wireless interface.
+
+        Uses source, bridge host table, and wireless interface list to
+        determine if a client is wireless — even when the registration
+        table is empty (e.g. hAP ac2 with the new WiFi package).
+        """
+        if vals["source"] in ["capsman", "wireless"]:
+            return True
+
+        wireless_interfaces = set(self.ds.get("wireless", {}))
+        if not wireless_interfaces:
+            return False
+
+        # Check if the host's interface is directly a wireless interface
+        if vals.get("interface") in wireless_interfaces:
+            return True
+
+        # Check the bridge host table for the physical interface
+        bridge_entry = self.ds.get("bridge_host", {}).get(uid)
+        if bridge_entry and bridge_entry.get("interface") in wireless_interfaces:
+            return True
+
+        return False
+
+    # ---------------------------
     #   async_process_host
     # ---------------------------
     async def async_process_host(self) -> None:
@@ -2639,7 +2667,7 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
 
             # Count hosts
             if self.ds["host"][uid]["available"]:
-                if vals["source"] in ["capsman", "wireless"]:
+                if self._is_wireless_host(uid, vals):
                     self.ds["resource"]["clients_wireless"] += 1
                 else:
                     self.ds["resource"]["clients_wired"] += 1
