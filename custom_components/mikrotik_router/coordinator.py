@@ -665,7 +665,7 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
         if self.api.connected() and self.support_wireless:
             await self.hass.async_add_executor_job(self.get_wireless_hosts)
 
-        for func in [self.get_bridge, self.get_arp, self.get_dhcp]:
+        for func in [self.get_bridge, self.get_arp, self.get_dhcp_server, self.get_dhcp]:
             await self._async_run_if_connected(func)
 
         if self.api.connected():
@@ -2165,6 +2165,14 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
                 else:
                     self.ds["dhcp"][uid]["interface"] = self.ds["arp"][uid]["interface"]
 
+        # Count active leases per DHCP server
+        for server_name in self.ds["dhcp-server"]:
+            self.ds["dhcp-server"][server_name]["lease-count"] = 0
+        for uid in self.ds["dhcp"]:
+            server = self.ds["dhcp"][uid]["server"]
+            if server in self.ds["dhcp-server"]:
+                self.ds["dhcp-server"][server]["lease-count"] += 1
+
     # ---------------------------
     #   get_dhcp_server
     # ---------------------------
@@ -2177,8 +2185,25 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
             vals=[
                 {"name": "name"},
                 {"name": "interface", "default": "unknown"},
+                {"name": "address-pool", "default": "unknown"},
+                {
+                    "name": "enabled",
+                    "source": "disabled",
+                    "type": "bool",
+                    "reverse": True,
+                },
+                {"name": "comment", "default": ""},
+            ],
+            ensure_vals=[
+                {"name": "lease-count", "default": 0},
+                {"name": "status", "default": "unknown"},
             ],
         )
+
+        for uid in self.ds["dhcp-server"]:
+            self.ds["dhcp-server"][uid]["status"] = (
+                "running" if self.ds["dhcp-server"][uid]["enabled"] else "disabled"
+            )
 
     # ---------------------------
     #   get_dhcp_client

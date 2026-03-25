@@ -53,6 +53,13 @@ DEVICE_ATTRIBUTES_DHCP_CLIENT = [
     "expires-after",
     "comment",
 ]
+DEVICE_ATTRIBUTES_DHCP_SERVER = [
+    "name",
+    "interface",
+    "address-pool",
+    "enabled",
+    "comment",
+]
 DEVICE_ATTRIBUTES_GPS = [
     "valid",
     "latitude",
@@ -857,6 +864,38 @@ SENSOR_TYPES: tuple[MikrotikSensorEntityDescription, ...] = (
         data_uid="interface",
         data_reference="interface",
         data_attributes_list=DEVICE_ATTRIBUTES_DHCP_CLIENT,
+    ),
+    MikrotikSensorEntityDescription(
+        key="dhcp_server_status",
+        name="DHCP server",
+        icon="mdi:ip-network",
+        native_unit_of_measurement=None,
+        device_class=None,
+        state_class=None,
+        entity_category=None,
+        ha_group="System",
+        data_path="dhcp-server",
+        data_attribute="status",
+        data_name="name",
+        data_uid="name",
+        data_reference="name",
+        data_attributes_list=DEVICE_ATTRIBUTES_DHCP_SERVER,
+    ),
+    MikrotikSensorEntityDescription(
+        key="dhcp_server_lease_count",
+        name="DHCP server leases",
+        icon="mdi:ip-network-outline",
+        native_unit_of_measurement=None,
+        device_class=None,
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_category=None,
+        ha_group="System",
+        data_path="dhcp-server",
+        data_attribute="lease-count",
+        data_name="name",
+        data_uid="name",
+        data_reference="name",
+        data_attributes_list=DEVICE_ATTRIBUTES_DHCP_SERVER,
     ),
 )
 
