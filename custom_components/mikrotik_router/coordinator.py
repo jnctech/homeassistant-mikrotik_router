@@ -2598,7 +2598,9 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
     # ---------------------------
     #   _is_wireless_host
     # ---------------------------
-    def _is_wireless_host(self, uid: str, vals: dict) -> bool:
+    def _is_wireless_host(
+        self, uid: str, vals: dict, wireless_interfaces: set | None = None
+    ) -> bool:
         """Check if a host is connected via a wireless interface.
 
         Uses source, bridge host table, and wireless interface list to
@@ -2608,7 +2610,8 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
         if vals["source"] in ["capsman", "wireless"]:
             return True
 
-        wireless_interfaces = set(self.ds.get("wireless", {}))
+        if wireless_interfaces is None:
+            wireless_interfaces = set(self.ds.get("wireless", {}))
         if not wireless_interfaces:
             return False
 
@@ -2634,6 +2637,9 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
         arp_detected = self._merge_arp_hosts()
         self._recover_hass_hosts()
         self._ensure_host_defaults()
+
+        # Build wireless interface set once for the entire loop
+        wireless_ifaces = set(self.ds.get("wireless", {}))
 
         # Process hosts
         self.ds["resource"]["clients_wired"] = 0
@@ -2667,7 +2673,7 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
 
             # Count hosts
             if self.ds["host"][uid]["available"]:
-                if self._is_wireless_host(uid, vals):
+                if self._is_wireless_host(uid, vals, wireless_ifaces):
                     self.ds["resource"]["clients_wireless"] += 1
                 else:
                     self.ds["resource"]["clients_wired"] += 1
