@@ -1,1 +1,41 @@
 ---
+cleanup_entities:
+  name: Cleanup orphaned entities
+  description: >-
+    Remove entities from the Home Assistant entity registry that no longer have
+    backing data on the Mikrotik router (e.g. removed interfaces, deleted
+    firewall rules, old hosts).
+  fields:
+    entry_id:
+      name: Config entry ID
+      description: The config entry ID of the Mikrotik Router integration instance.
+      required: true
+      example: "abcdef1234567890abcdef1234567890"
+      selector:
+        text:
+
+cleanup_stale_hosts:
+  name: Cleanup stale tracked hosts
+  description: >-
+    List or remove device tracker entities for hosts that are currently away
+    and were discovered via DHCP, ARP, or other transient sources.
+    Use dry_run to preview which hosts would be removed before actually
+    cleaning them up.
+  fields:
+    entry_id:
+      name: Config entry ID
+      description: The config entry ID of the Mikrotik Router integration instance.
+      required: true
+      example: "abcdef1234567890abcdef1234567890"
+      selector:
+        text:
+    dry_run:
+      name: Dry run
+      description: >-
+        When true, only report stale hosts without removing them.
+        When false, remove the stale host entities.
+      required: false
+      default: true
+      example: true
+      selector:
+        boolean:
