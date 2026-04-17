@@ -4,6 +4,37 @@ Changes listed in reverse chronological order.
 
 ---
 
+## CR-260417-hotfix-librouteros-4x-pin — v2.3.14 hotfix: pin librouteros<4.0
+
+**Date:** 2026-04-17
+**Branch:** `fix/librouteros-4x-pin`
+**Status:** In Review (targeting master)
+
+### What Changed
+
+| Area | Change |
+|------|--------|
+| `manifest.json` | Pin `librouteros>=3.4.1,<4.0`; bump version to 2.3.14 |
+| `README.md` | Add v2.3.14 section explaining the pin |
+| `info.md` | Add v2.3.14 entry |
+| `docs/ISSUES.md` | Add ISS-260417-librouteros-4x-break |
+
+### Why
+
+librouteros 4.0.1 (released before 2026-04-10) renamed the `connect()` kwarg `login_methods` → `login_method`. Every new or upgrading install of v2.3.13 pulls 4.0.1 (no upper bound in manifest) and fails on first connection attempt with `connect() got an unexpected keyword argument 'login_methods'`. Reported in #55 (2026-04-10) and #56 (2026-04-13).
+
+The pin is a minimum-risk stopgap: it restores the prior working state for all users by blocking 4.x until proper migration lands. No code changes in the integration itself, so behaviour is identical to v2.3.13 for users already on librouteros 3.x.
+
+### Follow-up
+
+Open a new ISS to migrate to librouteros 4.x: rename `login_methods` → `login_method` in `mikrotikapi.py:102`, audit other 4.0.1 breaking changes, then drop the upper pin.
+
+### Quality Gate Results
+
+Docs/config-only change; no code touched. No tests added.
+
+---
+
 ## CR-260327-phase5-tests — Phase 5 integration tests and coverage gap closure
 
 **Date:** 2026-03-27

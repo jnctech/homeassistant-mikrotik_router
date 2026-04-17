@@ -2,13 +2,40 @@
 
 ## Current Priorities
 
-1. ISS-260320-new-device-discovery — New devices require HA restart to appear
-2. ISS-260320-refactor-dedup — Refactor duplicated patterns
-3. ISS-260326-tracker-wireless-detection — Device tracker uses old wireless detection logic
+1. ISS-260417-librouteros-4x-break — librouteros 4.0.1 breaks `connect()` kwarg; all users affected (hotfix v2.3.14 pins `<4.0`)
+2. ISS-260320-new-device-discovery — New devices require HA restart to appear
+3. ISS-260320-refactor-dedup — Refactor duplicated patterns
+4. ISS-260326-tracker-wireless-detection — Device tracker uses old wireless detection logic
 
 ---
 
 ## Active
+
+### ISS-260417-librouteros-4x-break — librouteros 4.0.1 breaks connection for all users
+**Type:** Bug
+**Priority:** Critical
+**Created:** 2026-04-17
+**Status:** 🟡 In Progress — hotfix branch `fix/librouteros-4x-pin` (v2.3.14) pins `librouteros<4.0`. Proper 4.x migration tracked separately.
+
+**Symptom:**
+Users on v2.3.13 (or any prior release) see: `connect() got an unexpected keyword argument 'login_methods'. Did you mean 'login_method'?`
+
+**Root cause:**
+librouteros 4.0.1 renamed the `connect()` keyword argument `login_methods` → `login_method`. `manifest.json` declared `librouteros>=3.4.1` with no upper bound, so HACS auto-installed 4.0.1 on upgrade. `mikrotikapi.py:102` still passes the old name.
+
+**Related GitHub issues:**
+- #55 (reported 2026-04-10) — direct stack trace
+- #56 (reported 2026-04-13) — same symptom post-HA-2026.4.2 update; references upstream #477
+
+**Hotfix (v2.3.14):**
+- `manifest.json`: pin `librouteros>=3.4.1,<4.0`
+
+**Follow-up (new ISS to be created for future release):**
+- Rename kwarg in `mikrotikapi.py` to `login_method`
+- Audit remaining librouteros 4.0.1 breaking changes
+- Bump floor to `>=4.0`, drop upper bound
+
+---
 
 ### ISS-260320-new-device-discovery — New devices require HA restart to appear
 **Type:** Feature
