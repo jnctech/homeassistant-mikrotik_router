@@ -73,9 +73,19 @@ async def test_flow_user_init(hass):
 
 async def test_flow_user_creates_entry(hass):
     """Test a successful user config flow creates an entry."""
-    with patch(
-        "custom_components.mikrotik_router.config_flow.MikrotikAPI",
-        return_value=_mock_api(connect_return=True),
+    # Patch both import sites: config_flow uses MikrotikAPI for the credential
+    # check, and coordinator instantiates it during async_setup_entry that HA
+    # runs after CREATE_ENTRY. Without the coordinator patch the real
+    # librouteros.connect() reaches the socket layer (HASocketBlockedError).
+    with (
+        patch(
+            "custom_components.mikrotik_router.config_flow.MikrotikAPI",
+            return_value=_mock_api(connect_return=True),
+        ),
+        patch(
+            "custom_components.mikrotik_router.coordinator.MikrotikAPI",
+            return_value=_mock_api(connect_return=True),
+        ),
     ):
         result = await hass.config_entries.flow.async_init(
             DOMAIN, context={"source": "user"}, data=MOCK_USER_INPUT
@@ -152,9 +162,15 @@ async def test_flow_user_duplicate_name(hass):
 
 async def test_flow_import(hass):
     """Test the import step delegates to user step."""
-    with patch(
-        "custom_components.mikrotik_router.config_flow.MikrotikAPI",
-        return_value=_mock_api(connect_return=True),
+    with (
+        patch(
+            "custom_components.mikrotik_router.config_flow.MikrotikAPI",
+            return_value=_mock_api(connect_return=True),
+        ),
+        patch(
+            "custom_components.mikrotik_router.coordinator.MikrotikAPI",
+            return_value=_mock_api(connect_return=True),
+        ),
     ):
         result = await hass.config_entries.flow.async_init(
             DOMAIN, context={"source": "import"}, data=MOCK_USER_INPUT
