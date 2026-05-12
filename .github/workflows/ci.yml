@@ -51,9 +51,13 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Install dependencies
+        # Install runtime deps from manifest.json so CI tests the same
+        # version constraints HA installs. Test deps stay separate.
         run: |
+          python -c "import json; print('\n'.join(json.load(open('custom_components/mikrotik_router/manifest.json'))['requirements']))" > /tmp/runtime-requirements.txt
+          cat /tmp/runtime-requirements.txt
+          pip install -r /tmp/runtime-requirements.txt
           pip install pytest pytest-homeassistant-custom-component pytest-cov
-          pip install mac-vendor-lookup librouteros
 
       - name: Test with pytest
         run: >
@@ -113,6 +117,78 @@ jobs:
           " > /tmp/runtime-requirements.txt
           cat /tmp/runtime-requirements.txt
           pip-audit -r /tmp/runtime-requirements.txt
+
+  manifest-drift:
+    name: Manifest <-> requirements drift guard
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6
+        with:
+          python-version: "3.13"
+
+      - name: Assert manifest runtime deps match requirements*.txt
+        # Prevents the failure mode where CI silently tests a different
+        # librouteros version than HA installs.
+        run: |
+          python <<'PY'
+          import json, pathlib, re, sys
+
+          def key(spec):
+              return re.split(r"[<>=!~ ]", spec, maxsplit=1)[0].strip().lower()
+
+          manifest = sorted(
+              json.load(open("custom_components/mikrotik_router/manifest.json"))["requirements"],
+              key=key,
+          )
+          manifest_keys = {key(s) for s in manifest}
+
+          failed = False
+          for f in ("requirements.txt", "requirements_dev.txt", "requirements_tests.txt"):
+              lines = [
+                  ln.strip()
+                  for ln in pathlib.Path(f).read_text().splitlines()
+                  if ln.strip() and not ln.lstrip().startswith("#")
+              ]
+              runtime = sorted((ln for ln in lines if key(ln) in manifest_keys), key=key)
+              if runtime != manifest:
+                  print(f"::error file={f}::drift vs manifest.json")
+                  print(f"  manifest: {manifest}")
+                  print(f"  {f}:     {runtime}")
+                  failed = True
+
+          sys.exit(1 if failed else 0)
+          PY
+
+  zip-structure:
+    name: HACS zip structure check
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
+
+      - name: Build release zip (mirrors release.yml)
+        run: cd custom_components/mikrotik_router && zip -r ../../mikrotik_router-check.zip ./
+
+      - name: Assert manifest.json is at zip root
+        # HACS requires a flat root layout. A nested
+        # mikrotik_router/manifest.json shape installs to the wrong path.
+        run: |
+          unzip -l mikrotik_router-check.zip | head -30
+          if ! unzip -p mikrotik_router-check.zip manifest.json > /dev/null 2>&1; then
+            echo "::error::manifest.json is not at zip root"
+            exit 1
+          fi
+          if unzip -l mikrotik_router-check.zip | grep -E "mikrotik_router/manifest.json"; then
+            echo "::error::zip is nested under mikrotik_router/"
+            exit 1
+          fi
+          echo "OK: manifest.json at zip root"
 
   lint-actions:
     name: GitHub Actions lint (actionlint)

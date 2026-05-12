@@ -2,7 +2,8 @@
 
 ## Current Priorities
 
-1. ISS-260509-mikrotikapi-concurrency — `set_value`/`execute` iterate the librouteros response outside the API lock; fixed in v2.3.16 (#64)
+1. ISS-260512-ci-manifest-drift — CI installs `librouteros` unpinned and resolves to 4.0.1, while `manifest.json` pins `<4.0`; v2.3.14 hotfix was effectively untested against the version it shipped to (external audit 2026-05-12). **Fix in `fix/ci-manifest-drift-guard`.**
+2. ISS-260509-mikrotikapi-concurrency — `set_value`/`execute` iterate the librouteros response outside the API lock; fixed in v2.3.16 (#64)
 2. ISS-260509-ha-2026.5-untested — HA 2026.5.0 not yet validated against the integration; testing planned
 3. ISS-260417-librouteros-4x-break — librouteros 4.0.1 breaks `connect()` kwarg; hotfix v2.3.14 pinned `<4.0` (proper 4.x migration tracked separately)
 4. ISS-260320-new-device-discovery — New devices require HA restart (UID tracking in place, dispatcher needs entity guard hardening)
@@ -10,6 +11,32 @@
 ---
 
 ## Active
+
+### ISS-260512-ci-manifest-drift — CI tested against the wrong librouteros version
+**Type:** Bug (process / supply chain)
+**Priority:** High
+**Created:** 2026-05-12
+**Status:** 🟡 In Progress — fix in `fix/ci-manifest-drift-guard`
+
+**Symptom:**
+External audit found that `.github/workflows/ci.yml` was installing `librouteros` unpinned (`pip install mac-vendor-lookup librouteros`), so CI resolved to whatever PyPI returned — currently `librouteros 4.0.1`. `manifest.json` pins `librouteros>=3.4.1,<4.0` (added in commit b6ad8e0 / v2.3.14 to work around the 4.x `connect()` break). HA therefore installs `<4.0` while every CI run since the hotfix tested against 4.x. The v2.3.14 hotfix was effectively shipped untested against the version it was hotfixing.
+
+**Contributing factors:**
+- `requirements.txt`, `requirements_dev.txt`, `requirements_tests.txt` all left `librouteros>=3.4.1` without an upper bound — even if CI installed from one of them, it would still resolve to 4.x.
+- No CI guard asserts manifest ↔ requirements consistency, so the drift was invisible.
+- `release.yml` builds the zip but no CI job verifies the artefact's HACS root-flat layout — an adjacent latent risk.
+
+**Fix:**
+1. Pin `librouteros>=3.4.1,<4.0` in all three `requirements*.txt`.
+2. CI `tests` job installs from `manifest.json` (the same pattern already proven in the `dependency-audit` job at lines 106–115).
+3. New `manifest-drift` job fails the PR if any `requirements*.txt` diverges from `manifest.json`.
+4. New `zip-structure` job builds the release zip the same way `release.yml` does and asserts `manifest.json` is at the zip root.
+
+**Follow-up (separate work):**
+- `ISS-260512-librouteros-concurrency-adr` — document the API concurrency model (client ownership, lock scope, timeouts, mid-response failure mode).
+- `ENH-260512-librouteros-test-matrix` — explicit version matrix (`3.4.1`, latest `3.x`, expected-fail `4.x`) before relaxing the `<4.0` cap.
+
+---
 
 ### ISS-260509-mikrotikapi-concurrency — set_value/execute corrupt socket under rapid use
 **Type:** Bug

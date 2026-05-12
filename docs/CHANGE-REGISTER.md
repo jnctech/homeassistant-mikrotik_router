@@ -4,6 +4,46 @@ Changes listed in reverse chronological order.
 
 ---
 
+## CR-260512-ci-manifest-drift-guard — CI installs runtime deps from manifest; add drift + zip-structure guards
+
+**Date:** 2026-05-12
+**Branch:** `fix/ci-manifest-drift-guard`
+**Status:** In Review (targeting `dev`)
+
+### What Changed
+
+| Area | Change |
+|------|--------|
+| `.github/workflows/ci.yml` (tests job) | Replace bare `pip install mac-vendor-lookup librouteros` with `pip install -r /tmp/runtime-requirements.txt` generated from `manifest.json`. CI now installs exactly what HA installs. |
+| `.github/workflows/ci.yml` | New job `manifest-drift` asserts runtime entries in `requirements.txt`, `requirements_dev.txt`, and `requirements_tests.txt` match `manifest.json` exactly. Fails the PR if they diverge. |
+| `.github/workflows/ci.yml` | New job `zip-structure` builds the release zip with the same `cd custom_components/mikrotik_router && zip -r ../../...` command used by `release.yml`, then asserts `manifest.json` is at the zip root (no nested `mikrotik_router/` directory). |
+| `requirements.txt`, `requirements_dev.txt`, `requirements_tests.txt` | Pin `librouteros>=3.4.1,<4.0` to match the manifest cap introduced in v2.3.14. |
+
+### Why
+
+External audit (Codex, 2026-05-12) found that CI was installing `librouteros` unpinned, resolving to `4.0.1`, while `manifest.json` correctly pinned `<4.0` since the v2.3.14 hotfix. The shipped-vs-tested dependency boundary diverged: the integration was shipping on `<4.0` but every CI run since the hotfix had been testing against 4.x. The hotfix itself was effectively shipped untested against the version it was hotfixing.
+
+The drift guard ensures this class of failure cannot silently regress: any change to `manifest.json` requirements without a matching update to all three `requirements*.txt` files now fails CI. The zip-structure guard closes a separate latent risk: HACS root-flat packaging bugs are easy to reintroduce, and `release.yml` had no artefact-shape verification.
+
+### Why this surfaced now
+
+The `<4.0` cap was added in commit b6ad8e0 (v2.3.14, 4 weeks ago) to work around the librouteros 4.0.0/4.0.1 `connect()` kwarg break. The three `requirements*.txt` files were not updated at the same time, and `ci.yml` was using bare unpinned installs predating the cap. The audit identified the inconsistency by reading all four files together.
+
+### Test Plan
+
+- [ ] CI `tests` job log shows `librouteros>=3.4.1,<4.0` in `cat /tmp/runtime-requirements.txt`
+- [ ] `manifest-drift` job passes on this PR
+- [ ] `zip-structure` job lists `manifest.json` near the top of the zip and reports `OK`
+- [ ] Full pytest suite still passes on Python 3.13 and 3.14
+
+### Follow-up (not in this PR)
+
+- ADR documenting the librouteros API concurrency model — see `ISS-260512-librouteros-concurrency-adr`
+- Explicit librouteros version test matrix (`3.4.1`, latest `3.x`, expected-fail `4.x`) before relaxing the `<4.0` cap — see `ENH-260512-librouteros-test-matrix`
+- Cleanup PR: delete `Pipfile`, strip flake8/pylint from `setup.cfg`, move ruff config to `pyproject.toml`
+
+---
+
 ## CR-260509-fix-api-concurrency-lock — v2.3.16: hold API lock around set_value/execute response iteration
 
 **Date:** 2026-05-09

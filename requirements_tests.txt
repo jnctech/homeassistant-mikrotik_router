@@ -4,5 +4,5 @@ pytest-homeassistant-custom-component
 pytest-cov
 
 # Runtime deps (must match manifest.json)
-librouteros>=3.4.1
+librouteros>=3.4.1,<4.0
 mac-vendor-lookup>=0.1.12
