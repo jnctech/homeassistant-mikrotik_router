@@ -2,9 +2,13 @@
 # PostToolUse hook — tight feedback loop on Python edits.
 #
 # Triggered after any Edit/Write/MultiEdit tool call. If the touched file
-# is Python, run `ruff check --fix` on just that file and print the
-# unified summary. Non-blocking (always exits 0) — this is a feedback
-# loop, not a gate. The pre-PR check command + CI are the gates.
+# is Python, run `ruff check --fix` then `ruff format` on just that file
+# and print the unified summary. Non-blocking (always exits 0) — this is
+# a feedback loop, not a gate. The pre-PR check command + CI are the gates.
+#
+# Why both: `ruff check --fix` handles lint rules but does NOT reformat
+# whitespace/quotes/line-length. Running `ruff format` after closes the
+# loop so format drift never accumulates between PRs (ISS-260522).
 #
 # Reference: Ultimate Claude Code Guide §9.5 "Tight Feedback Loops" —
 # PostToolUse hooks for lint after Edit.
@@ -38,12 +42,21 @@ else
     exit 0
 fi
 
-OUTPUT="$("${RUFF[@]}" check --fix "$FILE_PATH" 2>&1 || true)"
+CHECK_OUTPUT="$("${RUFF[@]}" check --fix "$FILE_PATH" 2>&1 || true)"
+FORMAT_OUTPUT="$("${RUFF[@]}" format "$FILE_PATH" 2>&1 || true)"
 
-# Only surface output when there's something to say.
-if [[ -n "$OUTPUT" && "$OUTPUT" != *"All checks passed!"* ]]; then
-    printf 'ruff (post-edit): %s\n' "$FILE_PATH" >&2
-    printf '%s\n' "$OUTPUT" >&2
+# Only surface check output when there's something to say.
+if [[ -n "$CHECK_OUTPUT" && "$CHECK_OUTPUT" != *"All checks passed!"* ]]; then
+    printf 'ruff check (post-edit): %s\n' "$FILE_PATH" >&2
+    printf '%s\n' "$CHECK_OUTPUT" >&2
+fi
+
+# Only surface format output when a file was actually reformatted.
+# `ruff format` prints "1 file reformatted" on change, "1 file left
+# unchanged" otherwise — surface only the former.
+if [[ "$FORMAT_OUTPUT" == *"reformatted"* ]]; then
+    printf 'ruff format (post-edit): %s\n' "$FILE_PATH" >&2
+    printf '%s\n' "$FORMAT_OUTPUT" >&2
 fi
 
 exit 0
