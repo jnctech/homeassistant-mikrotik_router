@@ -36,9 +36,15 @@ Quality bars (SonarCloud Grade A, complexity ≤15, ≥80% coverage, zero ruff e
 
 This PR converts the documented bars into mechanical gates (pyproject.toml C901 + coverage fail_under), removes three drift surfaces (AGENTS.md duplicate, Pipfile, stale setup.cfg config blocks), and adds Claude-Code-level guardrails (`.claude/` scaffolding per Ultimate Claude Code Guide best practices). The "drift" framing here comes from the user's own audit work (`jnctech/config` audit findings, paraphrased in the sibling `gedcom-tree-parser` project's PLAN.md "Agent discipline" section) — the Ultimate Guide supplied the `.claude/` shape, not the drift philosophy.
 
-### New finding (must read)
+### New finding (resolved in-PR)
 
-**ISS-260522-ruff-format-drift** — During T2.1 verification, ruff 0.11.4 reported 26 files in `custom_components/mikrotik_router` + `tests/` needing reformatting. Pre-commit's pinned ruff v0.9.0 *also* wants to reformat them. Hypothesis: the pre-commit `ruff-format` hook was not running on recent commits (otherwise CI's unpinned `pip install ruff` would have caught it). This pre-exists this PR and is reverted out of the diff — to be fixed in a follow-up PR that pins ruff version in CI to match pre-commit, then reformats once.
+**ISS-260522-ruff-format-drift** — During T2.1 verification, ruff 0.11.4 reported 26 files in `custom_components/mikrotik_router` + `tests/` needing reformatting. Pre-commit's pinned ruff v0.9.0 *also* wants to reformat them.
+
+**Original hypothesis (incorrect):** the pre-commit `ruff-format` hook was not running on recent commits, so drift accumulated silently.
+
+**Actual cause (discovered when applying the fix):** the drift is the direct consequence of *this PR's* new `pyproject.toml` setting `line-length = 220`. The previous codebase was formatted against ruff's undeclared default (line-length=88), so the wider line-length flags 26 files as "would reformat" — they were never drifted against any prior config. CI on `dev` is format-clean and has been throughout.
+
+**Fix (bundled into this PR):** ran `ruff format` once over `custom_components/` and `tests/`; the reformat is the necessary companion to the line-length config change in the same PR. Style-only; `ruff check` still passes on all 26 files. ISS-260522 closed.
 
 ### Quality Gate Results
 
@@ -46,7 +52,7 @@ This PR converts the documented bars into mechanical gates (pyproject.toml C901 
 |--------|-------|------|
 | Ruff lint (`E,F,W,C90`) | All checks passed (custom_components + tests) | ✅ |
 | Ruff `C901` on custom_components | All checks passed — zero functions exceed complexity 15 | ✅ — validates ADR-007 retroactively |
-| Ruff format | 26 files would reformat — known pre-existing drift, reverted, tracked as ISS-260522-ruff-format-drift | ⏸️ separate PR |
+| Ruff format | 26 files reformatted in-PR (consequence of new `line-length=220`); 39 files clean afterward | ✅ |
 | Pytest | pending — requires Docker test container | ⏳ |
 | Pre-commit | ruff hook passed; ruff-format hook auto-modified files (see ISS-260522) | ⏳ partial |
 
@@ -66,7 +72,7 @@ Both review agents (pr-review-toolkit:code-reviewer + independent high-effort su
 
 ### Follow-up (not in this PR)
 
-- ISS-260522-ruff-format-drift — run `pre-commit install` to verify hooks are actually wired locally, then re-run `ruff format` once and commit reformatted files. The CI ruff pin in this PR is half the remediation; reformat-once is the other half.
+- (Optional) Run `pre-commit install` locally so the `ruff-format` hook fires on every commit going forward — the post-edit Claude hook already runs `ruff format`, but pre-commit catches non-Claude edits too.
 - Consider Claudeception / Claude Reflect System if PR throughput grows.
 - Consider expanding ruff selected rules (currently E/F/W/C90) to include I (isort), B (bugbear), UP (pyupgrade) — needs validation that current code passes.
 

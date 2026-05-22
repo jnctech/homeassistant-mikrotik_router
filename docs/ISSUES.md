@@ -2,14 +2,14 @@
 
 ## Current Priorities
 
-1. ISS-260522-ruff-format-drift — ruff format hook not running on commits; 26 files in custom_components+tests need reformat under pinned ruff v0.9.0. Discovered 2026-05-22. **Fix in a follow-up PR to CR-260522 (run `pre-commit install` + reformat once).**
-2. ISS-260512-ci-manifest-drift — CI installs `librouteros` unpinned and resolves to 4.0.1, while `manifest.json` pins `<4.0`; v2.3.14 hotfix was effectively untested against the version it shipped to (external audit 2026-05-12). **Fix in `fix/ci-manifest-drift-guard`.**
-3. ISS-260509-mikrotikapi-concurrency — `set_value`/`execute` iterate the librouteros response outside the API lock; fixed in v2.3.16 (#64)
-4. ISS-260509-ha-2026.5-untested — HA 2026.5.0 not yet validated against the integration; testing planned
-5. ISS-260417-librouteros-4x-break — librouteros 4.0.1 breaks `connect()` kwarg; hotfix v2.3.14 pinned `<4.0` (proper 4.x migration tracked separately)
-6. ISS-260320-new-device-discovery — New devices require HA restart (UID tracking in place, dispatcher needs entity guard hardening)
-7. ENH-260523-ha-release-watch — scheduled HA release-notes watcher (proposed, low priority)
-8. ENH-260523-scope-drift-hook — UserPromptSubmit detector for off-plan pivots (proposed, low priority)
+1. ISS-260509-mikrotikapi-concurrency — `set_value`/`execute` iterate the librouteros response outside the API lock; fixed in v2.3.16 (#64)
+2. ISS-260509-ha-2026.5-untested — HA 2026.5.0 not yet validated against the integration; testing planned
+3. ISS-260417-librouteros-4x-break — librouteros 4.0.1 breaks `connect()` kwarg; hotfix v2.3.14 pinned `<4.0` (proper 4.x migration tracked separately)
+4. ISS-260320-new-device-discovery — New devices require HA restart (UID tracking in place, dispatcher needs entity guard hardening)
+5. ENH-260523-ha-release-watch — scheduled HA release-notes watcher (proposed, low priority)
+6. ENH-260523-scope-drift-hook — UserPromptSubmit detector for off-plan pivots (proposed, low priority)
+
+(ISS-260512-ci-manifest-drift closed in PR #69; ISS-260522-ruff-format-drift closed in PR #71.)
 
 ---
 
@@ -69,32 +69,26 @@ False-positive cost is high — "can we" appears in genuine on-scope follow-ups 
 
 ---
 
-### ISS-260522-ruff-format-drift — ruff format hook silently inactive; 26 files would reformat
+### ISS-260522-ruff-format-drift — 26 files needed reformat under new `line-length=220`
 **Type:** Bug (process / tooling)
 **Priority:** Medium
 **Created:** 2026-05-22
-**Status:** 🟡 Tracked — fix in follow-up PR
+**Status:** 🔴 Closed — bundled into PR #71 (CR-260522)
 
 **Symptom:**
-Running `pre-commit run ruff-format --all-files` against the dev tip reformats 26 files under `custom_components/mikrotik_router` and `tests/` (style-only, no lint issues). Both local ruff 0.11.4 and pre-commit-pinned ruff v0.9.0 want the same reformat — so this is not a version-skew issue.
+During T2.1 verification of CR-260522, `ruff format --check` reported 26 files in `custom_components/mikrotik_router` + `tests/` as "would reformat". Both local ruff 0.11.4 and pre-commit-pinned ruff v0.9.0 produced the same reformat — no version-skew involved.
 
-**Discovered:**
-During T2.1 verification of CR-260522 (Claude tooling modernisation). The CI workflow installs ruff unpinned (`pip install ruff`) and runs `ruff format --check`; if CI is currently passing on dev (recent merges suggest yes), it must be because the runner cached an older ruff. This is fragile.
+**Initial hypothesis (wrong):**
+The pre-commit `ruff-format` hook was silently not running on recent commits, so format drift had been accumulating undetected.
 
-**Hypothesis:**
-The pre-commit `ruff-format` hook is not running on commits — otherwise this drift would have been caught at commit time, not discovered weeks later. Possible causes:
-- Pre-commit hooks not installed locally on the maintainer machine
-- A `--no-verify` somewhere in the workflow
-- The `ruff-format` hook in `.pre-commit-config.yaml` is not in the default stage (commit) — needs verification
+**Actual cause (discovered when applying the fix):**
+The drift is the direct consequence of CR-260522's new `pyproject.toml` setting `[tool.ruff] line-length = 220`. The previous codebase was formatted against ruff's undeclared default (line-length=88); the wider 220-char setting causes ruff to join shorter lines that were previously kept apart. CI on `dev` is and always was format-clean — the "drift" only appears in PR #71's working state because that's where the line-length config lives.
 
-**Plan (separate PR):**
-1. Investigate whether pre-commit hooks are installed locally (`pre-commit install`).
-2. Pin ruff to a single version in CI (`pip install ruff==X.Y.Z`) to match `.pre-commit-config.yaml` `rev:`.
-3. Run `ruff format` once to reformat all 26 files; commit as a single style-only change.
-4. Add a CI guard that asserts the pre-commit-pinned ruff version matches the CI install version (mirrors the manifest-drift guard pattern).
+**Fix:**
+Ran `ruff format` once over `custom_components/` and `tests/` on the CR-260522 branch; the 26 reformatted files are committed in the same PR as the config that requires them. `ruff check` continues to pass on every file.
 
-**Why this matters:**
-Format drift is benign in isolation but symptomatic — if pre-commit hooks aren't running, gitleaks/bandit/ruff-lint might also be silently skipped. This audit was the canary.
+**Why this matters (lesson, not a follow-up):**
+Diagnosing a "drift" symptom by jumping to "the hook must not be running" without isolating the variables (e.g. `git checkout dev && ruff format --check`) wasted some time. When two things change together (new config + drift report), test each in isolation before forming a theory about hook health.
 
 ---
 
