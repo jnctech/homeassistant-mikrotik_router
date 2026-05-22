@@ -23,7 +23,10 @@ jobs:
           python-version: "3.13"
 
       - name: Install ruff
-        run: pip install ruff
+        # Pinned to the same version as .pre-commit-config.yaml to prevent
+        # silent ruff-version drift between CI and local pre-commit. See
+        # ISS-260522-ruff-format-drift and ADR-010 for context.
+        run: pip install "ruff==0.9.0"
 
       - name: Run ruff (lint)
         run: ruff check custom_components/mikrotik_router tests

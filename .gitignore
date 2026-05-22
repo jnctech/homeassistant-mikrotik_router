@@ -1,7 +1,26 @@
 __pycache__/
 .venv/
-.claude/
 output/
 *.zip
 coverage.xml
 .coverage
+
+# .claude/ — gitignored by default, with explicit re-includes for team-shared
+# Claude Code config (settings.json, hooks, commands, agents, skills).
+# Personal/runtime state stays ignored (settings.local.json, scheduled_tasks.lock,
+# worktrees/, etc.). See ADR-010.
+#
+# To share a new .claude/<dir>/ contents with the team, add TWO lines:
+#     !.claude/<dir>/
+#     !.claude/<dir>/**
+# (the first un-ignores the directory entry, the second un-ignores its contents)
+.claude/*
+!.claude/settings.json
+!.claude/hooks/
+!.claude/hooks/*.sh
+!.claude/commands/
+!.claude/commands/*.md
+!.claude/agents/
+!.claude/agents/*.md
+!.claude/skills/
+!.claude/skills/**

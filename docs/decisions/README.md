@@ -15,6 +15,7 @@ Lightweight records of key design decisions for mikrotik_router HACS integration
 | [ADR-007](ADR-007-complexity-reduction-extraction.md) | Cognitive Complexity Reduction via Helper Extraction | Accepted |
 | [ADR-008](ADR-008-upstream-feature-port.md) | Port Upstream Feature Requests (#310, #321, #334, #298) | Accepted |
 | [ADR-009](ADR-009-attribute-filtering-by-hardware.md) | Entity Attribute Filtering by Hardware Capability | Accepted |
+| [ADR-010](ADR-010-claude-tooling-baseline.md) | Claude Code Tooling Baseline + Mechanical Quality Gates via pyproject.toml | Accepted |
 
 ## Template
 

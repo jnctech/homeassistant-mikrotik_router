@@ -1,0 +1,60 @@
+# Tool configuration for the Mikrotik Router HACS integration.
+#
+# Single source of truth for ruff (lint + format), pytest, and coverage.
+# This file is NOT a Python package descriptor — the integration is installed
+# by HACS into `custom_components/mikrotik_router/`, not via pip. Runtime
+# dependencies live in manifest.json (the CI manifest-drift guard asserts
+# requirements*.txt match manifest.json).
+#
+# References:
+# - ADR-003: Ruff replaces Black + flake8
+# - ADR-007: Cognitive complexity reduction via helper extraction
+#   ([tool.ruff.lint.mccabe] max-complexity=15 mechanically enforces this)
+# - docs/quality-gates.md: 80% coverage target (now enforced via fail_under)
+
+[tool.ruff]
+line-length = 220
+target-version = "py313"
+extend-exclude = [
+    "custom_components/mikrotik_router/librouteros_custom",
+]
+
+[tool.ruff.lint]
+# Conservative starting set — matches what ruff has been enforcing via
+# pre-commit defaults plus C90 (mccabe complexity). Expansion to I/B/UP/N
+# is tracked as a follow-up enhancement.
+select = ["E", "F", "W", "C90"]
+ignore = [
+    "W293",  # whitespace on blank lines — legacy upstream tolerance (was ignored in setup.cfg [flake8])
+]
+
+[tool.ruff.lint.mccabe]
+# Mechanical enforcement of the ≤15 complexity target documented in
+# CLAUDE.md and ADR-007. Previously social-only.
+max-complexity = 15
+
+[tool.ruff.lint.per-file-ignores]
+# Tests use fixtures and table-driven patterns that legitimately exceed
+# the complexity gate; the gate applies to integration code, not tests.
+"tests/**/*.py" = ["C901"]
+
+[tool.ruff.format]
+# Match the existing ruff-format pre-commit hook (defaults).
+
+[tool.pytest.ini_options]
+markers = [
+    "integration: marks tests as requiring a live MikroTik device (deselect with -m \"not integration\")",
+]
+
+[tool.coverage.run]
+source = ["custom_components/mikrotik_router"]
+omit = [
+    "custom_components/mikrotik_router/librouteros_custom/*",
+]
+
+[tool.coverage.report]
+# Mechanical enforcement of the 80% target documented in docs/quality-gates.md
+# and CLAUDE.md. Previously CI computed coverage but did not gate on it.
+fail_under = 80
+show_missing = true
+skip_covered = false

@@ -4,6 +4,74 @@ Changes listed in reverse chronological order.
 
 ---
 
+## CR-260522-claude-tooling-modernisation — Claude Code tooling baseline + mechanical quality gates via pyproject.toml
+
+**Date:** 2026-05-22
+**Branch:** `feature/claude-tooling-modernisation`
+**Status:** In Review (targeting `dev`)
+
+### What Changed
+
+| Area | Change |
+|------|--------|
+| `pyproject.toml` (new) | Single-source-of-truth tool config. `[tool.ruff]` line-length=220, py313, exclude `librouteros_custom`. `[tool.ruff.lint]` select E/F/W/C90, ignore W293. `[tool.ruff.lint.mccabe]` `max-complexity = 15` — mechanical enforcement of ADR-007. `[tool.ruff.lint.per-file-ignores]` C901 disabled for tests. `[tool.pytest.ini_options]` integration marker (moved from setup.cfg). `[tool.coverage.run]` source = custom_components/mikrotik_router. `[tool.coverage.report]` `fail_under = 80` — mechanical enforcement of the 80% target. |
+| `setup.cfg` (deleted) | All config moved to pyproject.toml. Stale `[flake8]` + `[pylint]` blocks (superseded by ruff in ADR-003) eliminated. |
+| `Pipfile` (deleted) | Legacy artifact; no CI/tooling consumed it. |
+| `AGENTS.md` (deleted, was untracked) | Near-duplicate of CLAUDE.md with stale "Codex Sonnet/Opus" branding from earlier toolchain. Removed per gedcom-tree-parser/PLAN.md L498 precedent. |
+| `.claude/settings.json` (new, committed) | Team-shared permission allowlist (read-only Bash wildcards: ruff, pytest, pre-commit, bandit, git read-only ops, jq, manifest read) + hook declarations (PreToolUse, PostToolUse, UserPromptSubmit). Personal overrides remain in gitignored `settings.local.json`. |
+| `.claude/hooks/pre-bash-force-push-guard.sh` (new) | PreToolUse Bash hook. Blocks `git push --force` targeting master/main with exit 2. Dev/feature branches pass through. |
+| `.claude/hooks/post-edit-ruff.sh` (new) | PostToolUse Edit/Write/MultiEdit hook. Runs `ruff check --fix` on Python files immediately after edit. Non-blocking. Tight-feedback-loop pattern per Ultimate Claude Code Guide §9.5. |
+| `.claude/hooks/user-prompt-smart-suggest.sh` (new) | UserPromptSubmit hook. Detects "create PR" intent and surfaces the pre-PR checklist as an inline reminder unless the prompt already references it. Non-blocking. |
+| `.claude/commands/pre-pr-check.md` (new) | Slash command running the full pre-PR sequence: ruff lint+format, pytest with coverage, doc-update checks (CHANGE-REGISTER entry, ISSUES.md updates, ADR if applicable), version-triplet check, PR-target sanity. |
+| `.claude/commands/release-bump.md` (new) | Atomic version bump across manifest.json + README.md + info.md + CHANGE-REGISTER.md staged entry. Mechanises the three-file lockstep that CR-260417 / CR-260507 / CR-260509 repeatedly tripped on. |
+| `.claude/agents/coordinator-reviewer.md` (new) | Specialised review agent (Sonnet) for `coordinator.py` changes. Checks ADR-007 helper-extraction, ADR-009 attribute filtering, lock discipline (ISS-260509), HA async patterns, UID stability, coverage. |
+| `.claude/skills/claude-md-sizing/SKILL.md` (new) | Audit skill encoding the Ultimate Guide's "120 lines hard limit + pointer strategy" rule. CLAUDE.md is currently 48 lines (safe) but will drift as the repo grows. |
+| `docs/decisions/ADR-010-claude-tooling-baseline.md` (new) | Decision record covering all of the above. Index updated in `docs/decisions/README.md`. |
+| `docs/ISSUES.md` | New: ISS-260522-ruff-format-drift (discovered during T2.1 verification — see below). |
+| `.github/workflows/ci.yml` | Pin `ruff==0.9.0` to match `.pre-commit-config.yaml` rev. Added in response to code-review finding: the new C901 complexity gate would otherwise sit on top of unpinned-ruff drift between CI and pre-commit. |
+
+### Why
+
+Quality bars (SonarCloud Grade A, complexity ≤15, ≥80% coverage, zero ruff errors) were documented in CLAUDE.md but enforced *socially* — by reviewer attention. ISS-260512-ci-manifest-drift exposed that "documentation as enforcement" is fragile: the v2.3.14 hotfix shipped untested against the version it was hotfixing because two sources of truth diverged.
+
+This PR converts the documented bars into mechanical gates (pyproject.toml C901 + coverage fail_under), removes three drift surfaces (AGENTS.md duplicate, Pipfile, stale setup.cfg config blocks), and adds Claude-Code-level guardrails (`.claude/` scaffolding per Ultimate Claude Code Guide best practices). The "drift" framing here comes from the user's own audit work (`jnctech/config` audit findings, paraphrased in the sibling `gedcom-tree-parser` project's PLAN.md "Agent discipline" section) — the Ultimate Guide supplied the `.claude/` shape, not the drift philosophy.
+
+### New finding (must read)
+
+**ISS-260522-ruff-format-drift** — During T2.1 verification, ruff 0.11.4 reported 26 files in `custom_components/mikrotik_router` + `tests/` needing reformatting. Pre-commit's pinned ruff v0.9.0 *also* wants to reformat them. Hypothesis: the pre-commit `ruff-format` hook was not running on recent commits (otherwise CI's unpinned `pip install ruff` would have caught it). This pre-exists this PR and is reverted out of the diff — to be fixed in a follow-up PR that pins ruff version in CI to match pre-commit, then reformats once.
+
+### Quality Gate Results
+
+| Metric | Value | Gate |
+|--------|-------|------|
+| Ruff lint (`E,F,W,C90`) | All checks passed (custom_components + tests) | ✅ |
+| Ruff `C901` on custom_components | All checks passed — zero functions exceed complexity 15 | ✅ — validates ADR-007 retroactively |
+| Ruff format | 26 files would reformat — known pre-existing drift, reverted, tracked as ISS-260522-ruff-format-drift | ⏸️ separate PR |
+| Pytest | pending — requires Docker test container | ⏳ |
+| Pre-commit | ruff hook passed; ruff-format hook auto-modified files (see ISS-260522) | ⏳ partial |
+
+### Code-review fixes (applied in this PR before merge)
+
+Both review agents (pr-review-toolkit:code-reviewer + independent high-effort sub-agent) ran on the draft and surfaced findings consolidated and addressed in-PR:
+
+- **BLOCKER:** `$ARGUMENTS_0` is not valid Claude Code slash-command syntax (release-bump.md, claude-md-sizing/SKILL.md) → changed to `$1`.
+- **NEEDS-CHANGE:** All three hooks would fail closed if `jq` is missing → added `command -v jq >/dev/null 2>&1 || exit 0` guard before any jq invocation. Force-push guard now fails *open* (lets command through) when jq missing rather than blocking every Bash call.
+- **NEEDS-CHANGE:** `.claude/settings.json` allowlist included destructive git verbs (`checkout:*`, `restore:*`, `switch:*`) which can silently discard uncommitted work → removed, replaced with narrower read-only patterns (`rev-parse`, `ls-files`, `check-ignore`, `branch --show-current`, `branch -a`).
+- **NEEDS-CHANGE:** CI ruff was unpinned; C901 gate would sit on top of version drift → pinned `ruff==0.9.0` in `.github/workflows/ci.yml` matching pre-commit `rev:`.
+- **NIT:** PR-intent regex matched `pr` as a substring (false positives on "project", "presentation") → added `\bpr\b` word boundary.
+- **NIT:** ADR-010 cited specific line numbers in a sibling repo (`gedcom-tree-parser/PLAN.md L498/L508-511`) which would drift → replaced with paraphrased quotes that survive the source file evolving.
+- **NIT:** `docs/ISSUES.md` Current Priorities had duplicate `1.` numbering → renumbered.
+- **DOCUMENTED:** Force-push guard limitation (bare `git push --force` with no ref while on master) added to hook header comment.
+- **DOCUMENTED:** `.gitignore` re-include pattern got an inline comment explaining how to share new `.claude/<dir>/` subdirectories.
+
+### Follow-up (not in this PR)
+
+- ISS-260522-ruff-format-drift — run `pre-commit install` to verify hooks are actually wired locally, then re-run `ruff format` once and commit reformatted files. The CI ruff pin in this PR is half the remediation; reformat-once is the other half.
+- Consider Claudeception / Claude Reflect System if PR throughput grows.
+- Consider expanding ruff selected rules (currently E/F/W/C90) to include I (isort), B (bugbear), UP (pyupgrade) — needs validation that current code passes.
+
+---
+
 ## CR-260512-ci-manifest-drift-guard — CI installs runtime deps from manifest; add drift + zip-structure guards
 
 **Date:** 2026-05-12

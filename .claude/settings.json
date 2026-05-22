@@ -1,0 +1,70 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -m ruff check:*)",
+      "Bash(python -m ruff format:*)",
+      "Bash(python -m ruff:*)",
+      "Bash(ruff check:*)",
+      "Bash(ruff format:*)",
+      "Bash(ruff:*)",
+      "Bash(python -m pytest:*)",
+      "Bash(pytest:*)",
+      "Bash(python -m pre_commit:*)",
+      "Bash(pre-commit:*)",
+      "Bash(python -m bandit:*)",
+      "Bash(bandit:*)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git branch:*)",
+      "Bash(git branch -a)",
+      "Bash(git branch --show-current)",
+      "Bash(git show:*)",
+      "Bash(git stash list:*)",
+      "Bash(git rev-parse:*)",
+      "Bash(git ls-files:*)",
+      "Bash(git check-ignore:*)",
+      "Bash(jq:*)",
+      "Bash(cat custom_components/mikrotik_router/manifest.json)",
+      "Read(//c/Users/jc/code/hacs/Mikrotik/**)",
+      "Write(//c/Users/jc/code/hacs/Mikrotik/custom_components/**)",
+      "Write(//c/Users/jc/code/hacs/Mikrotik/tests/**)",
+      "Write(//c/Users/jc/code/hacs/Mikrotik/docs/**)",
+      "Write(//c/Users/jc/code/hacs/Mikrotik/.claude/**)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/pre-bash-force-push-guard.sh"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/post-edit-ruff.sh"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/user-prompt-smart-suggest.sh"
+          }
+        ]
+      }
+    ]
+  }
+}
