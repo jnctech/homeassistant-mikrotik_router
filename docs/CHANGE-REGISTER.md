@@ -4,6 +4,55 @@ Changes listed in reverse chronological order.
 
 ---
 
+## CR-260523-issue-68-capsman-interface — v2.3.17: AP-virtual interface as a device-tracker attribute
+
+**Date:** 2026-05-23
+**Branch:** `feature/issue-68-capsman-interface`
+**Status:** In Review (targeting `dev`)
+
+### What Changed
+
+| Area | Change |
+|------|--------|
+| `custom_components/mikrotik_router/coordinator.py` | `get_capsman_hosts()` now uses per-endpoint field lists: full payload (RSSI / rates / uptime / bytes / packets / last-ip / eap-identity) on `/caps-man/registration-table`; conservative 3-field shape on `/interface/wifi/registration-table` (v7.13+). `rx-signal` is renamed to `signal-strength` post-`parse_api` for cross-endpoint consistency. |
+| `custom_components/mikrotik_router/coordinator.py` | `_merge_capsman_hosts()` rewritten as two paths via extracted helpers (`_write_capsman_claim`, `_write_capsman_overlay`, `_copy_capsman_metrics`): new hosts get full claim; existing hosts get a `capsman-interface` overlay + wireless metrics without overwriting `source` or `interface`. Removes the `elif source != "capsman": continue` early-skip that hid the AP identity from any DHCP/ARP/bridge-claimed host. |
+| `custom_components/mikrotik_router/device_tracker_types.py` | `"capsman-interface"` added to `DEVICE_ATTRIBUTES_HOST`. `copy_attrs` omits it on non-capsman hosts since the key is simply absent from their data. |
+| `custom_components/mikrotik_router/manifest.json` | Bump version 2.3.16 → 2.3.17 |
+| `README.md`, `info.md` | v2.3.17 release notes |
+| `docs/decisions/ADR-011-capsman-attributes.md` (new) | Decision record: additive `capsman-interface`, no source flip, no merge-order change. Documents the @fuecy endpoint-mismatch finding and the deferred ENH for endpoint fallback. |
+| `docs/decisions/README.md` | ADR-011 added to index. |
+| `docs/data-schema.md` | New `capsman-interface` field documented on the host composite. |
+| `docs/ISSUES.md` | #68 status updated; new ENH-260523-capsman-endpoint-fallback entry. |
+| `tests/test_coordinator.py` | Extended `test_capsman_hosts_v6` to cover the full v6 payload and the rx-signal → signal-strength rename. Rewrote `test_merge_capsman_hosts_returns_detected` to assert `capsman-interface` is written on the claim path. Replaced `test_merge_capsman_hosts_skips_existing_non_capsman` with the ADR-011 regression test `test_merge_capsman_hosts_overlay_on_dhcp_host` and added `test_merge_capsman_hosts_overlay_updates_availability_for_capsman_source`. |
+
+### Why
+
+Issue #68 (reporter @fuecy): `device_tracker.<mac>.attributes.interface` showed the bridge name, not the AP-virtual interface (`Slaapkamer`, `Zolder`, etc.) for CAPsMAN clients. Independent exploration confirmed (and disproved) the prior feasibility analysis: the bug is NOT merge ordering; it's that `_merge_capsman_hosts()` early-continued for any host already claimed by DHCP/ARP/bridge. Persistent DHCP leases mean DHCP almost always claims first, so the AP identity was never recorded for those hosts.
+
+ADR-011 captures the design — additive attribute, no behavioural changes to `source` / `interface`, preserves automations that filter on them.
+
+### Known limitation (must read — will surprise @fuecy)
+
+**v2.3.17 does NOT fix @fuecy's specific case in isolation.** His RouterOS 7.21.4 routes the code through `/interface/wifi/registration-table`, which his router returns *empty* (he still runs legacy CAPsMAN). The new `capsman-interface` attribute will therefore not populate for him. The fix is a dual-endpoint probe (ENH-260523-capsman-endpoint-fallback), tracked as a v2.3.18 candidate. v2.3.17 ships the broader fix (any user whose firmware-version-based endpoint selection lands on the correct endpoint sees the new attribute). Comment will be posted on #68 explaining this when the PR opens.
+
+### Quality Gate Results
+
+| Metric | Value | Gate |
+|--------|-------|------|
+| Ruff lint (E/F/W) | All checks passed (custom_components + tests) | ✅ |
+| Ruff `C901` on custom_components | All checks passed — `_merge_capsman_hosts` and helpers all under complexity 15 | ✅ |
+| Test syntax | `python -m py_compile tests/test_coordinator.py` passes | ✅ |
+| Pytest | Requires Docker on Windows — CI gates it | ⏳ |
+| Manual: live HACS install on a CAPsMAN router | Pending — @fuecy beta after merge | ⏳ |
+
+### Follow-up (not in this PR)
+
+- **ENH-260523-capsman-endpoint-fallback** (v2.3.18 candidate) — probe both endpoints; use whichever returns rows. The hard case is @fuecy's: 7.21.4 still on legacy CAPsMAN.
+- v7.13+ field schema discovery — the conservative 3-field shape on the wifi endpoint is intentionally minimal until a real payload is observed. Plan was to add a `_LOGGER.debug` of raw rows; deferred because the debug log only helps users with non-empty wifi endpoints and we'd rather ask for a payload paste on the follow-up issue.
+- Strip any beta-only debug logging before any future `dev` → `master` merge (currently none added in this PR).
+
+---
+
 ## CR-260522-claude-tooling-modernisation — Claude Code tooling baseline + mechanical quality gates via pyproject.toml
 
 **Date:** 2026-05-22

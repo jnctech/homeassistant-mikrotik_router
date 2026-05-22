@@ -3009,22 +3009,39 @@ def test_dhcp_client_enriched_defaults():
 
 
 def test_capsman_hosts_v6():
-    """CAPS-MAN hosts use /caps-man/ path for RouterOS < 7.13."""
+    """CAPS-MAN hosts use /caps-man/ path for RouterOS < 7.13, with full metrics."""
     coordinator = make_coordinator(
         major_fw_version=6,
         api_responses={
             "/caps-man/registration-table": [
                 {
                     "mac-address": "AA:BB:CC:DD:EE:01",
-                    "interface": "cap1",
+                    "interface": "Slaapkamer",
                     "ssid": "MyWifi",
+                    "rx-signal": "-76",
+                    "tx-rate": "57.7Mbps-20MHz/1S/SGI",
+                    "rx-rate": "57.7Mbps-20MHz/1S/SGI",
+                    "uptime": "1h2m3s",
+                    "bytes": "1234,5678",
+                    "packets": "10,20",
+                    "last-ip": "192.168.1.50",
+                    "eap-identity": "",
                 },
             ],
         },
     )
     coordinator.get_capsman_hosts()
-    assert "AA:BB:CC:DD:EE:01" in coordinator.ds["capsman_hosts"]
-    assert coordinator.ds["capsman_hosts"]["AA:BB:CC:DD:EE:01"]["ssid"] == "MyWifi"
+    host_vals = coordinator.ds["capsman_hosts"]["AA:BB:CC:DD:EE:01"]
+    assert host_vals["interface"] == "Slaapkamer"
+    assert host_vals["ssid"] == "MyWifi"
+    # rx-signal is renamed to signal-strength post-parse_api for cross-endpoint
+    # consistency with /interface/wireless/registration-table.
+    assert host_vals["signal-strength"] == "-76"
+    assert "rx-signal" not in host_vals
+    assert host_vals["tx-rate"] == "57.7Mbps-20MHz/1S/SGI"
+    assert host_vals["rx-rate"] == "57.7Mbps-20MHz/1S/SGI"
+    assert host_vals["uptime"] == "1h2m3s"
+    assert host_vals["last-ip"] == "192.168.1.50"
 
 
 def test_capsman_hosts_v7_13():
@@ -3571,13 +3588,17 @@ def test_get_iface_from_entry():
 
 
 def test_merge_capsman_hosts_returns_detected():
-    """_merge_capsman_hosts merges CAPS-MAN entries and returns detected dict."""
+    """_merge_capsman_hosts claims a new host with source=capsman, writes both
+    interface and capsman-interface, and copies optional wireless metrics."""
     coordinator = make_coordinator_for_host()
     coordinator.support_capsman = True
     coordinator.ds["capsman_hosts"] = {
         "AA:BB:CC:DD:EE:01": {
             "mac-address": "AA:BB:CC:DD:EE:01",
-            "interface": "cap1",
+            "interface": "Slaapkamer",
+            "signal-strength": "-76",
+            "tx-rate": "57.7Mbps",
+            "rx-rate": "57.7Mbps",
         }
     }
 
@@ -3587,7 +3608,13 @@ def test_merge_capsman_hosts_returns_detected():
     host = coordinator.ds["host"]["AA:BB:CC:DD:EE:01"]
     assert host["source"] == "capsman"
     assert host["available"] is True
-    assert host["interface"] == "cap1"
+    assert host["interface"] == "Slaapkamer"
+    # ADR-011: capsman-interface is always written for capsman-claimed hosts,
+    # so DHCP/ARP merges that later overlay the host do not lose the AP identity.
+    assert host["capsman-interface"] == "Slaapkamer"
+    assert host["signal-strength"] == "-76"
+    assert host["tx-rate"] == "57.7Mbps"
+    assert host["rx-rate"] == "57.7Mbps"
 
 
 def test_merge_capsman_hosts_skips_when_not_supported():
@@ -3601,21 +3628,76 @@ def test_merge_capsman_hosts_skips_when_not_supported():
     assert "AA:BB:CC:DD:EE:01" not in coordinator.ds["host"]
 
 
-def test_merge_capsman_hosts_skips_existing_non_capsman():
-    """_merge_capsman_hosts skips host already tracked by different source."""
+def test_merge_capsman_hosts_overlay_on_dhcp_host():
+    """ADR-011 regression test: existing host with source=dhcp gets a
+    capsman-interface overlay but its source/interface/availability are
+    NOT changed. This is the bug #68 fix — when DHCP claims first
+    (persistent leases), capsman previously skipped entirely, hiding the
+    AP-virtual interface from device_tracker entities."""
     coordinator = make_coordinator_for_host()
     coordinator.support_capsman = True
-    coordinator.ds["host"]["AA:BB:CC:DD:EE:01"] = {"source": "dhcp"}
+    coordinator.ds["host"]["AA:BB:CC:DD:EE:01"] = {
+        "source": "dhcp",
+        "interface": "bridge",
+        "available": True,
+        "last-seen": "preserve-me",
+    }
     coordinator.ds["capsman_hosts"] = {
         "AA:BB:CC:DD:EE:01": {
             "mac-address": "AA:BB:CC:DD:EE:01",
-            "interface": "cap1",
+            "interface": "Slaapkamer",
+            "signal-strength": "-76",
+            "tx-rate": "57.7Mbps",
+            "rx-rate": "57.7Mbps",
         }
     }
 
     detected = coordinator._merge_capsman_hosts()
+
+    # Not capsman-detected because source is still dhcp — preserves the
+    # existing "detected by capsman" set semantics used by _remove_undetected_hosts.
     assert "AA:BB:CC:DD:EE:01" not in detected
-    assert coordinator.ds["host"]["AA:BB:CC:DD:EE:01"]["source"] == "dhcp"
+
+    host = coordinator.ds["host"]["AA:BB:CC:DD:EE:01"]
+    # Source and primary interface are NOT changed.
+    assert host["source"] == "dhcp"
+    assert host["interface"] == "bridge"
+    # last-seen is NOT touched (the dhcp source manages availability).
+    assert host["last-seen"] == "preserve-me"
+    # But the capsman-interface IS now recorded for automations.
+    assert host["capsman-interface"] == "Slaapkamer"
+    # Wireless metrics ARE overlaid (they don't conflict with dhcp-source data).
+    assert host["signal-strength"] == "-76"
+    assert host["tx-rate"] == "57.7Mbps"
+    assert host["rx-rate"] == "57.7Mbps"
+
+
+def test_merge_capsman_hosts_overlay_updates_availability_for_capsman_source():
+    """When the existing host is itself capsman-sourced (not new this poll),
+    the overlay path still updates available/last-seen, since capsman owns
+    that host's availability."""
+    coordinator = make_coordinator_for_host()
+    coordinator.support_capsman = True
+    coordinator.ds["host"]["AA:BB:CC:DD:EE:02"] = {
+        "source": "capsman",
+        "interface": "Slaapkamer",
+        "available": False,
+        "last-seen": "stale",
+    }
+    coordinator.ds["capsman_hosts"] = {
+        "AA:BB:CC:DD:EE:02": {
+            "mac-address": "AA:BB:CC:DD:EE:02",
+            "interface": "Slaapkamer",
+        }
+    }
+
+    detected = coordinator._merge_capsman_hosts()
+
+    assert "AA:BB:CC:DD:EE:02" in detected
+    host = coordinator.ds["host"]["AA:BB:CC:DD:EE:02"]
+    assert host["available"] is True
+    assert host["last-seen"] != "stale"
+    assert host["capsman-interface"] == "Slaapkamer"
 
 
 def test_merge_wireless_hosts_returns_detected():

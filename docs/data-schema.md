@@ -486,19 +486,22 @@ The coordinator maintains state in `self.ds`, a dictionary with **38 top-level k
 | source | str | Computed | attr |
 | mac-address | str | Merged | device_tracker ID |
 | address | str | Merged | attr |
-| interface | str | Merged | attr |
+| interface | str | Merged (whichever source claimed first) | attr |
+| capsman-interface | str | Merged (capsman) — **always** written if capsman saw the host, regardless of `source` | attr |
 | host-name | str | Merged + resolved | device_tracker name |
 | manufacturer | str | Computed (MAC lookup) | attr |
 | available | bool | Computed | device_tracker state |
 | last-seen | datetime | Computed | attr |
-| signal-strength | str | Merged (wireless) | attr |
+| signal-strength | str | Merged (wireless / capsman) | attr |
 | tx-ccq | str | Merged (wireless) | attr |
-| tx-rate | str | Merged (wireless) | attr |
-| rx-rate | str | Merged (wireless) | attr |
+| tx-rate | str | Merged (wireless / capsman) | attr |
+| rx-rate | str | Merged (wireless / capsman) | attr |
 | authorized | bool | Merged (hotspot) | attr |
 | bypassed | bool | Merged (hotspot) | attr |
 
 *Wireless detection (v2.3.13):* `_is_wireless_host()` determines if a host is wireless using three methods: (1) source is "capsman" or "wireless", (2) host interface matches a known wireless interface, (3) bridge host table maps the MAC to a wireless interface. This fixes wireless client counting on routers with empty registration tables (e.g. hAP ac2 with new WiFi package).
+
+*CAPsMAN AP identity (v2.3.17, ADR-011):* `interface` and `source` are owned by whichever merge claimed the host first (often DHCP/ARP). `capsman-interface` is the canonical attribute for "which AP is this client on" — populated unconditionally from `/caps-man/registration-table` (or `/interface/wifi/registration-table` on v7.13+) for any client appearing in those tables, so automations don't need to know which merge won the source claim.
 
 ### `hostspot_host`
 **API Path:** `/ip/hotspot/host`

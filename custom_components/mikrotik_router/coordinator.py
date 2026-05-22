@@ -2104,24 +2104,59 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
     #   get_capsman_hosts
     # ---------------------------
     def get_capsman_hosts(self) -> None:
-        """Get CAPS-MAN hosts data from Mikrotik"""
+        """Get CAPS-MAN hosts data from Mikrotik.
 
+        Two endpoints depending on RouterOS major.minor:
+        - `/caps-man/registration-table` (v6, v7 ≤ 12): legacy CAPsMAN with
+          full per-client metrics (signal, rates, uptime, bytes).
+        - `/interface/wifi/registration-table` (v7.13+): new wifi package;
+          field schema not yet verified from a live device, so the
+          conservative shape (mac/interface/ssid) ships first.
+
+        Note: some v7.13+ users still run legacy CAPsMAN (see #68
+        commenter on RouterOS 7.21.4 reporting wifi endpoint empty while
+        caps-man endpoint has data). Dual-endpoint probing is a separate
+        follow-up (ENH-260523-capsman-endpoint-fallback).
+        """
         if self.major_fw_version > 7 or (self.major_fw_version == 7 and self.minor_fw_version >= 13):
             registration_path = "/interface/wifi/registration-table"
-
+            vals = [
+                {"name": "mac-address"},
+                {"name": "interface", "default": "unknown"},
+                {"name": "ssid", "default": "unknown"},
+            ]
         else:
             registration_path = "/caps-man/registration-table"
+            # Field list verified against the payload in jnctech/homeassistant-mikrotik_router#68.
+            # `rx-signal` is renamed to `signal-strength` below for cross-endpoint
+            # consistency with `/interface/wireless/registration-table`.
+            vals = [
+                {"name": "mac-address"},
+                {"name": "interface", "default": "unknown"},
+                {"name": "ssid", "default": "unknown"},
+                {"name": "rx-signal", "default": "unknown"},
+                {"name": "tx-rate", "default": "unknown"},
+                {"name": "rx-rate", "default": "unknown"},
+                {"name": "tx-rate-set", "default": "unknown"},
+                {"name": "uptime", "default": "unknown"},
+                {"name": "bytes", "default": "unknown"},
+                {"name": "packets", "default": "unknown"},
+                {"name": "last-ip", "default": "unknown"},
+                {"name": "eap-identity", "default": "unknown"},
+            ]
 
         self.ds["capsman_hosts"] = parse_api(
             data={},
             source=self.api.query(registration_path),
             key="mac-address",
-            vals=[
-                {"name": "mac-address"},
-                {"name": "interface", "default": "unknown"},
-                {"name": "ssid", "default": "unknown"},
-            ],
+            vals=vals,
         )
+
+        # parse_api doesn't support field aliasing; rename post-parse so the
+        # rest of the integration sees a single consistent key for RSSI.
+        if registration_path == "/caps-man/registration-table":
+            for host_vals in self.ds["capsman_hosts"].values():
+                host_vals["signal-strength"] = host_vals.pop("rx-signal", "unknown")
 
     # ---------------------------
     #   get_wireless
@@ -2196,7 +2231,18 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
     #   _merge_capsman_hosts
     # ---------------------------
     def _merge_capsman_hosts(self) -> dict:
-        """Merge CAPS-MAN hosts into ds['host'] and return detected set."""
+        """Merge CAPS-MAN hosts into ds['host'] and return detected set.
+
+        Two-path logic (see ADR-011):
+        - New host: claim with source="capsman", write full record including
+          the AP-virtual interface name in `interface` AND `capsman-interface`.
+        - Existing host (any source): always write `capsman-interface` and any
+          available wireless metrics so the AP identity is recoverable even
+          when DHCP/ARP claimed the host first; do not overwrite `source` or
+          `interface` (preserves automations that filter on those keys).
+          `available`/`last-seen` are updated only when this host is itself
+          capsman-sourced.
+        """
         detected = {}
         if not self.support_capsman:
             return detected
@@ -2204,16 +2250,42 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
         for uid, vals in self.ds["capsman_hosts"].items():
             if uid not in self.ds["host"]:
                 self.ds["host"][uid] = {"source": "capsman"}
-            elif self.ds["host"][uid]["source"] != "capsman":
-                continue
-
-            detected[uid] = True
-            self.ds["host"][uid]["available"] = True
-            self.ds["host"][uid]["last-seen"] = utcnow()
-            for key in ["mac-address", "interface"]:
-                self.ds["host"][uid][key] = vals[key]
+                self._write_capsman_claim(uid, vals)
+                detected[uid] = True
+            else:
+                self._write_capsman_overlay(uid, vals)
+                if self.ds["host"][uid]["source"] == "capsman":
+                    detected[uid] = True
 
         return detected
+
+    def _write_capsman_claim(self, uid: str, vals: dict) -> None:
+        """Write a full host record for a capsman-claimed host."""
+        self.ds["host"][uid]["available"] = True
+        self.ds["host"][uid]["last-seen"] = utcnow()
+        self.ds["host"][uid]["mac-address"] = vals["mac-address"]
+        self.ds["host"][uid]["interface"] = vals["interface"]
+        self.ds["host"][uid]["capsman-interface"] = vals["interface"]
+        self._copy_capsman_metrics(uid, vals)
+
+    def _write_capsman_overlay(self, uid: str, vals: dict) -> None:
+        """Overlay capsman-interface + wireless metrics on an existing host.
+
+        Does not touch `source` or `interface` — those are owned by whichever
+        merge claimed the host first. Updates availability only if the host
+        is itself capsman-sourced (otherwise the owning source manages it).
+        """
+        self.ds["host"][uid]["capsman-interface"] = vals["interface"]
+        self._copy_capsman_metrics(uid, vals)
+        if self.ds["host"][uid]["source"] == "capsman":
+            self.ds["host"][uid]["available"] = True
+            self.ds["host"][uid]["last-seen"] = utcnow()
+
+    def _copy_capsman_metrics(self, uid: str, vals: dict) -> None:
+        """Copy optional wireless metric fields from capsman vals (v6 / v7≤12 only)."""
+        for key in ("signal-strength", "tx-rate", "rx-rate"):
+            if key in vals:
+                self.ds["host"][uid][key] = vals[key]
 
     # ---------------------------
     #   _merge_wireless_hosts

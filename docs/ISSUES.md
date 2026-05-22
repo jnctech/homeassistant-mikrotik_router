@@ -2,18 +2,60 @@
 
 ## Current Priorities
 
-1. ISS-260509-mikrotikapi-concurrency — `set_value`/`execute` iterate the librouteros response outside the API lock; fixed in v2.3.16 (#64)
-2. ISS-260509-ha-2026.5-untested — HA 2026.5.0 not yet validated against the integration; testing planned
-3. ISS-260417-librouteros-4x-break — librouteros 4.0.1 breaks `connect()` kwarg; hotfix v2.3.14 pinned `<4.0` (proper 4.x migration tracked separately)
-4. ISS-260320-new-device-discovery — New devices require HA restart (UID tracking in place, dispatcher needs entity guard hardening)
-5. ENH-260523-ha-release-watch — scheduled HA release-notes watcher (proposed, low priority)
-6. ENH-260523-scope-drift-hook — UserPromptSubmit detector for off-plan pivots (proposed, low priority)
+1. ISS-260523-issue-68-capsman-interface — CAPsMAN AP-virtual interface not exposed when DHCP/ARP claimed the host first. **In Progress in `feature/issue-68-capsman-interface` (v2.3.17).**
+2. ENH-260523-capsman-endpoint-fallback — `get_capsman_hosts` picks the endpoint by firmware version, but some users on v7.13+ still run legacy CAPsMAN (their wifi endpoint is empty). Need to probe both. **v2.3.18 candidate.**
+3. ISS-260509-mikrotikapi-concurrency — `set_value`/`execute` iterate the librouteros response outside the API lock; fixed in v2.3.16 (#64)
+4. ISS-260509-ha-2026.5-untested — HA 2026.5.0 not yet validated against the integration; testing planned
+5. ISS-260417-librouteros-4x-break — librouteros 4.0.1 breaks `connect()` kwarg; hotfix v2.3.14 pinned `<4.0` (proper 4.x migration tracked separately)
+6. ISS-260320-new-device-discovery — New devices require HA restart (UID tracking in place, dispatcher needs entity guard hardening)
+7. ENH-260523-ha-release-watch — scheduled HA release-notes watcher (proposed, low priority)
+8. ENH-260523-scope-drift-hook — UserPromptSubmit detector for off-plan pivots (proposed, low priority)
 
 (ISS-260512-ci-manifest-drift closed in PR #69; ISS-260522-ruff-format-drift closed in PR #71.)
 
 ---
 
 ## Active
+
+### ISS-260523-issue-68-capsman-interface — CAPsMAN AP-virtual interface hidden when DHCP claimed first
+**Type:** Bug
+**Priority:** High
+**Created:** 2026-05-23
+**Status:** 🟡 In Progress — fix in `feature/issue-68-capsman-interface` (v2.3.17)
+
+**Symptom:**
+On a router with CAPsMAN APs (`Slaapkamer`, `Zolder`, etc.) the `interface` attribute on `device_tracker.<wireless-mac>` entities shows the bridge name, not the AP-virtual interface. Reported in [#68](https://github.com/jnctech/homeassistant-mikrotik_router/issues/68) by @fuecy.
+
+**Root cause:**
+`coordinator._merge_capsman_hosts()` (pre-v2.3.17) early-continued whenever an existing host's `source` was already something other than `"capsman"` — i.e. claimed by DHCP/ARP/bridge merges. Routers with persistent DHCP leases see DHCP claim hosts on every poll, so the capsman merge almost always skipped, and the AP-virtual interface was never recorded at all for those hosts.
+
+**Fix (v2.3.17):**
+ADR-011 — add a new additive `capsman-interface` attribute, always written by `_merge_capsman_hosts` regardless of source. Existing `source` / `interface` semantics unchanged.
+
+**Known incomplete-fix follow-up:** ENH-260523-capsman-endpoint-fallback (below).
+
+---
+
+### ENH-260523-capsman-endpoint-fallback — probe both capsman endpoints, not just version-selected one
+**Type:** Enhancement
+**Priority:** Medium
+**Created:** 2026-05-23
+**Status:** 🟡 Proposed — v2.3.18 candidate
+
+**Need:**
+`get_capsman_hosts()` picks the endpoint based on `major.minor` firmware version: `/caps-man/registration-table` for ≤7.12, `/interface/wifi/registration-table` for ≥7.13. But some users on RouterOS 7.13+ continue to run legacy CAPsMAN (they have not migrated to the new WiFi package). For them the version-selected wifi endpoint returns an empty list, while the legacy endpoint still has their data.
+
+Concretely: @fuecy on RouterOS 7.21.4 reports `/interface/wifi/registration-table` empty and `/caps-man/registration-table` populated. v2.3.17's `capsman-interface` attribute therefore does NOT populate for him in isolation; we need the endpoint fallback to actually fix his case.
+
+**Proposed approach:**
+After the version-selected query, if `len(ds["capsman_hosts"]) == 0`, query the other endpoint and use whichever has data. Keep a per-host log line on first transition so we can confirm the fallback is firing in user environments.
+
+**Risk:** Double-querying once per poll is cheap (registration tables are small), but we should not query both unconditionally — only when the primary returns zero rows. The fallback should *not* be invoked when CAPsMAN is genuinely unused (`support_capsman = False` already gates earlier).
+
+**Plan:**
+Implement in a v2.3.18 branch once v2.3.17 ships and @fuecy confirms the behaviour. Tests: pre-seed empty primary + populated fallback; pre-seed populated primary (fallback should NOT fire).
+
+---
 
 ### ENH-260523-ha-release-watch — scheduled HA release-notes watcher
 **Type:** Enhancement (tooling / ops awareness)

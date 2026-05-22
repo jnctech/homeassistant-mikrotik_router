@@ -21,7 +21,11 @@ Monitor and control your entire MikroTik network from Home Assistant. This HACS 
 
 ---
 
-## What's New — v2.3.16
+## What's New — v2.3.17
+
+**CAPsMAN AP-virtual interface surfaced on device trackers** — When a wireless client is also claimed by a DHCP/ARP/bridge merge (which happens whenever DHCP leases persist across polls), the `interface` attribute previously held the bridge name, not the AP-virtual interface. v2.3.17 adds a new additive `capsman-interface` attribute populated *unconditionally* from `/caps-man/registration-table`, so you can identify which AP a client is connected to (e.g. `Slaapkamer`, `Zolder`) regardless of which merge claimed the host first. Existing `interface` and `source` semantics are unchanged — automations that filter on those keys keep working. Addresses [#68](https://github.com/jnctech/homeassistant-mikrotik_router/issues/68). See [ADR-011](docs/decisions/ADR-011-capsman-attributes.md).
+
+## v2.3.16
 
 **Concurrency fix for rapid switch toggles** — `set_value()` and `execute()` in `mikrotikapi.py` were iterating the librouteros response object (which performs additional socket reads) **outside** the API lock. Under workloads that toggle switches rapidly, this could race with the 30s coordinator poll and corrupt the librouteros sentence stream, triggering `ValueError: not enough values to unpack` followed by a full coordinator disconnect. Both methods now hold the lock for the entire response lifecycle, matching the pattern `run_script()` was already using. Addresses [#64](https://github.com/jnctech/homeassistant-mikrotik_router/issues/64).
 
