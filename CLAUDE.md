@@ -9,10 +9,9 @@
 
 ## AI Model Selection
 
-| Context | Model | Co-author tag |
-|---------|-------|---------------|
-| Bug fixes, refactoring, tests | Sonnet | `Claude Sonnet 4.6` |
-| Architecture, design | Opus | `Claude Opus 4.6 (1M context)` |
+Under the maintainer's current Claude Max subscription, default to **Opus 4.7 (1M context)** for all work in this repo — bug fixes, refactoring, tests, architecture, design. Co-author tag: `Claude Opus 4.7 (1M context)`.
+
+The per-context tiering (Sonnet for routine, Opus for design) only applies if the maintainer is back on a metered plan; revisit then.
 
 ## Quality Targets (non-negotiable)
 
