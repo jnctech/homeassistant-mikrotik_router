@@ -133,9 +133,7 @@ class TestMikrotikSensorUoM:
 class TestClientTrafficSensorCustomName:
     def test_always_returns_description_name(self):
         coord = make_mock_coordinator()
-        coord.data["client_traffic"] = {
-            "AA:BB:CC:DD:EE:FF": {"host-name": "MyPC", "wan-tx": 1000}
-        }
+        coord.data["client_traffic"] = {"AA:BB:CC:DD:EE:FF": {"host-name": "MyPC", "wan-tx": 1000}}
         entity = _make_sensor(
             cls=MikrotikClientTrafficSensor,
             coordinator=coord,

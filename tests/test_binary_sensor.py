@@ -14,9 +14,7 @@ from .conftest import (
 )
 
 
-def _make_binary_sensor(
-    cls=MikrotikBinarySensor, coordinator=None, desc_overrides=None, uid=None
-):
+def _make_binary_sensor(cls=MikrotikBinarySensor, coordinator=None, desc_overrides=None, uid=None):
     coord = coordinator or make_mock_coordinator()
     desc = make_mock_entity_description(**(desc_overrides or {}))
     with patch_coordinator_entity_init():

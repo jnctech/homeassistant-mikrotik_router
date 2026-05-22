@@ -794,15 +794,11 @@ async def test_resolve_manufacturer_error_sets_empty_string():
     """When mac_lookup.lookup raises, manufacturer is set to '' not left as 'detect'."""
     mac = "AA:BB:CC:DD:EE:FF"
     coordinator = make_coordinator_for_host(
-        arp_entries={
-            mac: {"mac-address": mac, "address": "192.168.1.10", "interface": "ether1"}
-        },
+        arp_entries={mac: {"mac-address": mac, "address": "192.168.1.10", "interface": "ether1"}},
         host_entries={mac: _host_entry(mac)},
     )
 
-    coordinator.async_mac_lookup.lookup = AsyncMock(
-        side_effect=OSError("lookup DB unavailable")
-    )
+    coordinator.async_mac_lookup.lookup = AsyncMock(side_effect=OSError("lookup DB unavailable"))
 
     await coordinator.async_process_host()
 
@@ -1109,9 +1105,7 @@ def test_set_value_delegates_to_api():
     coordinator = make_coordinator()
     coordinator.api.set_value = MagicMock(return_value=True)
     result = coordinator.set_value("/interface", "name", "ether1", "disabled", True)
-    coordinator.api.set_value.assert_called_once_with(
-        "/interface", "name", "ether1", "disabled", True
-    )
+    coordinator.api.set_value.assert_called_once_with("/interface", "name", "ether1", "disabled", True)
     assert result is True
 
 
@@ -1120,9 +1114,7 @@ def test_execute_delegates_to_api():
     coordinator = make_coordinator()
     coordinator.api.execute = MagicMock(return_value=True)
     result = coordinator.execute("/system", "reboot", None, None)
-    coordinator.api.execute.assert_called_once_with(
-        "/system", "reboot", None, None, None
-    )
+    coordinator.api.execute.assert_called_once_with("/system", "reboot", None, None, None)
     assert result is True
 
 
@@ -2074,10 +2066,7 @@ def test_dhcp_active_mac_override():
     coordinator.get_dhcp()
     # Dict key stays as original mac, but mac-address value is updated
     assert "AA:BB:CC:DD:EE:01" in coordinator.ds["dhcp"]
-    assert (
-        coordinator.ds["dhcp"]["AA:BB:CC:DD:EE:01"]["mac-address"]
-        == "AA:BB:CC:DD:EE:02"
-    )
+    assert coordinator.ds["dhcp"]["AA:BB:CC:DD:EE:01"]["mac-address"] == "AA:BB:CC:DD:EE:02"
 
 
 def test_dhcp_interface_from_arp_fallback():
@@ -2332,9 +2321,7 @@ def test_arp_bridge_interface_resolution():
         }
     )
     coordinator.ds["bridge"] = {"bridge1": True}
-    coordinator.ds["bridge_host"] = {
-        "AA:BB:CC:DD:EE:01": {"interface": "ether2", "bridge": "bridge1"}
-    }
+    coordinator.ds["bridge_host"] = {"AA:BB:CC:DD:EE:01": {"interface": "ether2", "bridge": "bridge1"}}
     coordinator.get_arp()
     entry = coordinator.ds["arp"]["AA:BB:CC:DD:EE:01"]
     assert entry["bridge"] == "bridge1"
@@ -3298,10 +3285,7 @@ def test_process_interface_client_single_arp():
     }
     coordinator.process_interface_client()
     assert coordinator.ds["interface"]["ether1"]["client-ip-address"] == "192.168.1.10"
-    assert (
-        coordinator.ds["interface"]["ether1"]["client-mac-address"]
-        == "AA:BB:CC:DD:EE:01"
-    )
+    assert coordinator.ds["interface"]["ether1"]["client-mac-address"] == "AA:BB:CC:DD:EE:01"
 
 
 def test_process_interface_client_multiple_arp():
@@ -3783,9 +3767,7 @@ def test_ensure_host_defaults():
 def test_update_host_availability_capsman_not_detected():
     """Capsman host not in detected set becomes unavailable."""
     coordinator = make_coordinator_for_host()
-    coordinator.ds["host"] = {
-        "AA:BB:CC:DD:EE:10": {"source": "capsman", "available": True}
-    }
+    coordinator.ds["host"] = {"AA:BB:CC:DD:EE:10": {"source": "capsman", "available": True}}
 
     coordinator._update_host_availability(
         "AA:BB:CC:DD:EE:10",
@@ -3802,9 +3784,7 @@ def test_update_host_availability_capsman_not_detected():
 def test_update_host_availability_wired_arp_detected():
     """Wired host in arp_detected set becomes available."""
     coordinator = make_coordinator_for_host()
-    coordinator.ds["host"] = {
-        "AA:BB:CC:DD:EE:11": {"source": "arp", "available": False, "last-seen": False}
-    }
+    coordinator.ds["host"] = {"AA:BB:CC:DD:EE:11": {"source": "arp", "available": False, "last-seen": False}}
 
     coordinator._update_host_availability(
         "AA:BB:CC:DD:EE:11",
@@ -3892,9 +3872,7 @@ def test_resolve_hostname_from_dns():
 def test_resolve_hostname_from_dns_name():
     """Hostname resolved from DNS name when comment is empty."""
     coordinator = make_coordinator_for_host()
-    coordinator.ds["host"] = {
-        "mac1": {"host-name": "unknown", "address": "192.168.1.10"}
-    }
+    coordinator.ds["host"] = {"mac1": {"host-name": "unknown", "address": "192.168.1.10"}}
     coordinator.ds["dns"] = {
         "entry1": {
             "address": "192.168.1.10",
@@ -3945,26 +3923,18 @@ def test_resolve_hostname_from_dhcp_hostname():
 def test_resolve_hostname_fallback_to_mac():
     """Hostname falls back to MAC address when no other source available."""
     coordinator = make_coordinator_for_host()
-    coordinator.ds["host"] = {
-        "AA:BB:CC:DD:EE:FF": {"host-name": "unknown", "address": "unknown"}
-    }
+    coordinator.ds["host"] = {"AA:BB:CC:DD:EE:FF": {"host-name": "unknown", "address": "unknown"}}
     coordinator.ds["dns"] = {}
     coordinator.ds["dhcp"] = {}
 
-    coordinator._resolve_hostname(
-        "AA:BB:CC:DD:EE:FF", coordinator.ds["host"]["AA:BB:CC:DD:EE:FF"]
-    )
-    assert (
-        coordinator.ds["host"]["AA:BB:CC:DD:EE:FF"]["host-name"] == "AA:BB:CC:DD:EE:FF"
-    )
+    coordinator._resolve_hostname("AA:BB:CC:DD:EE:FF", coordinator.ds["host"]["AA:BB:CC:DD:EE:FF"])
+    assert coordinator.ds["host"]["AA:BB:CC:DD:EE:FF"]["host-name"] == "AA:BB:CC:DD:EE:FF"
 
 
 def test_resolve_hostname_skips_when_already_known():
     """_resolve_hostname does nothing when hostname is already set."""
     coordinator = make_coordinator_for_host()
-    coordinator.ds["host"] = {
-        "mac1": {"host-name": "already-known", "address": "192.168.1.10"}
-    }
+    coordinator.ds["host"] = {"mac1": {"host-name": "already-known", "address": "192.168.1.10"}}
     coordinator.ds["dns"] = {}
 
     coordinator._resolve_hostname("mac1", coordinator.ds["host"]["mac1"])
@@ -4067,9 +4037,7 @@ def test_init_accounting_hosts_skips_existing():
             "host-name": "pc1",
         }
     }
-    coordinator.ds["client_traffic"] = {
-        "mac1": {"address": "192.168.1.1", "available": True}
-    }
+    coordinator.ds["client_traffic"] = {"mac1": {"address": "192.168.1.1", "available": True}}
 
     coordinator._init_accounting_hosts()
     assert coordinator.ds["client_traffic"]["mac1"]["available"] is True
@@ -4078,9 +4046,7 @@ def test_init_accounting_hosts_skips_existing():
 def test_classify_accounting_traffic_wan():
     """_classify_accounting_traffic classifies WAN TX/RX correctly."""
     coordinator = make_coordinator()
-    coordinator.ds["dhcp-network"] = {
-        "net1": {"IPv4Network": __import__("ipaddress").IPv4Network("192.168.1.0/24")}
-    }
+    coordinator.ds["dhcp-network"] = {"net1": {"IPv4Network": __import__("ipaddress").IPv4Network("192.168.1.0/24")}}
 
     tmp = {"192.168.1.10": {"wan-tx": 0, "wan-rx": 0, "lan-tx": 0, "lan-rx": 0}}
     accounting_data = {
@@ -4107,9 +4073,7 @@ def test_classify_accounting_traffic_wan():
 def test_classify_accounting_traffic_lan():
     """_classify_accounting_traffic classifies LAN TX/RX correctly."""
     coordinator = make_coordinator()
-    coordinator.ds["dhcp-network"] = {
-        "net1": {"IPv4Network": __import__("ipaddress").IPv4Network("192.168.1.0/24")}
-    }
+    coordinator.ds["dhcp-network"] = {"net1": {"IPv4Network": __import__("ipaddress").IPv4Network("192.168.1.0/24")}}
 
     tmp = {
         "192.168.1.10": {"wan-tx": 0, "wan-rx": 0, "lan-tx": 0, "lan-rx": 0},
@@ -4137,18 +4101,14 @@ def test_classify_accounting_traffic_lan():
 def test_hostname_from_dns_returns_comment():
     """DNS comment takes priority for hostname."""
     coordinator = make_coordinator_for_host()
-    coordinator.ds["dns"] = {
-        "e1": {"address": "10.0.0.1", "comment": "MyPC#tag", "name": "mypc.local"}
-    }
+    coordinator.ds["dns"] = {"e1": {"address": "10.0.0.1", "comment": "MyPC#tag", "name": "mypc.local"}}
     assert coordinator._hostname_from_dns("mac1", "10.0.0.1") == "MyPC"
 
 
 def test_hostname_from_dns_falls_back_to_name():
     """DNS name (before first dot) used when comment is empty and no DHCP comment."""
     coordinator = make_coordinator_for_host()
-    coordinator.ds["dns"] = {
-        "e1": {"address": "10.0.0.1", "comment": "", "name": "server.lan"}
-    }
+    coordinator.ds["dns"] = {"e1": {"address": "10.0.0.1", "comment": "", "name": "server.lan"}}
     coordinator.ds["dhcp"] = {}
     assert coordinator._hostname_from_dns("mac1", "10.0.0.1") == "server"
 
@@ -4156,27 +4116,21 @@ def test_hostname_from_dns_falls_back_to_name():
 def test_hostname_from_dns_no_match():
     """Returns None when no DNS entry matches the address."""
     coordinator = make_coordinator_for_host()
-    coordinator.ds["dns"] = {
-        "e1": {"address": "10.0.0.99", "comment": "Other", "name": "other.lan"}
-    }
+    coordinator.ds["dns"] = {"e1": {"address": "10.0.0.99", "comment": "Other", "name": "other.lan"}}
     assert coordinator._hostname_from_dns("mac1", "10.0.0.1") is None
 
 
 def test_hostname_from_dhcp_returns_comment():
     """DHCP comment used when available."""
     coordinator = make_coordinator_for_host()
-    coordinator.ds["dhcp"] = {
-        "mac1": {"enabled": True, "comment": "Laptop#x", "host-name": "other"}
-    }
+    coordinator.ds["dhcp"] = {"mac1": {"enabled": True, "comment": "Laptop#x", "host-name": "other"}}
     assert coordinator._hostname_from_dhcp("mac1") == "Laptop"
 
 
 def test_hostname_from_dhcp_returns_hostname():
     """DHCP host-name used when comment is empty."""
     coordinator = make_coordinator_for_host()
-    coordinator.ds["dhcp"] = {
-        "mac1": {"enabled": True, "comment": "", "host-name": "dhcp-name"}
-    }
+    coordinator.ds["dhcp"] = {"mac1": {"enabled": True, "comment": "", "host-name": "dhcp-name"}}
     assert coordinator._hostname_from_dhcp("mac1") == "dhcp-name"
 
 
@@ -4198,9 +4152,7 @@ def test_add_traffic_bytes_lan():
         "10.0.0.1": {"wan-tx": 0, "wan-rx": 0, "lan-tx": 0, "lan-rx": 0},
         "10.0.0.2": {"wan-tx": 0, "wan-rx": 0, "lan-tx": 0, "lan-rx": 0},
     }
-    MikrotikCoordinator._add_traffic_bytes(
-        tmp, "10.0.0.1", "10.0.0.2", 100, src_local=True, dst_local=True
-    )
+    MikrotikCoordinator._add_traffic_bytes(tmp, "10.0.0.1", "10.0.0.2", 100, src_local=True, dst_local=True)
     assert tmp["10.0.0.1"]["lan-tx"] == 100
     assert tmp["10.0.0.2"]["lan-rx"] == 100
 
@@ -4208,27 +4160,21 @@ def test_add_traffic_bytes_lan():
 def test_add_traffic_bytes_wan_tx():
     """WAN TX when source is local and destination is external."""
     tmp = {"10.0.0.1": {"wan-tx": 0, "wan-rx": 0, "lan-tx": 0, "lan-rx": 0}}
-    MikrotikCoordinator._add_traffic_bytes(
-        tmp, "10.0.0.1", "8.8.8.8", 200, src_local=True, dst_local=False
-    )
+    MikrotikCoordinator._add_traffic_bytes(tmp, "10.0.0.1", "8.8.8.8", 200, src_local=True, dst_local=False)
     assert tmp["10.0.0.1"]["wan-tx"] == 200
 
 
 def test_add_traffic_bytes_wan_rx():
     """WAN RX when source is external and destination is local."""
     tmp = {"10.0.0.1": {"wan-tx": 0, "wan-rx": 0, "lan-tx": 0, "lan-rx": 0}}
-    MikrotikCoordinator._add_traffic_bytes(
-        tmp, "8.8.8.8", "10.0.0.1", 300, src_local=False, dst_local=True
-    )
+    MikrotikCoordinator._add_traffic_bytes(tmp, "8.8.8.8", "10.0.0.1", 300, src_local=False, dst_local=True)
     assert tmp["10.0.0.1"]["wan-rx"] == 300
 
 
 def test_add_traffic_bytes_external_to_external():
     """External-to-external traffic is ignored."""
     tmp = {"10.0.0.1": {"wan-tx": 0, "wan-rx": 0, "lan-tx": 0, "lan-rx": 0}}
-    MikrotikCoordinator._add_traffic_bytes(
-        tmp, "8.8.8.8", "1.1.1.1", 400, src_local=False, dst_local=False
-    )
+    MikrotikCoordinator._add_traffic_bytes(tmp, "8.8.8.8", "1.1.1.1", 400, src_local=False, dst_local=False)
     assert tmp["10.0.0.1"]["wan-tx"] == 0
     assert tmp["10.0.0.1"]["wan-rx"] == 0
 
@@ -4457,9 +4403,7 @@ def test_is_wireless_host_bridge_lookup():
     mac = "AA:BB:CC:DD:EE:01"
     coordinator = make_coordinator_for_host()
     coordinator.ds["wireless"] = {"wlan1": {"name": "wlan1"}}
-    coordinator.ds["bridge_host"] = {
-        mac: {"interface": "wlan1", "bridge": "bridge1", "enabled": True}
-    }
+    coordinator.ds["bridge_host"] = {mac: {"interface": "wlan1", "bridge": "bridge1", "enabled": True}}
     vals = {"source": "arp", "interface": "bridge1"}
     assert coordinator._is_wireless_host(mac, vals) is True
 

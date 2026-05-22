@@ -73,11 +73,7 @@ class MikrotikPPPSecretBinarySensor(MikrotikBinarySensor):
     @property
     def is_on(self) -> bool:
         """Return true if device is on."""
-        return (
-            self._data[self.entity_description.data_attribute]
-            if self.option_sensor_ppp
-            else False
-        )
+        return self._data[self.entity_description.data_attribute] if self.option_sensor_ppp else False
 
 
 # ---------------------------
@@ -89,9 +85,7 @@ class MikrotikPortBinarySensor(MikrotikInterfaceEntityMixin, MikrotikBinarySenso
     @property
     def option_sensor_port_tracker(self) -> bool:
         """Config entry option to not track ARP."""
-        return self._config_entry.options.get(
-            CONF_SENSOR_PORT_TRACKER, DEFAULT_SENSOR_PORT_TRACKER
-        )
+        return self._config_entry.options.get(CONF_SENSOR_PORT_TRACKER, DEFAULT_SENSOR_PORT_TRACKER)
 
     @property
     def icon(self) -> str:

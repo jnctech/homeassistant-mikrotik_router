@@ -37,9 +37,7 @@ from .const import (
 _LOGGER = getLogger(__name__)
 
 
-async def async_add_entities(
-    hass: HomeAssistant, config_entry: ConfigEntry, dispatcher: dict[str, Callable]
-):
+async def async_add_entities(hass: HomeAssistant, config_entry: ConfigEntry, dispatcher: dict[str, Callable]):
     """Add entities."""
     platform = ep.async_get_current_platform()
     services = platform.platform.SENSOR_SERVICES
@@ -57,9 +55,7 @@ async def async_add_entities(
             return
         if coordinator.data is None:
             return
-        await _run_entity_setup_loop(
-            hass, platform, config_entry, dispatcher, descriptions, coordinator
-        )
+        await _run_entity_setup_loop(hass, platform, config_entry, dispatcher, descriptions, coordinator)
 
     await async_update_controller(tracker_coord)
 
@@ -145,9 +141,7 @@ class MikrotikHostDeviceTracker(MikrotikDeviceTracker):
     @property
     def option_track_network_hosts_timeout(self):
         """Config entry option scan interval."""
-        track_network_hosts_timeout = self._config_entry.options.get(
-            CONF_TRACK_HOSTS_TIMEOUT, DEFAULT_TRACK_HOST_TIMEOUT
-        )
+        track_network_hosts_timeout = self._config_entry.options.get(CONF_TRACK_HOSTS_TIMEOUT, DEFAULT_TRACK_HOST_TIMEOUT)
         return timedelta(seconds=track_network_hosts_timeout)
 
     @property
@@ -159,11 +153,7 @@ class MikrotikHostDeviceTracker(MikrotikDeviceTracker):
         if self._data.get("is_wireless", False):
             return self._data[self.entity_description.data_attribute]
 
-        return bool(
-            self._data["last-seen"]
-            and utcnow() - self._data["last-seen"]
-            < self.option_track_network_hosts_timeout
-        )
+        return bool(self._data["last-seen"] and utcnow() - self._data["last-seen"] < self.option_track_network_hosts_timeout)
 
     @property
     def icon(self) -> str:
@@ -174,11 +164,7 @@ class MikrotikHostDeviceTracker(MikrotikDeviceTracker):
             else:
                 return self.entity_description.icon_disabled
 
-        if (
-            self._data["last-seen"]
-            and (utcnow() - self._data["last-seen"])
-            < self.option_track_network_hosts_timeout
-        ):
+        if self._data["last-seen"] and (utcnow() - self._data["last-seen"]) < self.option_track_network_hosts_timeout:
             return self.entity_description.icon_enabled
         return self.entity_description.icon_disabled
 

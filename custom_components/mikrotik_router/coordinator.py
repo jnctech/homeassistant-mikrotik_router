@@ -214,25 +214,16 @@ class MikrotikTrackerCoordinator(DataUpdateCoordinator[None]):
     @staticmethod
     def _should_ping_host(host: dict) -> bool:
         """Check if a host should be pinged (non-wireless with valid address/interface)."""
-        return (
-            host.get("source", "") not in ("capsman", "wireless")
-            and host.get("address", "unknown") not in ("unknown", "")
-            and host.get("interface", "unknown") not in ("unknown", "")
-        )
+        return host.get("source", "") not in ("capsman", "wireless") and host.get("address", "unknown") not in ("unknown", "") and host.get("interface", "unknown") not in ("unknown", "")
 
     async def _ping_host(self, uid: str, host: dict) -> None:
         """Ping a host and update availability."""
         interface = host["interface"]
-        if (
-            uid in self.coordinator.ds["arp"]
-            and self.coordinator.ds["arp"][uid].get("bridge", "") != ""
-        ):
+        if uid in self.coordinator.ds["arp"] and self.coordinator.ds["arp"][uid].get("bridge", "") != "":
             interface = self.coordinator.ds["arp"][uid]["bridge"]
 
         _LOGGER.debug("Ping host: %s", host["address"])
-        host["available"] = await self.hass.async_add_executor_job(
-            self.api.arp_ping, host["address"], interface
-        )
+        host["available"] = await self.hass.async_add_executor_job(self.api.arp_ping, host["address"], interface)
 
 
 class MikrotikCoordinator(DataUpdateCoordinator[None]):
@@ -338,9 +329,7 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
     @property
     def option_track_iface_clients(self):
         """Config entry option to not track ARP."""
-        return self.config_entry.options.get(
-            CONF_TRACK_IFACE_CLIENTS, DEFAULT_TRACK_IFACE_CLIENTS
-        )
+        return self.config_entry.options.get(CONF_TRACK_IFACE_CLIENTS, DEFAULT_TRACK_IFACE_CLIENTS)
 
     # ---------------------------
     #   option_track_network_hosts
@@ -356,9 +345,7 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
     @property
     def option_sensor_port_traffic(self):
         """Config entry option to not track ARP."""
-        return self.config_entry.options.get(
-            CONF_SENSOR_PORT_TRAFFIC, DEFAULT_SENSOR_PORT_TRAFFIC
-        )
+        return self.config_entry.options.get(CONF_SENSOR_PORT_TRAFFIC, DEFAULT_SENSOR_PORT_TRAFFIC)
 
     # ---------------------------
     #   option_sensor_client_traffic
@@ -366,9 +353,7 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
     @property
     def option_sensor_client_traffic(self):
         """Config entry option to not track ARP."""
-        return self.config_entry.options.get(
-            CONF_SENSOR_CLIENT_TRAFFIC, DEFAULT_SENSOR_CLIENT_TRAFFIC
-        )
+        return self.config_entry.options.get(CONF_SENSOR_CLIENT_TRAFFIC, DEFAULT_SENSOR_CLIENT_TRAFFIC)
 
     # ---------------------------
     #   option_sensor_client_captive
@@ -376,9 +361,7 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
     @property
     def option_sensor_client_captive(self):
         """Config entry option to not track ARP."""
-        return self.config_entry.options.get(
-            CONF_SENSOR_CLIENT_CAPTIVE, DEFAULT_SENSOR_CLIENT_CAPTIVE
-        )
+        return self.config_entry.options.get(CONF_SENSOR_CLIENT_CAPTIVE, DEFAULT_SENSOR_CLIENT_CAPTIVE)
 
     # ---------------------------
     #   option_sensor_simple_queues
@@ -386,9 +369,7 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
     @property
     def option_sensor_simple_queues(self):
         """Config entry option to not track ARP."""
-        return self.config_entry.options.get(
-            CONF_SENSOR_SIMPLE_QUEUES, DEFAULT_SENSOR_SIMPLE_QUEUES
-        )
+        return self.config_entry.options.get(CONF_SENSOR_SIMPLE_QUEUES, DEFAULT_SENSOR_SIMPLE_QUEUES)
 
     # ---------------------------
     #   option_sensor_nat
@@ -420,9 +401,7 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
     @property
     def option_sensor_kidcontrol(self):
         """Config entry option to not track ARP."""
-        return self.config_entry.options.get(
-            CONF_SENSOR_KIDCONTROL, DEFAULT_SENSOR_KIDCONTROL
-        )
+        return self.config_entry.options.get(CONF_SENSOR_KIDCONTROL, DEFAULT_SENSOR_KIDCONTROL)
 
     # ---------------------------
     #   option_sensor_netwatch
@@ -430,9 +409,7 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
     @property
     def option_sensor_netwatch(self):
         """Config entry option to not track ARP."""
-        return self.config_entry.options.get(
-            CONF_SENSOR_NETWATCH_TRACKER, DEFAULT_SENSOR_NETWATCH_TRACKER
-        )
+        return self.config_entry.options.get(CONF_SENSOR_NETWATCH_TRACKER, DEFAULT_SENSOR_NETWATCH_TRACKER)
 
     # ---------------------------
     #   option_sensor_ppp
@@ -464,9 +441,7 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
     @property
     def option_sensor_container(self):
         """Config entry option for container sensors."""
-        return self.config_entry.options.get(
-            CONF_SENSOR_CONTAINER, DEFAULT_SENSOR_CONTAINER
-        )
+        return self.config_entry.options.get(CONF_SENSOR_CONTAINER, DEFAULT_SENSOR_CONTAINER)
 
     # ---------------------------
     #   option_sensor_scripts
@@ -474,9 +449,7 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
     @property
     def option_sensor_scripts(self):
         """Config entry option to not track ARP."""
-        return self.config_entry.options.get(
-            CONF_SENSOR_SCRIPTS, DEFAULT_SENSOR_SCRIPTS
-        )
+        return self.config_entry.options.get(CONF_SENSOR_SCRIPTS, DEFAULT_SENSOR_SCRIPTS)
 
     # ---------------------------
     #   option_sensor_environment
@@ -484,9 +457,7 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
     @property
     def option_sensor_environment(self):
         """Config entry option to not track ARP."""
-        return self.config_entry.options.get(
-            CONF_SENSOR_ENVIRONMENT, DEFAULT_SENSOR_ENVIRONMENT
-        )
+        return self.config_entry.options.get(CONF_SENSOR_ENVIRONMENT, DEFAULT_SENSOR_ENVIRONMENT)
 
     # ---------------------------
     #   option_scan_interval
@@ -494,9 +465,7 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
     @property
     def option_scan_interval(self):
         """Config entry option scan interval."""
-        scan_interval = self.config_entry.options.get(
-            CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL
-        )
+        scan_interval = self.config_entry.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
         return timedelta(seconds=scan_interval)
 
     # ---------------------------
@@ -583,23 +552,15 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
 
     def _has_wifi_package(self, packages: dict) -> bool:
         """Check if a wifi package is enabled or version implies wifi module."""
-        if any(
-            pkg in packages and packages[pkg]["enabled"]
-            for pkg in ("wifi", "wifi-qcom", "wifi-qcom-ac")
-        ):
+        if any(pkg in packages and packages[pkg]["enabled"] for pkg in ("wifi", "wifi-qcom", "wifi-qcom-ac")):
             return True
-        return (
-            self.major_fw_version == 7 and self.minor_fw_version >= 13
-        ) or self.major_fw_version > 7
+        return (self.major_fw_version == 7 and self.minor_fw_version >= 13) or self.major_fw_version > 7
 
     async def async_get_host_hass(self):
         """Get host data from HA entity registry"""
         registry = entity_registry.async_get(self.hass)
         for entity in registry.entities.values():
-            if (
-                entity.config_entry_id == self.config_entry.entry_id
-                and entity.entity_id.startswith("device_tracker.")
-            ):
+            if entity.config_entry_id == self.config_entry.entry_id and entity.entity_id.startswith("device_tracker."):
                 tmp = entity.unique_id.split("-")
                 if tmp[0] != self.name.lower():
                     continue
@@ -671,13 +632,9 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
         if self.api.connected() and not self.ds["host_hass"]:
             await self.async_get_host_hass()
 
-        await self._run_if_enabled(
-            self.get_capsman_hosts, requires=self.support_capsman
-        )
+        await self._run_if_enabled(self.get_capsman_hosts, requires=self.support_capsman)
         await self._run_if_enabled(self.get_wireless, requires=self.support_wireless)
-        await self._run_if_enabled(
-            self.get_wireless_hosts, requires=self.support_wireless
-        )
+        await self._run_if_enabled(self.get_wireless_hosts, requires=self.support_wireless)
 
         # Order matters: get_dhcp_server must run before get_dhcp (lease counting)
         for func in [
@@ -807,26 +764,18 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
         username = self.config_entry.data[CONF_USERNAME]
         if username not in tmp_user:
             _LOGGER.error(
-                "Mikrotik %s user '%s' not found in router user list. "
-                "Check integration configuration.",
+                "Mikrotik %s user '%s' not found in router user list. Check integration configuration.",
                 self.host,
                 username,
             )
             return
 
         if tmp_user[username]["group"] in tmp_group:
-            self.ds["access"] = tmp_group[tmp_user[username]["group"]]["policy"].split(
-                ","
-            )
+            self.ds["access"] = tmp_group[tmp_user[username]["group"]]["policy"].split(",")
 
         if not self.accessrights_reported:
             self.accessrights_reported = True
-            if (
-                "write" not in self.ds["access"]
-                or "policy" not in self.ds["access"]
-                or "reboot" not in self.ds["access"]
-                or "test" not in self.ds["access"]
-            ):
+            if "write" not in self.ds["access"] or "policy" not in self.ds["access"] or "reboot" not in self.ds["access"] or "test" not in self.ds["access"]:
                 _LOGGER.warning(
                     "Mikrotik %s user %s does not have sufficient access rights. Integration functionality will be limited.",
                     self.host,
@@ -877,10 +826,7 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
 
     def _monitor_ethernet_port(self, vals) -> None:
         """Fetch monitor data for a single ethernet port (SFP or copper + PoE)."""
-        has_sfp = (
-            "sfp-shutdown-temperature" in vals
-            and vals["sfp-shutdown-temperature"] != ""
-        )
+        has_sfp = "sfp-shutdown-temperature" in vals and vals["sfp-shutdown-temperature"] != ""
         monitor_vals = self._SFP_MONITOR_VALS if has_sfp else self._COPPER_MONITOR_VALS
 
         self.ds["interface"] = parse_api(
@@ -1080,9 +1026,7 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
         if arp_vals["interface"] == iface_name:
             return True
         if iface_name in self.ds["bonding_slaves"]:
-            return (
-                self.ds["bonding_slaves"][iface_name]["master"] == arp_vals["interface"]
-            )
+            return self.ds["bonding_slaves"][iface_name]["master"] == arp_vals["interface"]
         return False
 
     def _match_arp_clients(self, uid: str, vals: dict) -> None:
@@ -1471,9 +1415,7 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
         )
 
         for uid in self.ds["container"]:
-            self.ds["container"][uid]["running"] = (
-                self.ds["container"][uid]["status"] == "running"
-            )
+            self.ds["container"][uid]["running"] = self.ds["container"][uid]["status"] == "running"
 
     # ---------------------------
     #   get_kidcontrol
@@ -1507,9 +1449,7 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
         )
 
         for uid in self.ds["kid-control"]:
-            self.ds["kid-control"][uid]["comment"] = str(
-                self.ds["kid-control"][uid]["comment"]
-            )
+            self.ds["kid-control"][uid]["comment"] = str(self.ds["kid-control"][uid]["comment"])
 
     # ---------------------------
     #   get_ppp
@@ -1554,21 +1494,13 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
         )
 
         for uid in self.ds["ppp_secret"]:
-            self.ds["ppp_secret"][uid]["comment"] = str(
-                self.ds["ppp_secret"][uid]["comment"]
-            )
+            self.ds["ppp_secret"][uid]["comment"] = str(self.ds["ppp_secret"][uid]["comment"])
 
             if self.ds["ppp_secret"][uid]["name"] in self.ds["ppp_active"]:
                 self.ds["ppp_secret"][uid]["connected"] = True
-                self.ds["ppp_secret"][uid]["caller-id"] = self.ds["ppp_active"][uid][
-                    "caller-id"
-                ]
-                self.ds["ppp_secret"][uid]["address"] = self.ds["ppp_active"][uid][
-                    "address"
-                ]
-                self.ds["ppp_secret"][uid]["encoding"] = self.ds["ppp_active"][uid][
-                    "encoding"
-                ]
+                self.ds["ppp_secret"][uid]["caller-id"] = self.ds["ppp_active"][uid]["caller-id"]
+                self.ds["ppp_secret"][uid]["address"] = self.ds["ppp_active"][uid]["address"]
+                self.ds["ppp_secret"][uid]["encoding"] = self.ds["ppp_active"][uid]["encoding"]
             else:
                 self.ds["ppp_secret"][uid]["connected"] = False
                 self.ds["ppp_secret"][uid]["caller-id"] = _PPP_NOT_CONNECTED
@@ -1606,9 +1538,7 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
     # ---------------------------
     def get_system_routerboard(self) -> None:
         """Get routerboard data from Mikrotik"""
-        if self.ds["resource"]["board-name"].startswith("x86") or self.ds["resource"][
-            "board-name"
-        ].startswith("CHR"):
+        if self.ds["resource"]["board-name"].startswith("x86") or self.ds["resource"]["board-name"].startswith("CHR"):
             self.ds["routerboard"]["routerboard"] = False
             self.ds["routerboard"]["model"] = self.ds["resource"]["board-name"]
             self.ds["routerboard"]["serial-number"] = "N/A"
@@ -1625,11 +1555,7 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
                 ],
             )
 
-            if (
-                "write" not in self.ds["access"]
-                or "policy" not in self.ds["access"]
-                or "reboot" not in self.ds["access"]
-            ):
+            if "write" not in self.ds["access"] or "policy" not in self.ds["access"] or "reboot" not in self.ds["access"]:
                 self.ds["routerboard"].pop("current-firmware")
                 self.ds["routerboard"].pop("upgrade-firmware")
 
@@ -1638,11 +1564,7 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
     # ---------------------------
     def get_system_health(self) -> None:
         """Get routerboard data from Mikrotik"""
-        if (
-            "write" not in self.ds["access"]
-            or "policy" not in self.ds["access"]
-            or "reboot" not in self.ds["access"]
-        ):
+        if "write" not in self.ds["access"] or "policy" not in self.ds["access"] or "reboot" not in self.ds["access"]:
             return
 
         if 0 < self.major_fw_version < 7:
@@ -1720,37 +1642,16 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
             self.ds["resource"]["uptime"] = utc_from_timestamp(uptime_tm)
 
         if self.ds["resource"]["total-memory"] > 0:
-            self.ds["resource"]["memory-usage"] = round(
-                (
-                    (
-                        self.ds["resource"]["total-memory"]
-                        - self.ds["resource"]["free-memory"]
-                    )
-                    / self.ds["resource"]["total-memory"]
-                )
-                * 100
-            )
+            self.ds["resource"]["memory-usage"] = round(((self.ds["resource"]["total-memory"] - self.ds["resource"]["free-memory"]) / self.ds["resource"]["total-memory"]) * 100)
         else:
             self.ds["resource"]["memory-usage"] = "unknown"
 
         if self.ds["resource"]["total-hdd-space"] > 0:
-            self.ds["resource"]["hdd-usage"] = round(
-                (
-                    (
-                        self.ds["resource"]["total-hdd-space"]
-                        - self.ds["resource"]["free-hdd-space"]
-                    )
-                    / self.ds["resource"]["total-hdd-space"]
-                )
-                * 100
-            )
+            self.ds["resource"]["hdd-usage"] = round(((self.ds["resource"]["total-hdd-space"] - self.ds["resource"]["free-hdd-space"]) / self.ds["resource"]["total-hdd-space"]) * 100)
         else:
             self.ds["resource"]["hdd-usage"] = "unknown"
 
-        if (
-            "uptime_epoch" in self.ds["resource"]
-            and self.rebootcheck > self.ds["resource"]["uptime_epoch"]
-        ):
+        if "uptime_epoch" in self.ds["resource"] and self.rebootcheck > self.ds["resource"]["uptime_epoch"]:
             self.get_firmware_update()
 
         if "uptime_epoch" in self.ds["resource"]:
@@ -1761,16 +1662,10 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
     # ---------------------------
     def get_firmware_update(self) -> None:
         """Check for firmware update on Mikrotik"""
-        if (
-            "write" not in self.ds["access"]
-            or "policy" not in self.ds["access"]
-            or "reboot" not in self.ds["access"]
-        ):
+        if "write" not in self.ds["access"] or "policy" not in self.ds["access"] or "reboot" not in self.ds["access"]:
             return
 
-        self.execute(
-            "/system/package/update", "check-for-updates", None, None, {"duration": 10}
-        )
+        self.execute("/system/package/update", "check-for-updates", None, None, {"duration": 10})
         self.ds["fw-update"] = parse_api(
             data=self.ds["fw-update"],
             source=self.api.query("/system/package/update"),
@@ -1783,9 +1678,7 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
         )
 
         if "status" in self.ds["fw-update"]:
-            self.ds["fw-update"]["available"] = (
-                self.ds["fw-update"]["status"] == "New version is available"
-            )
+            self.ds["fw-update"]["available"] = self.ds["fw-update"]["status"] == "New version is available"
 
         else:
             self.ds["fw-update"]["available"] = False
@@ -1797,9 +1690,7 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
                 version = re.sub("[^0-9\\.]", "", full_version[0:split_end])
                 version_parts = version.split(".")
                 self.major_fw_version = int(version_parts[0])
-                self.minor_fw_version = (
-                    int(version_parts[1]) if len(version_parts) > 1 else 0
-                )
+                self.minor_fw_version = int(version_parts[1]) if len(version_parts) > 1 else 0
                 _LOGGER.debug(
                     "Mikrotik %s FW version major=%s minor=%s (%s)",
                     self.host,
@@ -1809,8 +1700,7 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
                 )
             except (ValueError, IndexError) as e:
                 _LOGGER.warning(
-                    "Mikrotik %s unable to determine FW version from '%s' (%s);"
-                    " some features may be disabled until next successful parse",
+                    "Mikrotik %s unable to determine FW version from '%s' (%s); some features may be disabled until next successful parse",
                     self.host,
                     full_version,
                     e,
@@ -1948,11 +1838,7 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
             ],
         )
 
-        auth_hosts = sum(
-            1
-            for uid in self.ds["hostspot_host"]
-            if self.ds["hostspot_host"][uid]["authorized"]
-        )
+        auth_hosts = sum(1 for uid in self.ds["hostspot_host"] if self.ds["hostspot_host"][uid]["authorized"])
         self.ds["resource"]["captive_authorized"] = auth_hosts
 
     # ---------------------------
@@ -2040,16 +1926,10 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
         for uid, vals in self.ds["arp"].items():
             if vals["interface"] in self.ds["bridge"] and uid in self.ds["bridge_host"]:
                 self.ds["arp"][uid]["bridge"] = vals["interface"]
-                self.ds["arp"][uid]["interface"] = self.ds["bridge_host"][uid][
-                    "interface"
-                ]
+                self.ds["arp"][uid]["interface"] = self.ds["bridge_host"][uid]["interface"]
 
         if self.ds["dhcp-client"]:
-            to_remove = [
-                uid
-                for uid, vals in self.ds["arp"].items()
-                if vals["interface"] in self.ds["dhcp-client"]
-            ]
+            to_remove = [uid for uid, vals in self.ds["arp"].items() if vals["interface"] in self.ds["dhcp-client"]]
 
             for uid in to_remove:
                 self.ds["arp"].pop(uid)
@@ -2133,9 +2013,7 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
             lease["interface"] = self.ds["dhcp-server"][lease["server"]]["interface"]
         elif uid in self.ds["arp"]:
             arp = self.ds["arp"][uid]
-            lease["interface"] = (
-                arp["bridge"] if arp["bridge"] != "unknown" else arp["interface"]
-            )
+            lease["interface"] = arp["bridge"] if arp["bridge"] != "unknown" else arp["interface"]
 
         return dhcpserver_queried
 
@@ -2176,9 +2054,7 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
         )
 
         for uid in self.ds["dhcp-server"]:
-            self.ds["dhcp-server"][uid]["status"] = (
-                "enabled" if self.ds["dhcp-server"][uid]["enabled"] else "disabled"
-            )
+            self.ds["dhcp-server"][uid]["status"] = "enabled" if self.ds["dhcp-server"][uid]["enabled"] else "disabled"
 
     # ---------------------------
     #   get_dhcp_client
@@ -2222,9 +2098,7 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
 
         for uid, vals in self.ds["dhcp-network"].items():
             if vals["IPv4Network"] == "":
-                self.ds["dhcp-network"][uid]["IPv4Network"] = IPv4Network(
-                    vals["address"]
-                )
+                self.ds["dhcp-network"][uid]["IPv4Network"] = IPv4Network(vals["address"])
 
     # ---------------------------
     #   get_capsman_hosts
@@ -2232,9 +2106,7 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
     def get_capsman_hosts(self) -> None:
         """Get CAPS-MAN hosts data from Mikrotik"""
 
-        if self.major_fw_version > 7 or (
-            self.major_fw_version == 7 and self.minor_fw_version >= 13
-        ):
+        if self.major_fw_version > 7 or (self.major_fw_version == 7 and self.minor_fw_version >= 13):
             registration_path = "/interface/wifi/registration-table"
 
         else:
@@ -2293,9 +2165,7 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
             if self.ds["wireless"][uid]["master-interface"]:
                 for tmp in self.ds["wireless"][uid]:
                     if self.ds["wireless"][uid][tmp] == "unknown":
-                        self.ds["wireless"][uid][tmp] = self.ds["wireless"][
-                            self.ds["wireless"][uid]["master-interface"]
-                        ][tmp]
+                        self.ds["wireless"][uid][tmp] = self.ds["wireless"][self.ds["wireless"][uid]["master-interface"]][tmp]
 
             if uid in self.ds["interface"]:
                 for tmp in self.ds["wireless"][uid]:
@@ -2529,23 +2399,13 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
     # ---------------------------
     def _update_host_address(self, uid, vals) -> None:
         """Update IP address and interface from DHCP or ARP."""
-        if (
-            uid in self.ds["dhcp"]
-            and self.ds["dhcp"][uid]["enabled"]
-            and "." in self.ds["dhcp"][uid]["address"]
-        ):
+        if uid in self.ds["dhcp"] and self.ds["dhcp"][uid]["enabled"] and "." in self.ds["dhcp"][uid]["address"]:
             if self.ds["dhcp"][uid]["address"] != self.ds["host"][uid]["address"]:
                 self.ds["host"][uid]["address"] = self.ds["dhcp"][uid]["address"]
                 if vals["source"] not in ["capsman", "wireless"]:
                     self.ds["host"][uid]["source"] = "dhcp"
-                    self.ds["host"][uid]["interface"] = self.ds["dhcp"][uid][
-                        "interface"
-                    ]
-        elif (
-            uid in self.ds["arp"]
-            and "." in self.ds["arp"][uid]["address"]
-            and self.ds["arp"][uid]["address"] != self.ds["host"][uid]["address"]
-        ):
+                    self.ds["host"][uid]["interface"] = self.ds["dhcp"][uid]["interface"]
+        elif uid in self.ds["arp"] and "." in self.ds["arp"][uid]["address"] and self.ds["arp"][uid]["address"] != self.ds["host"][uid]["address"]:
             self.ds["host"][uid]["address"] = self.ds["arp"][uid]["address"]
             if vals["source"] not in ["capsman", "wireless"]:
                 self.ds["host"][uid]["source"] = "arp"
@@ -2598,11 +2458,7 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
         if dhcp_comment:
             return dhcp_comment
 
-        if (
-            uid in self.ds["dhcp"]
-            and self.ds["dhcp"][uid]["enabled"]
-            and self.ds["dhcp"][uid]["host-name"] != "unknown"
-        ):
+        if uid in self.ds["dhcp"] and self.ds["dhcp"][uid]["enabled"] and self.ds["dhcp"][uid]["host-name"] != "unknown":
             return self.ds["dhcp"][uid]["host-name"]
 
         return uid
@@ -2626,9 +2482,7 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
             return
 
         if uid in self.ds["hostspot_host"]:
-            self.ds["host"][uid]["authorized"] = self.ds["hostspot_host"][uid][
-                "authorized"
-            ]
+            self.ds["host"][uid]["authorized"] = self.ds["hostspot_host"][uid]["authorized"]
             self.ds["host"][uid]["bypassed"] = self.ds["hostspot_host"][uid]["bypassed"]
         elif "authorized" in self.ds["host"][uid]:
             del self.ds["host"][uid]["authorized"]
@@ -2640,9 +2494,7 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
     async def _resolve_manufacturer(self, uid: str, mac: str) -> None:
         """Resolve a single MAC address to a manufacturer name."""
         try:
-            self.ds["host"][uid]["manufacturer"] = await self.async_mac_lookup.lookup(
-                mac
-            )
+            self.ds["host"][uid]["manufacturer"] = await self.async_mac_lookup.lookup(mac)
         except Exception as err:
             _LOGGER.debug("MAC vendor lookup failed for %s: %s", mac, err)
             self.ds["host"][uid]["manufacturer"] = ""
@@ -2650,9 +2502,7 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
     # ---------------------------
     #   _is_wireless_host
     # ---------------------------
-    def _is_wireless_host(
-        self, uid: str, vals: dict, wireless_interfaces: set | None = None
-    ) -> bool:
+    def _is_wireless_host(self, uid: str, vals: dict, wireless_interfaces: set | None = None) -> bool:
         """Check if a host is connected via a wireless interface.
 
         Uses source, bridge host table, and wireless interface list to
@@ -2728,11 +2578,7 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
             self._resolve_hostname(uid, vals)
 
             if vals["manufacturer"] == "detect" and vals["mac-address"] != "unknown":
-                mac_tasks.append(
-                    asyncio.create_task(
-                        self._resolve_manufacturer(uid, vals["mac-address"])
-                    )
-                )
+                mac_tasks.append(asyncio.create_task(self._resolve_manufacturer(uid, vals["mac-address"])))
             elif vals["manufacturer"] == "detect":
                 self.ds["host"][uid]["manufacturer"] = ""
 
@@ -2776,17 +2622,13 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
             src_local = self._address_part_of_local_network(source_ip)
             dst_local = self._address_part_of_local_network(destination_ip)
 
-            self._add_traffic_bytes(
-                tmp_values, source_ip, destination_ip, byte_count, src_local, dst_local
-            )
+            self._add_traffic_bytes(tmp_values, source_ip, destination_ip, byte_count, src_local, dst_local)
 
     # ---------------------------
     #   _add_traffic_bytes
     # ---------------------------
     @staticmethod
-    def _add_traffic_bytes(
-        tmp_values, source_ip, destination_ip, byte_count, src_local, dst_local
-    ) -> None:
+    def _add_traffic_bytes(tmp_values, source_ip, destination_ip, byte_count, src_local, dst_local) -> None:
         """Add byte count to the appropriate WAN/LAN TX/RX bucket."""
         if src_local and dst_local:
             if source_ip in tmp_values:
@@ -2819,9 +2661,7 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
             )
         elif entry_count > threshold * 0.9:
             _LOGGER.info(
-                "Accounting entries count (%s) reached 90%% of the threshold,"
-                " currently set to %s! Consider shortening update interval or"
-                " increasing the accounting threshold value in Mikrotik.",
+                "Accounting entries count (%s) reached 90%% of the threshold, currently set to %s! Consider shortening update interval or increasing the accounting threshold value in Mikrotik.",
                 entry_count,
                 threshold,
             )
@@ -2834,16 +2674,12 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
         """Calculate throughput rate, returning 0.0 if inputs are zero."""
         return round(byte_count / time_diff) if byte_count and time_diff else 0.0
 
-    def _apply_accounting_throughput(
-        self, tmp_values, time_diff, accounting_enabled, local_traffic_enabled
-    ) -> None:
+    def _apply_accounting_throughput(self, tmp_values, time_diff, accounting_enabled, local_traffic_enabled) -> None:
         """Calculate throughput from raw byte counters and update ds."""
         for addr, vals in tmp_values.items():
             uid = self._get_accounting_uid_by_ip(addr)
             if not uid:
-                _LOGGER.warning(
-                    f"Address {addr} not found in accounting data, skipping update"
-                )
+                _LOGGER.warning(f"Address {addr} not found in accounting data, skipping update")
                 continue
 
             ct = self.ds["client_traffic"][uid]
@@ -2874,14 +2710,9 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
 
         self._init_accounting_hosts()
 
-        _LOGGER.debug(
-            f"Working with {len(self.ds['client_traffic'])} accounting devices"
-        )
+        _LOGGER.debug(f"Working with {len(self.ds['client_traffic'])} accounting devices")
 
-        tmp_accounting_values = {
-            vals["address"]: {"wan-tx": 0, "wan-rx": 0, "lan-tx": 0, "lan-rx": 0}
-            for vals in self.ds["client_traffic"].values()
-        }
+        tmp_accounting_values = {vals["address"]: {"wan-tx": 0, "wan-rx": 0, "lan-tx": 0, "lan-rx": 0} for vals in self.ds["client_traffic"].values()}
 
         time_diff = self.api.take_client_traffic_snapshot(True)
         if time_diff:
@@ -2900,9 +2731,7 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
             self._check_accounting_threshold(len(accounting_data))
             self._classify_accounting_traffic(accounting_data, tmp_accounting_values)
 
-        self._apply_accounting_throughput(
-            tmp_accounting_values, time_diff, accounting_enabled, local_traffic_enabled
-        )
+        self._apply_accounting_throughput(tmp_accounting_values, time_diff, accounting_enabled, local_traffic_enabled)
 
     # ---------------------------
     #   _address_part_of_local_network
@@ -2960,9 +2789,7 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
                     "local_accounting": False,
                 }
 
-        _LOGGER.debug(
-            f"Working with {len(self.ds['client_traffic'])} kid control devices"
-        )
+        _LOGGER.debug(f"Working with {len(self.ds['client_traffic'])} kid control devices")
 
         kid_control_devices_data = parse_api(
             data={},
@@ -2985,9 +2812,7 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
 
         if not kid_control_devices_data:
             if "kid-control-devices" not in self.notified_flags:
-                _LOGGER.error(
-                    "No kid control devices found on your Mikrotik device, make sure kid-control feature is configured"
-                )
+                _LOGGER.error("No kid control devices found on your Mikrotik device, make sure kid-control feature is configured")
                 self.notified_flags.append("kid-control-devices")
             return
         elif "kid-control-devices" in self.notified_flags:

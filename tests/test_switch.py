@@ -28,9 +28,7 @@ def _make_switch(cls=MikrotikSwitch, coordinator=None, desc_overrides=None, uid=
     with patch_coordinator_entity_init():
         entity = cls(coord, desc, uid)
     entity.hass = MagicMock()
-    entity.hass.async_add_executor_job = AsyncMock(
-        side_effect=lambda fn, *a, **kw: fn(*a, **kw)
-    )
+    entity.hass.async_add_executor_job = AsyncMock(side_effect=lambda fn, *a, **kw: fn(*a, **kw))
     return entity
 
 
@@ -96,35 +94,25 @@ class TestMikrotikSwitch:
     async def test_async_turn_on_calls_set_value(self):
         coord = make_mock_coordinator()
         coord.data["interface"] = {"ether1": {"name": "ether1", "enabled": True}}
-        entity = _make_switch(
-            coordinator=coord, desc_overrides={**_SWITCH_DESC}, uid="ether1"
-        )
+        entity = _make_switch(coordinator=coord, desc_overrides={**_SWITCH_DESC}, uid="ether1")
         await entity.async_turn_on()
-        coord.set_value.assert_called_once_with(
-            "/interface", "name", "ether1", "disabled", False
-        )
+        coord.set_value.assert_called_once_with("/interface", "name", "ether1", "disabled", False)
         coord.async_refresh.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_async_turn_off_calls_set_value(self):
         coord = make_mock_coordinator()
         coord.data["interface"] = {"ether1": {"name": "ether1", "enabled": True}}
-        entity = _make_switch(
-            coordinator=coord, desc_overrides={**_SWITCH_DESC}, uid="ether1"
-        )
+        entity = _make_switch(coordinator=coord, desc_overrides={**_SWITCH_DESC}, uid="ether1")
         await entity.async_turn_off()
-        coord.set_value.assert_called_once_with(
-            "/interface", "name", "ether1", "disabled", True
-        )
+        coord.set_value.assert_called_once_with("/interface", "name", "ether1", "disabled", True)
 
     @pytest.mark.asyncio
     async def test_async_turn_on_raises_without_write_access(self):
         coord = make_mock_coordinator()
         coord.data["access"] = ["policy", "reboot"]  # no "write"
         coord.data["interface"] = {"ether1": {"name": "ether1", "enabled": True}}
-        entity = _make_switch(
-            coordinator=coord, desc_overrides={**_SWITCH_DESC}, uid="ether1"
-        )
+        entity = _make_switch(coordinator=coord, desc_overrides={**_SWITCH_DESC}, uid="ether1")
         with pytest.raises(HomeAssistantError, match="Write access required"):
             await entity.async_turn_on()
         coord.set_value.assert_not_called()
@@ -134,9 +122,7 @@ class TestMikrotikSwitch:
         coord = make_mock_coordinator()
         coord.data["access"] = ["policy"]
         coord.data["interface"] = {"ether1": {"name": "ether1", "enabled": True}}
-        entity = _make_switch(
-            coordinator=coord, desc_overrides={**_SWITCH_DESC}, uid="ether1"
-        )
+        entity = _make_switch(coordinator=coord, desc_overrides={**_SWITCH_DESC}, uid="ether1")
         with pytest.raises(HomeAssistantError, match="Write access required"):
             await entity.async_turn_off()
         coord.set_value.assert_not_called()
@@ -169,9 +155,7 @@ class TestMikrotikPortSwitch:
     @pytest.mark.asyncio
     async def test_turn_on_capsman_managed_returns_error(self):
         coord = make_mock_coordinator()
-        coord.data["interface"] = {
-            "wlan1": self._make_port_data(name="wlan1", about="managed by CAPsMAN")
-        }
+        coord.data["interface"] = {"wlan1": self._make_port_data(name="wlan1", about="managed by CAPsMAN")}
         entity = _make_switch(
             cls=MikrotikPortSwitch,
             coordinator=coord,
@@ -185,9 +169,7 @@ class TestMikrotikPortSwitch:
     @pytest.mark.asyncio
     async def test_turn_on_uses_name_param_when_mac_has_dashes(self):
         coord = make_mock_coordinator()
-        coord.data["interface"] = {
-            "ether1": self._make_port_data(port_mac="AA-BB-CC-DD-EE-FF")
-        }
+        coord.data["interface"] = {"ether1": self._make_port_data(port_mac="AA-BB-CC-DD-EE-FF")}
         # The port-mac-address has dashes → param should switch to "name"
         coord.data["interface"]["ether1"]["port-mac-address"] = "AA-BB-CC-DD-EE-FF"
         entity = _make_switch(
@@ -222,9 +204,7 @@ class TestMikrotikPortSwitch:
     @pytest.mark.asyncio
     async def test_turn_off_disables_poe_when_auto_on(self):
         coord = make_mock_coordinator()
-        coord.data["interface"] = {
-            "ether1": self._make_port_data(**{"poe-out": "auto-on"})
-        }
+        coord.data["interface"] = {"ether1": self._make_port_data(**{"poe-out": "auto-on"})}
         entity = _make_switch(
             cls=MikrotikPortSwitch,
             coordinator=coord,
@@ -239,9 +219,7 @@ class TestMikrotikPortSwitch:
 
     def test_icon_disabled_interface(self):
         coord = make_mock_coordinator()
-        coord.data["interface"] = {
-            "ether1": self._make_port_data(enabled=False, running=False)
-        }
+        coord.data["interface"] = {"ether1": self._make_port_data(enabled=False, running=False)}
         entity = _make_switch(
             cls=MikrotikPortSwitch,
             coordinator=coord,
@@ -252,9 +230,7 @@ class TestMikrotikPortSwitch:
 
     def test_icon_running(self):
         coord = make_mock_coordinator()
-        coord.data["interface"] = {
-            "ether1": self._make_port_data(enabled=True, running=True)
-        }
+        coord.data["interface"] = {"ether1": self._make_port_data(enabled=True, running=True)}
         entity = _make_switch(
             cls=MikrotikPortSwitch,
             coordinator=coord,
@@ -318,9 +294,7 @@ class TestMikrotikQueueSwitch:
     @pytest.mark.asyncio
     async def test_turn_on_finds_id_by_name(self):
         coord = make_mock_coordinator()
-        coord.data["queue"] = {
-            "q1": {"name": "download-limit", ".id": "*A", "enabled": True}
-        }
+        coord.data["queue"] = {"q1": {"name": "download-limit", ".id": "*A", "enabled": True}}
         entity = _make_switch(
             cls=MikrotikQueueSwitch,
             coordinator=coord,
@@ -339,9 +313,7 @@ class TestMikrotikQueueSwitch:
     @pytest.mark.asyncio
     async def test_turn_off_finds_id_by_name(self):
         coord = make_mock_coordinator()
-        coord.data["queue"] = {
-            "q1": {"name": "download-limit", ".id": "*A", "enabled": True}
-        }
+        coord.data["queue"] = {"q1": {"name": "download-limit", ".id": "*A", "enabled": True}}
         entity = _make_switch(
             cls=MikrotikQueueSwitch,
             coordinator=coord,

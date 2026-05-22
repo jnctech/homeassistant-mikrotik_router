@@ -23,9 +23,7 @@ from homeassistant.exceptions import HomeAssistantError
 from .const import PLATFORMS, DOMAIN, DEFAULT_VERIFY_SSL
 from .coordinator import MikrotikData, MikrotikCoordinator, MikrotikTrackerCoordinator
 
-SCRIPT_SCHEMA = vol.Schema(
-    {vol.Required("router"): cv.string, vol.Required("script"): cv.string}
-)
+SCRIPT_SCHEMA = vol.Schema({vol.Required("router"): cv.string, vol.Required("script"): cv.string})
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -61,9 +59,7 @@ def _build_valid_unique_ids(inst: str, coordinator_data: dict) -> set[str]:
     for desc in descriptions:
         if desc.data_path not in coordinator_data:
             continue
-        _collect_ids_for_desc(
-            desc, coordinator_data[desc.data_path], inst_lower, valid_ids
-        )
+        _collect_ids_for_desc(desc, coordinator_data[desc.data_path], inst_lower, valid_ids)
 
     return valid_ids
 
@@ -110,18 +106,13 @@ async def async_cleanup_entities(call: ServiceCall) -> ServiceResponse:
 
     valid_ids = _build_valid_unique_ids(inst, coordinator.ds)
     if not valid_ids:
-        raise HomeAssistantError(
-            "No valid entity IDs generated — aborting to prevent removing all "
-            "entities. This may indicate empty coordinator data or a bug."
-        )
+        raise HomeAssistantError("No valid entity IDs generated — aborting to prevent removing all entities. This may indicate empty coordinator data or a bug.")
     _LOGGER.debug("Built %d valid unique IDs for %s", len(valid_ids), inst)
 
     entity_registry = er.async_get(hass)
     removed: list[dict[str, str]] = []
 
-    for entity in list(
-        entity_registry.entities.values()
-    ):  # NOSONAR S7504 - list() needed: registry mutated in loop
+    for entity in list(entity_registry.entities.values()):  # NOSONAR S7504 - list() needed: registry mutated in loop
         if entity.config_entry_id != entry_id:
             continue
         if entity.unique_id in valid_ids:
@@ -210,9 +201,7 @@ async def async_cleanup_stale_hosts(call: ServiceCall) -> ServiceResponse:
     stale: list[dict[str, str]] = []
     removed: list[dict[str, str]] = []
 
-    for entity in list(
-        entity_registry.entities.values()
-    ):  # NOSONAR S7504 - list() needed: registry mutated in loop
+    for entity in list(entity_registry.entities.values()):  # NOSONAR S7504 - list() needed: registry mutated in loop
         if entity.config_entry_id != entry_id:
             continue
         if not entity.entity_id.startswith("device_tracker."):
@@ -299,9 +288,7 @@ async def async_reload_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> 
 async def async_unload_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
     """Unload a config entry."""
 
-    if unload_ok := await hass.config_entries.async_unload_platforms(
-        config_entry, PLATFORMS
-    ):
+    if unload_ok := await hass.config_entries.async_unload_platforms(config_entry, PLATFORMS):
         hass.data[DOMAIN].pop(config_entry.entry_id)
 
         if not hass.data[DOMAIN]:

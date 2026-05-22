@@ -63,9 +63,7 @@ class TestMikrotikEntityInit:
         """Entity without uid uses data_path data directly."""
         coord = make_mock_coordinator()
         coord.data["health"] = {"temperature": 45}
-        desc = make_mock_entity_description(
-            data_path="health", data_attribute="temperature", data_reference=""
-        )
+        desc = make_mock_entity_description(data_path="health", data_attribute="temperature", data_reference="")
         with patch_coordinator_entity_init():
             entity = MikrotikEntity(coord, desc)
         assert entity._inst == "TestRouter"
@@ -75,12 +73,8 @@ class TestMikrotikEntityInit:
     def test_init_with_uid(self):
         """Entity with uid indexes into nested data."""
         coord = make_mock_coordinator()
-        coord.data["interface"] = {
-            "ether1": {"name": "ether1", "enabled": True, "type": "ether"}
-        }
-        desc = make_mock_entity_description(
-            data_path="interface", data_reference="name"
-        )
+        coord.data["interface"] = {"ether1": {"name": "ether1", "enabled": True, "type": "ether"}}
+        desc = make_mock_entity_description(data_path="interface", data_reference="name")
         with patch_coordinator_entity_init():
             entity = MikrotikEntity(coord, desc, uid="ether1")
         assert entity._uid == "ether1"
@@ -187,9 +181,7 @@ class TestMikrotikEntityUniqueId:
     def test_unique_id_without_uid(self):
         entity = _make_entity(
             desc_overrides={"key": "system_uptime", "data_path": "resource"},
-            coordinator=make_mock_coordinator(
-                data={"resource": {"uptime": 1}, "routerboard": {"serial-number": "X"}}
-            ),
+            coordinator=make_mock_coordinator(data={"resource": {"uptime": 1}, "routerboard": {"serial-number": "X"}}),
         )
         assert entity.unique_id == "testrouter-system_uptime"
 
@@ -230,12 +222,8 @@ class TestMikrotikEntityDeviceInfo:
 
     def test_device_info_mac_address_group(self):
         coord = make_mock_coordinator()
-        coord.data["interface"] = {
-            "ether1": {"name": "ether1", "mac-address": "AA:BB:CC:DD:EE:FF"}
-        }
-        coord.data["host"] = {
-            "AA:BB:CC:DD:EE:FF": {"host-name": "MyPC", "manufacturer": "Intel"}
-        }
+        coord.data["interface"] = {"ether1": {"name": "ether1", "mac-address": "AA:BB:CC:DD:EE:FF"}}
+        coord.data["host"] = {"AA:BB:CC:DD:EE:FF": {"host-name": "MyPC", "manufacturer": "Intel"}}
         entity = _make_entity(
             coordinator=coord,
             desc_overrides={
@@ -279,9 +267,7 @@ class TestMikrotikEntityDeviceInfo:
 class TestMikrotikEntityExtraStateAttributes:
     def test_copies_data_attributes_list(self):
         coord = make_mock_coordinator()
-        coord.data["interface"] = {
-            "ether1": {"name": "ether1", "rate": "1Gbps", "status": "up"}
-        }
+        coord.data["interface"] = {"ether1": {"name": "ether1", "rate": "1Gbps", "status": "up"}}
         entity = _make_entity(
             coordinator=coord,
             desc_overrides={
@@ -311,9 +297,7 @@ class TestMikrotikEntityCoordinatorUpdate:
         )
         # Simulate coordinator data change
         coord.data["interface"]["ether1"]["enabled"] = False
-        with patch.object(
-            type(entity).__mro__[2], "_handle_coordinator_update", return_value=None
-        ):
+        with patch.object(type(entity).__mro__[2], "_handle_coordinator_update", return_value=None):
             entity._handle_coordinator_update()
         assert entity._data["enabled"] is False
 
@@ -325,9 +309,7 @@ class TestMikrotikEntityCoordinatorUpdate:
             desc_overrides={"data_path": "resource"},
         )
         coord.data["resource"]["uptime"] = 200
-        with patch.object(
-            type(entity).__mro__[2], "_handle_coordinator_update", return_value=None
-        ):
+        with patch.object(type(entity).__mro__[2], "_handle_coordinator_update", return_value=None):
             entity._handle_coordinator_update()
         assert entity._data["uptime"] == 200
 
@@ -620,9 +602,7 @@ def test_mixin_ether_sfp_skips_junk_defaults():
 
 def test_mixin_ether_without_sfp_does_not_add_sfp_attributes():
     """SFP attributes are omitted when sfp-shutdown-temperature is absent."""
-    entity = _ConcreteEntity(
-        {"type": "ether", "status": "link-ok", "sfp-temperature": "45C"}
-    )
+    entity = _ConcreteEntity({"type": "ether", "status": "link-ok", "sfp-temperature": "45C"})
     attrs = entity.extra_state_attributes
     # sfp-temperature present in data but sfp-shutdown-temperature is not → SFP block skipped
     assert "sfp_temperature" not in attrs
@@ -678,9 +658,7 @@ def test_mixin_client_attrs_shown_when_meaningful():
 
 def test_mixin_client_attrs_hidden_when_junk():
     """client-ip-address and client-mac-address hidden when 'unknown'/'none'."""
-    entity = _ConcreteEntity(
-        {"type": "ether", "client-ip-address": "unknown", "client-mac-address": "none"}
-    )
+    entity = _ConcreteEntity({"type": "ether", "client-ip-address": "unknown", "client-mac-address": "none"})
     attrs = entity.extra_state_attributes
     assert "client_ip_address" not in attrs
     assert "client_mac_address" not in attrs

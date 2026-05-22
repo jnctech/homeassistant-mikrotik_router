@@ -54,9 +54,7 @@ class MikrotikScriptButton(MikrotikButton):
     async def async_press(self) -> None:
         """Run script using Mikrotik API"""
         try:
-            await self.hass.async_add_executor_job(
-                self.coordinator.api.run_script, self._data["name"]
-            )
+            await self.hass.async_add_executor_job(self.coordinator.api.run_script, self._data["name"])
         except ApiEntryNotFound as error:
             _LOGGER.error("Failed to run script: %s", error)
         await self.coordinator.async_refresh()

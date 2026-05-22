@@ -111,9 +111,7 @@ def parse_api(
 
     keymap = generate_keymap(data, key_search)
     for entry in source:
-        uid = _process_source_entry(
-            data, entry, key, key_secondary, key_search, keymap, only, skip, debug
-        )
+        uid = _process_source_entry(data, entry, key, key_secondary, key_search, keymap, only, skip, debug)
         if uid is _NOT_FOUND:
             continue
 
@@ -129,9 +127,7 @@ def parse_api(
     return data
 
 
-def _process_source_entry(
-    data, entry, key, key_secondary, key_search, keymap, only, skip, debug
-):
+def _process_source_entry(data, entry, key, key_secondary, key_search, keymap, only, skip, debug):
     """Process a single source entry. Returns uid (or None for flat) or _NOT_FOUND to skip."""
     if only and not matches_only(entry, only):
         return _NOT_FOUND
@@ -177,18 +173,12 @@ def _get_uid_from_keys(entry, key, key_secondary) -> str | None:
 
 def generate_keymap(data, key_search) -> dict | None:
     """Generate keymap."""
-    return (
-        {data[uid][key_search]: uid for uid in data if key_search in data[uid]}
-        if key_search
-        else None
-    )
+    return {data[uid][key_search]: uid for uid in data if key_search in data[uid]} if key_search else None
 
 
 def matches_only(entry, only) -> bool:
     """Return True if all variables are matched."""
-    return all(
-        val["key"] in entry and entry[val["key"]] == val["value"] for val in only
-    )
+    return all(val["key"] in entry and entry[val["key"]] == val["value"] for val in only)
 
 
 def can_skip(entry, skip) -> bool:
@@ -218,9 +208,7 @@ def fill_defaults(data, vals) -> dict:
 
         vtype = val.get("type", "str")
         if vtype == "str":
-            data[name] = from_entry(
-                [], val.get("source", name), default=_resolve_str_default(val)
-            )
+            data[name] = from_entry([], val.get("source", name), default=_resolve_str_default(val))
         elif vtype == "bool":
             data[name] = from_entry_bool(
                 [],

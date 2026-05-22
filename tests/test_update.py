@@ -80,17 +80,13 @@ class TestGenerateVersionList:
 # ---------------------------------------------------------------------------
 
 
-def _make_update_entity(
-    cls=MikrotikRouterOSUpdate, coordinator=None, desc_overrides=None, uid=None
-):
+def _make_update_entity(cls=MikrotikRouterOSUpdate, coordinator=None, desc_overrides=None, uid=None):
     coord = coordinator or make_mock_coordinator()
     desc = make_mock_entity_description(**(desc_overrides or {}))
     with patch_coordinator_entity_init():
         entity = cls(coord, desc, uid)
     entity.hass = MagicMock()
-    entity.hass.async_add_executor_job = AsyncMock(
-        side_effect=lambda fn, *a, **kw: fn(*a, **kw)
-    )
+    entity.hass.async_add_executor_job = AsyncMock(side_effect=lambda fn, *a, **kw: fn(*a, **kw))
     return entity
 
 
@@ -116,9 +112,7 @@ class TestMikrotikRouterOSUpdate:
             "latest-version": "7.16.2",
             "available": True,
         }
-        entity = _make_update_entity(
-            coordinator=coord, desc_overrides={**_FW_UPDATE_DESC}
-        )
+        entity = _make_update_entity(coordinator=coord, desc_overrides={**_FW_UPDATE_DESC})
         assert entity.installed_version == "7.16.1"
 
     def test_latest_version(self):
@@ -128,9 +122,7 @@ class TestMikrotikRouterOSUpdate:
             "latest-version": "7.16.2",
             "available": True,
         }
-        entity = _make_update_entity(
-            coordinator=coord, desc_overrides={**_FW_UPDATE_DESC}
-        )
+        entity = _make_update_entity(coordinator=coord, desc_overrides={**_FW_UPDATE_DESC})
         assert entity.latest_version == "7.16.2"
 
     @pytest.mark.asyncio
@@ -141,13 +133,9 @@ class TestMikrotikRouterOSUpdate:
             "latest-version": "7.16.2",
             "available": True,
         }
-        entity = _make_update_entity(
-            coordinator=coord, desc_overrides={**_FW_UPDATE_DESC}
-        )
+        entity = _make_update_entity(coordinator=coord, desc_overrides={**_FW_UPDATE_DESC})
         await entity.async_install(version="7.16.2", backup=False)
-        coord.execute.assert_called_once_with(
-            "/system/package/update", "install", None, None
-        )
+        coord.execute.assert_called_once_with("/system/package/update", "install", None, None)
 
     @pytest.mark.asyncio
     async def test_async_install_with_backup(self):
@@ -157,9 +145,7 @@ class TestMikrotikRouterOSUpdate:
             "latest-version": "7.16.2",
             "available": True,
         }
-        entity = _make_update_entity(
-            coordinator=coord, desc_overrides={**_FW_UPDATE_DESC}
-        )
+        entity = _make_update_entity(coordinator=coord, desc_overrides={**_FW_UPDATE_DESC})
         await entity.async_install(version="7.16.2", backup=True)
         assert coord.execute.call_count == 2
         backup_call = coord.execute.call_args_list[0][0]

@@ -76,9 +76,7 @@ def test_live_poe_monitor_on_poe_interfaces(live_api):
     if not interfaces:
         pytest.skip("No ethernet interfaces found")
 
-    poe_interfaces = [
-        i for i in interfaces if i.get("poe-out") not in (None, "N/A", "")
-    ]
+    poe_interfaces = [i for i in interfaces if i.get("poe-out") not in (None, "N/A", "")]
     if not poe_interfaces:
         pytest.skip("No PoE-capable ethernet interfaces found on this device")
 

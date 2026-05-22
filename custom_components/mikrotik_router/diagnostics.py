@@ -8,9 +8,7 @@ from homeassistant.core import HomeAssistant
 from .const import DOMAIN, TO_REDACT
 
 
-async def async_get_config_entry_diagnostics(
-    hass: HomeAssistant, config_entry: ConfigEntry
-) -> dict[str, Any]:
+async def async_get_config_entry_diagnostics(hass: HomeAssistant, config_entry: ConfigEntry) -> dict[str, Any]:
     """Return diagnostics for a config entry."""
     data_coordinator = hass.data[DOMAIN][config_entry.entry_id].data_coordinator
     tracker_coordinator = hass.data[DOMAIN][config_entry.entry_id].tracker_coordinator

@@ -82,9 +82,7 @@ _LOGGER = logging.getLogger(__name__)
 @callback
 def configured_instances(hass):
     """Return a set of configured instances."""
-    return {
-        entry.data[CONF_NAME] for entry in hass.config_entries.async_entries(DOMAIN)
-    }
+    return {entry.data[CONF_NAME] for entry in hass.config_entries.async_entries(DOMAIN)}
 
 
 # ---------------------------
@@ -130,9 +128,7 @@ class MikrotikControllerConfigFlow(ConfigFlow, domain=DOMAIN):
 
             # Save instance
             if not errors:
-                return self.async_create_entry(
-                    title=user_input[CONF_NAME], data=user_input
-                )
+                return self.async_create_entry(title=user_input[CONF_NAME], data=user_input)
 
             return self._show_config_form(user_input=user_input, errors=errors)
 
@@ -164,9 +160,7 @@ class MikrotikControllerConfigFlow(ConfigFlow, domain=DOMAIN):
                     vol.Required(CONF_PASSWORD, default=user_input[CONF_PASSWORD]): str,
                     vol.Optional(CONF_PORT, default=user_input[CONF_PORT]): int,
                     vol.Optional(CONF_SSL, default=user_input[CONF_SSL]): bool,
-                    vol.Optional(
-                        CONF_VERIFY_SSL, default=user_input[CONF_VERIFY_SSL]
-                    ): bool,
+                    vol.Optional(CONF_VERIFY_SSL, default=user_input[CONF_VERIFY_SSL]): bool,
                 }
             ),
             errors=errors,
@@ -197,21 +191,15 @@ class MikrotikControllerOptionsFlowHandler(OptionsFlowWithConfigEntry):
                 {
                     vol.Optional(
                         CONF_SCAN_INTERVAL,
-                        default=self._options.get(
-                            CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL
-                        ),
+                        default=self._options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL),
                     ): int,
                     vol.Optional(
                         CONF_TRACK_IFACE_CLIENTS,
-                        default=self._options.get(
-                            CONF_TRACK_IFACE_CLIENTS, DEFAULT_TRACK_IFACE_CLIENTS
-                        ),
+                        default=self._options.get(CONF_TRACK_IFACE_CLIENTS, DEFAULT_TRACK_IFACE_CLIENTS),
                     ): bool,
                     vol.Optional(
                         CONF_TRACK_HOSTS_TIMEOUT,
-                        default=self._options.get(
-                            CONF_TRACK_HOSTS_TIMEOUT, DEFAULT_TRACK_HOST_TIMEOUT
-                        ),
+                        default=self._options.get(CONF_TRACK_HOSTS_TIMEOUT, DEFAULT_TRACK_HOST_TIMEOUT),
                     ): int,
                     vol.Optional(
                         CONF_ZONE,
@@ -233,39 +221,27 @@ class MikrotikControllerOptionsFlowHandler(OptionsFlowWithConfigEntry):
                 {
                     vol.Optional(
                         CONF_SENSOR_PORT_TRACKER,
-                        default=self._options.get(
-                            CONF_SENSOR_PORT_TRACKER, DEFAULT_SENSOR_PORT_TRACKER
-                        ),
+                        default=self._options.get(CONF_SENSOR_PORT_TRACKER, DEFAULT_SENSOR_PORT_TRACKER),
                     ): bool,
                     vol.Optional(
                         CONF_SENSOR_PORT_TRAFFIC,
-                        default=self._options.get(
-                            CONF_SENSOR_PORT_TRAFFIC, DEFAULT_SENSOR_PORT_TRAFFIC
-                        ),
+                        default=self._options.get(CONF_SENSOR_PORT_TRAFFIC, DEFAULT_SENSOR_PORT_TRAFFIC),
                     ): bool,
                     vol.Optional(
                         CONF_TRACK_HOSTS,
-                        default=self._options.get(
-                            CONF_TRACK_HOSTS, DEFAULT_TRACK_HOSTS
-                        ),
+                        default=self._options.get(CONF_TRACK_HOSTS, DEFAULT_TRACK_HOSTS),
                     ): bool,
                     vol.Optional(
                         CONF_SENSOR_CLIENT_TRAFFIC,
-                        default=self._options.get(
-                            CONF_SENSOR_CLIENT_TRAFFIC, DEFAULT_SENSOR_CLIENT_TRAFFIC
-                        ),
+                        default=self._options.get(CONF_SENSOR_CLIENT_TRAFFIC, DEFAULT_SENSOR_CLIENT_TRAFFIC),
                     ): bool,
                     vol.Optional(
                         CONF_SENSOR_CLIENT_CAPTIVE,
-                        default=self._options.get(
-                            CONF_SENSOR_CLIENT_CAPTIVE, DEFAULT_SENSOR_CLIENT_CAPTIVE
-                        ),
+                        default=self._options.get(CONF_SENSOR_CLIENT_CAPTIVE, DEFAULT_SENSOR_CLIENT_CAPTIVE),
                     ): bool,
                     vol.Optional(
                         CONF_SENSOR_SIMPLE_QUEUES,
-                        default=self._options.get(
-                            CONF_SENSOR_SIMPLE_QUEUES, DEFAULT_SENSOR_SIMPLE_QUEUES
-                        ),
+                        default=self._options.get(CONF_SENSOR_SIMPLE_QUEUES, DEFAULT_SENSOR_SIMPLE_QUEUES),
                     ): bool,
                     vol.Optional(
                         CONF_SENSOR_NAT,
@@ -273,21 +249,15 @@ class MikrotikControllerOptionsFlowHandler(OptionsFlowWithConfigEntry):
                     ): bool,
                     vol.Optional(
                         CONF_SENSOR_MANGLE,
-                        default=self._options.get(
-                            CONF_SENSOR_MANGLE, DEFAULT_SENSOR_MANGLE
-                        ),
+                        default=self._options.get(CONF_SENSOR_MANGLE, DEFAULT_SENSOR_MANGLE),
                     ): bool,
                     vol.Optional(
                         CONF_SENSOR_FILTER,
-                        default=self._options.get(
-                            CONF_SENSOR_FILTER, DEFAULT_SENSOR_FILTER
-                        ),
+                        default=self._options.get(CONF_SENSOR_FILTER, DEFAULT_SENSOR_FILTER),
                     ): bool,
                     vol.Optional(
                         CONF_SENSOR_KIDCONTROL,
-                        default=self._options.get(
-                            CONF_SENSOR_KIDCONTROL, DEFAULT_SENSOR_KIDCONTROL
-                        ),
+                        default=self._options.get(CONF_SENSOR_KIDCONTROL, DEFAULT_SENSOR_KIDCONTROL),
                     ): bool,
                     vol.Optional(
                         CONF_SENSOR_NETWATCH_TRACKER,
@@ -302,15 +272,11 @@ class MikrotikControllerOptionsFlowHandler(OptionsFlowWithConfigEntry):
                     ): bool,
                     vol.Optional(
                         CONF_SENSOR_SCRIPTS,
-                        default=self._options.get(
-                            CONF_SENSOR_SCRIPTS, DEFAULT_SENSOR_SCRIPTS
-                        ),
+                        default=self._options.get(CONF_SENSOR_SCRIPTS, DEFAULT_SENSOR_SCRIPTS),
                     ): bool,
                     vol.Optional(
                         CONF_SENSOR_ENVIRONMENT,
-                        default=self._options.get(
-                            CONF_SENSOR_ENVIRONMENT, DEFAULT_SENSOR_ENVIRONMENT
-                        ),
+                        default=self._options.get(CONF_SENSOR_ENVIRONMENT, DEFAULT_SENSOR_ENVIRONMENT),
                     ): bool,
                     vol.Optional(
                         CONF_SENSOR_POE,
@@ -322,9 +288,7 @@ class MikrotikControllerOptionsFlowHandler(OptionsFlowWithConfigEntry):
                     ): bool,
                     vol.Optional(
                         CONF_SENSOR_CONTAINER,
-                        default=self._options.get(
-                            CONF_SENSOR_CONTAINER, DEFAULT_SENSOR_CONTAINER
-                        ),
+                        default=self._options.get(CONF_SENSOR_CONTAINER, DEFAULT_SENSOR_CONTAINER),
                     ): bool,
                 },
             ),

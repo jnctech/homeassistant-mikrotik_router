@@ -23,9 +23,7 @@ def _make_button(cls=MikrotikButton, coordinator=None, desc_overrides=None, uid=
     with patch_coordinator_entity_init():
         entity = cls(coord, desc, uid)
     entity.hass = MagicMock()
-    entity.hass.async_add_executor_job = AsyncMock(
-        side_effect=lambda fn, *a, **kw: fn(*a, **kw)
-    )
+    entity.hass.async_add_executor_job = AsyncMock(side_effect=lambda fn, *a, **kw: fn(*a, **kw))
     return entity
 
 

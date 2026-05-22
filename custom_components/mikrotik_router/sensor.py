@@ -49,9 +49,7 @@ class MikrotikSensor(MikrotikEntity, SensorEntity):
         uid: str | None = None,
     ):
         super().__init__(coordinator, entity_description, uid)
-        self._attr_suggested_unit_of_measurement = (
-            self.entity_description.suggested_unit_of_measurement
-        )
+        self._attr_suggested_unit_of_measurement = self.entity_description.suggested_unit_of_measurement
 
     @property
     def native_value(self) -> StateType | date | datetime | Decimal:

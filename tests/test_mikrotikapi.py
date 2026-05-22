@@ -281,10 +281,7 @@ class TestSetValue:
         from time import time
 
         api._connection_epoch = time()
-        assert (
-            api.set_value("/ip/address", "address", "10.0.0.1", "disabled", True)
-            is False
-        )
+        assert api.set_value("/ip/address", "address", "10.0.0.1", "disabled", True) is False
 
     def test_entry_not_found_returns_false(self):
         api, _ = self._connected_api_with_query([{"name": "other", ".id": "*1"}])
@@ -292,9 +289,7 @@ class TestSetValue:
         assert result is False
 
     def test_lock_released_after_set(self):
-        api, mock_resp = self._connected_api_with_query(
-            [{"name": "ether1", ".id": "*1"}]
-        )
+        api, mock_resp = self._connected_api_with_query([{"name": "ether1", ".id": "*1"}])
         api.set_value("/interface", "name", "ether1", "disabled", True)
         assert api.lock.acquire(timeout=1) is True
         api.lock.release()
@@ -317,9 +312,7 @@ class TestSetValue:
         with patch.object(api, "_find_entry", side_effect=spy_find_entry):
             api.set_value("/interface", "name", "ether1", "disabled", True)
 
-        assert lock_held_during_find == [False], (
-            "_find_entry must run while the API lock is already held"
-        )
+        assert lock_held_during_find == [False], "_find_entry must run while the API lock is already held"
 
 
 # --- execute ---
@@ -333,9 +326,7 @@ class TestExecuteLocking:
         api._connected = True
         api._connection = MagicMock()
         mock_response = MagicMock()
-        mock_response.__iter__ = MagicMock(
-            return_value=iter([{"name": "ether1", ".id": "*1"}])
-        )
+        mock_response.__iter__ = MagicMock(return_value=iter([{"name": "ether1", ".id": "*1"}]))
         mock_response.__bool__ = MagicMock(return_value=True)
         api._connection.path.return_value = mock_response
         lock_held = []
@@ -349,9 +340,7 @@ class TestExecuteLocking:
         with patch.object(api, "_find_entry", side_effect=spy_find_entry):
             api.execute("/system/script", "run", "name", "ether1")
 
-        assert lock_held == [False], (
-            "execute()._find_entry must run while the API lock is already held"
-        )
+        assert lock_held == [False], "execute()._find_entry must run while the API lock is already held"
 
 
 # --- run_script ---
@@ -372,9 +361,7 @@ class TestRunScript:
         api._connected = True
         api._connection = MagicMock()
         mock_response = MagicMock()
-        mock_response.__iter__ = MagicMock(
-            return_value=iter([{"name": "other_script", ".id": "*1"}])
-        )
+        mock_response.__iter__ = MagicMock(return_value=iter([{"name": "other_script", ".id": "*1"}]))
         mock_response.__bool__ = MagicMock(return_value=True)
         api._connection.path.return_value = mock_response
         result = api.run_script("missing_script")
@@ -388,9 +375,7 @@ class TestRunScript:
         api._connected = True
         api._connection = MagicMock()
         mock_response = MagicMock()
-        mock_response.__iter__ = MagicMock(
-            return_value=iter([{"name": "my_script", ".id": "*5"}])
-        )
+        mock_response.__iter__ = MagicMock(return_value=iter([{"name": "my_script", ".id": "*5"}]))
         mock_response.__bool__ = MagicMock(return_value=True)
         mock_run = MagicMock()
         mock_run.__iter__ = MagicMock(return_value=iter([]))
@@ -429,9 +414,7 @@ class TestAccounting:
         api._connected = True
         api._connection = MagicMock()
         mock_path = MagicMock()
-        mock_path.__iter__ = MagicMock(
-            return_value=iter([{"enabled": True, "account-local-traffic": False}])
-        )
+        mock_path.__iter__ = MagicMock(return_value=iter([{"enabled": True, "account-local-traffic": False}]))
         mock_path.__bool__ = MagicMock(return_value=True)
         api._connection.path.return_value = mock_path
         assert api.is_accounting_and_local_traffic_enabled() == (True, False)
@@ -479,9 +462,7 @@ class TestSetValueReturnsFalseOnNotFound:
         api._connected = True
         api._connection = MagicMock()
         mock_path = MagicMock()
-        mock_path.__iter__ = MagicMock(
-            return_value=iter([{"name": "other", ".id": "*1"}])
-        )
+        mock_path.__iter__ = MagicMock(return_value=iter([{"name": "other", ".id": "*1"}]))
         mock_path.__bool__ = MagicMock(return_value=True)
         api._connection.path.return_value = mock_path
 
@@ -493,9 +474,7 @@ class TestSetValueReturnsFalseOnNotFound:
         api._connected = True
         api._connection = MagicMock()
         mock_path = MagicMock()
-        mock_path.__iter__ = MagicMock(
-            return_value=iter([{"name": "other", ".id": "*1"}])
-        )
+        mock_path.__iter__ = MagicMock(return_value=iter([{"name": "other", ".id": "*1"}]))
         mock_path.__bool__ = MagicMock(return_value=True)
         api._connection.path.return_value = mock_path
 
@@ -507,9 +486,7 @@ class TestSetValueReturnsFalseOnNotFound:
         api._connected = True
         api._connection = MagicMock()
         mock_path = MagicMock()
-        mock_path.__iter__ = MagicMock(
-            return_value=iter([{"name": "other_script", ".id": "*1"}])
-        )
+        mock_path.__iter__ = MagicMock(return_value=iter([{"name": "other_script", ".id": "*1"}]))
         mock_path.__bool__ = MagicMock(return_value=True)
         api._connection.path.return_value = mock_path
 
@@ -542,7 +519,5 @@ class TestQueryExtracted:
         mock_path.return_value = iter([{"status": "running"}])
         api._connection.path.return_value = mock_path
 
-        result = api.query(
-            "/interface/ethernet", command="monitor", args={".id": "*1", "once": True}
-        )
+        result = api.query("/interface/ethernet", command="monitor", args={".id": "*1", "once": True})
         assert result == [{"status": "running"}]

@@ -81,9 +81,7 @@ class MikrotikAPI:
             if location == "unknown":
                 _LOGGER.error("Mikrotik %s connection closed", self._host)
             else:
-                _LOGGER.error(
-                    "Mikrotik %s error while %s : %s", self._host, location, error
-                )
+                _LOGGER.error("Mikrotik %s error while %s : %s", self._host, location, error)
             self.connection_error_reported = True
 
         self._reconnected = False
@@ -108,14 +106,10 @@ class MikrotikAPI:
                 if self._use_ssl:
                     self._ensure_ssl_wrapper()
                     kwargs["ssl_wrapper"] = self._ssl_wrapper
-                self._connection = librouteros.connect(
-                    self._host, self._username, self._password, **kwargs
-                )
+                self._connection = librouteros.connect(self._host, self._username, self._password, **kwargs)
             except Exception as e:
                 if not self.connection_error_reported:
-                    _LOGGER.error(
-                        "Mikrotik %s error while connecting: %s", self._host, e
-                    )
+                    _LOGGER.error("Mikrotik %s error while connecting: %s", self._host, e)
                     self.connection_error_reported = True
                 self.error_to_strings(f"{e}")
                 self._connection = None
@@ -201,9 +195,7 @@ class MikrotikAPI:
             self.disconnect(f"building list for path {path}", e)
             return None
 
-    def _query_command(
-        self, response, path: str, command: str, args: dict
-    ) -> list | None:
+    def _query_command(self, response, path: str, command: str, args: dict) -> list | None:
         """Execute command on API path. Must be called inside self.lock."""
         _LOGGER.debug("API query: %s, %s, %s", path, command, args)
         try:

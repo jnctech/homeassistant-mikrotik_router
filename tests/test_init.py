@@ -173,9 +173,7 @@ async def test_migrate_entry_future_version_is_noop():
 @pytest.mark.asyncio
 async def test_remove_config_entry_device_returns_true():
     """Device removal always succeeds."""
-    result = await async_remove_config_entry_device(
-        MagicMock(), MagicMock(), MagicMock()
-    )
+    result = await async_remove_config_entry_device(MagicMock(), MagicMock(), MagicMock())
     assert result is True
 
 
@@ -219,9 +217,7 @@ async def test_setup_entry_registers_coordinators_and_platforms():
     mock_tracker.async_config_entry_first_refresh.assert_awaited_once()
     assert DOMAIN in hass.data
     assert config_entry.entry_id in hass.data[DOMAIN]
-    hass.config_entries.async_forward_entry_setups.assert_awaited_once_with(
-        config_entry, PLATFORMS
-    )
+    hass.config_entries.async_forward_entry_setups.assert_awaited_once_with(config_entry, PLATFORMS)
     config_entry.async_on_unload.assert_called_once()
 
 
@@ -831,9 +827,7 @@ async def test_cleanup_stale_hosts_dry_run():
 
     config_entry = _make_mock_config_entry()
     coordinator = _make_mock_coordinator(
-        ds={
-            "host": {"uid1": {"mac-address": mac, "available": False, "source": "arp"}}
-        },
+        ds={"host": {"uid1": {"mac-address": mac, "available": False, "source": "arp"}}},
         config_entry=config_entry,
     )
     mikrotik_data = _make_mock_mikrotik_data(coordinator=coordinator)
@@ -848,9 +842,7 @@ async def test_cleanup_stale_hosts_dry_run():
 
     hass = MagicMock()
     hass.data = {DOMAIN: {config_entry.entry_id: mikrotik_data}}
-    call = _make_service_call(
-        hass, {"entry_id": config_entry.entry_id, "dry_run": True}
-    )
+    call = _make_service_call(hass, {"entry_id": config_entry.entry_id, "dry_run": True})
 
     with patch(
         "custom_components.mikrotik_router.er.async_get",
@@ -892,9 +884,7 @@ async def test_cleanup_stale_hosts_remove():
 
     hass = MagicMock()
     hass.data = {DOMAIN: {config_entry.entry_id: mikrotik_data}}
-    call = _make_service_call(
-        hass, {"entry_id": config_entry.entry_id, "dry_run": False}
-    )
+    call = _make_service_call(hass, {"entry_id": config_entry.entry_id, "dry_run": False})
 
     with patch(
         "custom_components.mikrotik_router.er.async_get",
@@ -930,9 +920,7 @@ async def test_cleanup_stale_hosts_no_stale():
 
     hass = MagicMock()
     hass.data = {DOMAIN: {config_entry.entry_id: mikrotik_data}}
-    call = _make_service_call(
-        hass, {"entry_id": config_entry.entry_id, "dry_run": True}
-    )
+    call = _make_service_call(hass, {"entry_id": config_entry.entry_id, "dry_run": True})
 
     with patch(
         "custom_components.mikrotik_router.er.async_get",
@@ -963,9 +951,7 @@ async def test_cleanup_stale_hosts_skips_other_entries():
 
     hass = MagicMock()
     hass.data = {DOMAIN: {config_entry.entry_id: mikrotik_data}}
-    call = _make_service_call(
-        hass, {"entry_id": config_entry.entry_id, "dry_run": True}
-    )
+    call = _make_service_call(hass, {"entry_id": config_entry.entry_id, "dry_run": True})
 
     with patch(
         "custom_components.mikrotik_router.er.async_get",

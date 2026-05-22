@@ -283,9 +283,7 @@ class TestFillVals:
     def test_fills_bool_value(self):
         data = {"uid1": {}}
         entry = {"disabled": True}
-        vals = [
-            {"name": "enabled", "source": "disabled", "type": "bool", "reverse": True}
-        ]
+        vals = [{"name": "enabled", "source": "disabled", "type": "bool", "reverse": True}]
         result = fill_vals(data, entry, "uid1", vals)
         assert result["uid1"]["enabled"] is False
 
@@ -509,16 +507,12 @@ class TestFromEntryBoolReverseBugFix:
 
     def test_present_disabled_false_with_reverse(self):
         """When disabled=False present, enabled should be True (reverse)."""
-        result = from_entry_bool(
-            {"disabled": False}, "disabled", default=False, reverse=True
-        )
+        result = from_entry_bool({"disabled": False}, "disabled", default=False, reverse=True)
         assert result is True
 
     def test_present_disabled_true_with_reverse(self):
         """When disabled=True present, enabled should be False (reverse)."""
-        result = from_entry_bool(
-            {"disabled": True}, "disabled", default=False, reverse=True
-        )
+        result = from_entry_bool({"disabled": True}, "disabled", default=False, reverse=True)
         assert result is False
 
 
