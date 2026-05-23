@@ -2,8 +2,7 @@
 
 ## Current Priorities
 
-1. ISS-260523-issue-68-capsman-interface — CAPsMAN AP-virtual interface not exposed when DHCP/ARP claimed the host first. **In Progress in `feature/issue-68-capsman-interface` (v2.3.17).**
-2. ENH-260523-capsman-endpoint-fallback — `get_capsman_hosts` picks the endpoint by firmware version, but some users on v7.13+ still run legacy CAPsMAN (their wifi endpoint is empty). Need to probe both. **v2.3.18 candidate.**
+1. ISS-260523-issue-68-capsman-interface — CAPsMAN AP-virtual interface not exposed when DHCP/ARP claimed the host first; AND fix for v7.13+ users still on legacy CAPsMAN (empty primary endpoint). **In Progress in `feature/issue-68-capsman-interface` (v2.3.17). Closes ENH-260523-capsman-endpoint-fallback in the same PR.**
 3. ISS-260509-mikrotikapi-concurrency — `set_value`/`execute` iterate the librouteros response outside the API lock; fixed in v2.3.16 (#64)
 4. ISS-260509-ha-2026.5-untested — HA 2026.5.0 not yet validated against the integration; testing planned
 5. ISS-260417-librouteros-4x-break — librouteros 4.0.1 breaks `connect()` kwarg; hotfix v2.3.14 pinned `<4.0` (proper 4.x migration tracked separately)
@@ -32,7 +31,7 @@ On a router with CAPsMAN APs (`Slaapkamer`, `Zolder`, etc.) the `interface` attr
 **Fix (v2.3.17):**
 ADR-011 — add a new additive `capsman-interface` attribute, always written by `_merge_capsman_hosts` regardless of source. Existing `source` / `interface` semantics unchanged.
 
-**Known incomplete-fix follow-up:** ENH-260523-capsman-endpoint-fallback (below).
+**Fallback for v7.13+ users on legacy CAPsMAN:** Bundled into the same PR — `get_capsman_hosts` now probes the wifi endpoint first, falls back to `/caps-man/` if the primary returns no rows. Logs the transition at INFO level. See ADR-011 §3.
 
 ---
 
@@ -40,20 +39,21 @@ ADR-011 — add a new additive `capsman-interface` attribute, always written by 
 **Type:** Enhancement
 **Priority:** Medium
 **Created:** 2026-05-23
-**Status:** 🟡 Proposed — v2.3.18 candidate
+**Status:** 🔴 Closed — shipped in v2.3.17 with `feature/issue-68-capsman-interface`
 
 **Need:**
-`get_capsman_hosts()` picks the endpoint based on `major.minor` firmware version: `/caps-man/registration-table` for ≤7.12, `/interface/wifi/registration-table` for ≥7.13. But some users on RouterOS 7.13+ continue to run legacy CAPsMAN (they have not migrated to the new WiFi package). For them the version-selected wifi endpoint returns an empty list, while the legacy endpoint still has their data.
+`get_capsman_hosts()` picks the endpoint based on `major.minor` firmware version: `/caps-man/registration-table` for ≤7.12, `/interface/wifi/registration-table` for ≥7.13. Some users on RouterOS 7.13+ continue to run legacy CAPsMAN — for them the version-selected wifi endpoint returns an empty list while the legacy endpoint still has their data. Concretely: @fuecy on RouterOS 7.21.4 (#68) reports `/interface/wifi/registration-table` empty and `/caps-man/registration-table` populated.
 
-Concretely: @fuecy on RouterOS 7.21.4 reports `/interface/wifi/registration-table` empty and `/caps-man/registration-table` populated. v2.3.17's `capsman-interface` attribute therefore does NOT populate for him in isolation; we need the endpoint fallback to actually fix his case.
+**Implemented approach (v2.3.17, ADR-011 §3):**
+Endpoints are probed in preference order (v7.13+ → wifi first then caps-man; v6/v7≤12 → caps-man only). First endpoint returning rows wins. The transition is logged at INFO level (`"CAPsMAN endpoint fallback: primary X returned no rows, using Y instead"`) so users can confirm the fallback is firing.
 
-**Proposed approach:**
-After the version-selected query, if `len(ds["capsman_hosts"]) == 0`, query the other endpoint and use whichever has data. Keep a per-host log line on first transition so we can confirm the fallback is firing in user environments.
+The fallback fires only when the primary returns zero rows; users on the new WiFi package incur no extra API call.
 
-**Risk:** Double-querying once per poll is cheap (registration tables are small), but we should not query both unconditionally — only when the primary returns zero rows. The fallback should *not* be invoked when CAPsMAN is genuinely unused (`support_capsman = False` already gates earlier).
-
-**Plan:**
-Implement in a v2.3.18 branch once v2.3.17 ships and @fuecy confirms the behaviour. Tests: pre-seed empty primary + populated fallback; pre-seed populated primary (fallback should NOT fire).
+**Tests (v2.3.17):**
+- `test_capsman_hosts_v7_13` — primary returns rows; fallback NOT used; legacy endpoint ignored even if populated.
+- `test_capsman_hosts_v7_13_fallback_to_caps_man` — primary empty; falls back to caps-man; `rx-signal → signal-strength` rename still fires.
+- `test_capsman_hosts_v7_13_both_endpoints_empty` — both empty → empty `capsman_hosts`, no crash.
+- `test_capsman_hosts_v6_does_not_probe_wifi_endpoint` — v6 only probes the legacy endpoint.
 
 ---
 

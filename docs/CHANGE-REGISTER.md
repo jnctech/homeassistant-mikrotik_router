@@ -14,7 +14,7 @@ Changes listed in reverse chronological order.
 
 | Area | Change |
 |------|--------|
-| `custom_components/mikrotik_router/coordinator.py` | `get_capsman_hosts()` now uses per-endpoint field lists: full payload (RSSI / rates / uptime / bytes / packets / last-ip / eap-identity) on `/caps-man/registration-table`; conservative 3-field shape on `/interface/wifi/registration-table` (v7.13+). `rx-signal` is renamed to `signal-strength` post-`parse_api` for cross-endpoint consistency. |
+| `custom_components/mikrotik_router/coordinator.py` | `get_capsman_hosts()` rewritten to probe endpoints in preference order via new helpers `_capsman_endpoints_to_probe()` + `_fetch_capsman_table()`. v7.13+ → wifi first, caps-man fallback (closes ENH-260523); v6 / v7 ≤ 12 → caps-man only. First endpoint returning rows wins; transition logged at INFO. Per-endpoint field lists: full payload on `/caps-man/`, conservative 3-field shape on `/interface/wifi/`. `rx-signal` is renamed to `signal-strength` post-`parse_api`. |
 | `custom_components/mikrotik_router/coordinator.py` | `_merge_capsman_hosts()` rewritten as two paths via extracted helpers (`_write_capsman_claim`, `_write_capsman_overlay`, `_copy_capsman_metrics`): new hosts get full claim; existing hosts get a `capsman-interface` overlay + wireless metrics without overwriting `source` or `interface`. Removes the `elif source != "capsman": continue` early-skip that hid the AP identity from any DHCP/ARP/bridge-claimed host. |
 | `custom_components/mikrotik_router/device_tracker_types.py` | `"capsman-interface"` added to `DEVICE_ATTRIBUTES_HOST`. `copy_attrs` omits it on non-capsman hosts since the key is simply absent from their data. |
 | `custom_components/mikrotik_router/manifest.json` | Bump version 2.3.16 → 2.3.17 |
@@ -31,9 +31,9 @@ Issue #68 (reporter @fuecy): `device_tracker.<mac>.attributes.interface` showed 
 
 ADR-011 captures the design — additive attribute, no behavioural changes to `source` / `interface`, preserves automations that filter on them.
 
-### Known limitation (must read — will surprise @fuecy)
+### @fuecy's specific case — fixed in this PR via dual-endpoint fallback
 
-**v2.3.17 does NOT fix @fuecy's specific case in isolation.** His RouterOS 7.21.4 routes the code through `/interface/wifi/registration-table`, which his router returns *empty* (he still runs legacy CAPsMAN). The new `capsman-interface` attribute will therefore not populate for him. The fix is a dual-endpoint probe (ENH-260523-capsman-endpoint-fallback), tracked as a v2.3.18 candidate. v2.3.17 ships the broader fix (any user whose firmware-version-based endpoint selection lands on the correct endpoint sees the new attribute). Comment will be posted on #68 explaining this when the PR opens.
+The first-pass of this work would have left @fuecy on RouterOS 7.21.4 unfixed because his version routes to `/interface/wifi/registration-table` which his router returns empty. Rather than ship a partial fix and defer ENH-260523-capsman-endpoint-fallback to v2.3.18, the fallback is folded into this PR: `get_capsman_hosts()` probes endpoints in preference order (v7.13+ → wifi → caps-man; v6/v7≤12 → caps-man only) and uses whichever returns data. ENH-260523 is now Closed.
 
 ### Quality Gate Results
 
@@ -47,9 +47,8 @@ ADR-011 captures the design — additive attribute, no behavioural changes to `s
 
 ### Follow-up (not in this PR)
 
-- **ENH-260523-capsman-endpoint-fallback** (v2.3.18 candidate) — probe both endpoints; use whichever returns rows. The hard case is @fuecy's: 7.21.4 still on legacy CAPsMAN.
-- v7.13+ field schema discovery — the conservative 3-field shape on the wifi endpoint is intentionally minimal until a real payload is observed. Plan was to add a `_LOGGER.debug` of raw rows; deferred because the debug log only helps users with non-empty wifi endpoints and we'd rather ask for a payload paste on the follow-up issue.
-- Strip any beta-only debug logging before any future `dev` → `master` merge (currently none added in this PR).
+- v7.13+ field schema discovery — the conservative 3-field shape on the wifi endpoint is intentionally minimal until a real payload is observed. We can extend the v7.13+ field list once a user with the new WiFi package shares a `/rest/interface/wifi/registration-table` response.
+- No debug logging was added to this PR (originally planned), so no `dev` → `master` strip step is needed.
 
 ---
 

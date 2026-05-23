@@ -3045,7 +3045,7 @@ def test_capsman_hosts_v6():
 
 
 def test_capsman_hosts_v7_13():
-    """CAPS-MAN hosts use /interface/wifi/ path for RouterOS >= 7.13."""
+    """v7.13+ — primary /interface/wifi/ used when it returns data; legacy ignored."""
     coordinator = make_coordinator(major_fw_version=7)
     coordinator.minor_fw_version = 13
     coordinator.api = MockMikrotikAPI(
@@ -3057,11 +3057,84 @@ def test_capsman_hosts_v7_13():
                     "ssid": "NewWifi",
                 },
             ],
+            # Legacy path also has data — must be ignored when primary returns rows.
+            "/caps-man/registration-table": [
+                {
+                    "mac-address": "FF:FF:FF:FF:FF:FF",
+                    "interface": "should-not-appear",
+                    "ssid": "ignore-me",
+                },
+            ],
         }
     )
     coordinator.get_capsman_hosts()
-    assert "AA:BB:CC:DD:EE:01" in coordinator.ds["capsman_hosts"]
+    assert list(coordinator.ds["capsman_hosts"].keys()) == ["AA:BB:CC:DD:EE:01"]
     assert coordinator.ds["capsman_hosts"]["AA:BB:CC:DD:EE:01"]["interface"] == "wifi1"
+
+
+def test_capsman_hosts_v7_13_fallback_to_caps_man():
+    """v7.13+ — when /interface/wifi/ is empty (e.g. @fuecy on RouterOS 7.21.4
+    still running legacy CAPsMAN), fall back to /caps-man/ and use that data.
+
+    Validates ENH-260523-capsman-endpoint-fallback.
+    """
+    coordinator = make_coordinator(major_fw_version=7)
+    coordinator.minor_fw_version = 21  # @fuecy is on 7.21.4
+    coordinator.api = MockMikrotikAPI(
+        responses={
+            "/interface/wifi/registration-table": [],  # empty, as on @fuecy's router
+            "/caps-man/registration-table": [
+                {
+                    "mac-address": "AA:BB:CC:DD:EE:01",
+                    "interface": "Slaapkamer",
+                    "ssid": "MyWifi",
+                    "rx-signal": "-76",
+                    "tx-rate": "57.7Mbps",
+                    "rx-rate": "57.7Mbps",
+                },
+            ],
+        }
+    )
+    coordinator.get_capsman_hosts()
+    host_vals = coordinator.ds["capsman_hosts"]["AA:BB:CC:DD:EE:01"]
+    assert host_vals["interface"] == "Slaapkamer"
+    # rx-signal → signal-strength rename must still fire on the fallback path.
+    assert host_vals["signal-strength"] == "-76"
+    assert "rx-signal" not in host_vals
+
+
+def test_capsman_hosts_v7_13_both_endpoints_empty():
+    """v7.13+ — both endpoints empty → empty capsman_hosts (no crash, no log spam)."""
+    coordinator = make_coordinator(major_fw_version=7)
+    coordinator.minor_fw_version = 13
+    coordinator.api = MockMikrotikAPI(
+        responses={
+            "/interface/wifi/registration-table": [],
+            "/caps-man/registration-table": [],
+        }
+    )
+    coordinator.get_capsman_hosts()
+    assert coordinator.ds["capsman_hosts"] == {}
+
+
+def test_capsman_hosts_v6_does_not_probe_wifi_endpoint():
+    """v6 / v7 ≤ 12 — wifi endpoint isn't in the probe list; only /caps-man/ is queried."""
+    coordinator = make_coordinator(
+        major_fw_version=6,
+        api_responses={
+            "/caps-man/registration-table": [
+                {
+                    "mac-address": "AA:BB:CC:DD:EE:01",
+                    "interface": "cap1",
+                    "ssid": "MyWifi",
+                },
+            ],
+            # /interface/wifi/registration-table intentionally absent — the
+            # probe list for v6 doesn't include it, so it must not be queried.
+        },
+    )
+    coordinator.get_capsman_hosts()
+    assert "AA:BB:CC:DD:EE:01" in coordinator.ds["capsman_hosts"]
 
 
 # ---------------------------------------------------------------------------

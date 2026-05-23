@@ -34,7 +34,20 @@ The `detected` set used by `_remove_undetected_hosts` is populated when the host
 
 Helpers (`_write_capsman_claim`, `_write_capsman_overlay`, `_copy_capsman_metrics`) keep the main `_merge_capsman_hosts` function under the ≤15 complexity ceiling per ADR-007 (mechanically enforced via ruff C901 once ADR-010-claude-tooling-baseline merges to dev).
 
-### 3. Per-endpoint field lists in `get_capsman_hosts()`
+### 3. Dual-endpoint probe with fallback
+
+`get_capsman_hosts()` probes endpoints in preference order and uses the first one that returns rows:
+
+- **v7.13+:** `/interface/wifi/registration-table` first, `/caps-man/registration-table` as fallback.
+- **v6 / v7 ≤ 12:** `/caps-man/registration-table` only (the wifi endpoint doesn't exist on these versions and would error if queried).
+
+The fallback is necessary because some v7.13+ users (e.g. #68 reporter @fuecy on RouterOS 7.21.4) still run legacy CAPsMAN — their version-preferred endpoint returns empty while the legacy endpoint has data. Without the fallback, the new `capsman-interface` attribute wouldn't populate for them.
+
+When the fallback fires, `_LOGGER.info` records the transition (`"CAPsMAN endpoint fallback: primary X returned no rows, using Y instead"`) so operators can confirm in their logs that the fix is doing the right thing on their router.
+
+Helpers (`_capsman_endpoints_to_probe`, `_fetch_capsman_table`) keep `get_capsman_hosts` well under the ≤15 complexity ceiling.
+
+### 4. Per-endpoint field lists in `get_capsman_hosts()`
 
 The legacy `/caps-man/registration-table` endpoint (v6, v7 ≤ 12) returns a rich payload (RSSI, rates, uptime, bytes, packets, last IP, EAP identity). The new `/interface/wifi/registration-table` endpoint (v7.13+, new WiFi package) has an unverified field schema. v2.3.17 ships the **full payload extraction on the legacy path** and the **conservative 3-field extraction (`mac-address`, `interface`, `ssid`) on the new path** — v2.3.18 can extend the v7.13+ field list once a real payload is observed.
 
@@ -48,8 +61,8 @@ Rejected. Would change behaviour for users whose automations already filter on `
 ### B. Change merge ordering so capsman always wins
 Rejected. Existing `source` semantics are visible to users via the `source` attribute (some users filter on it). Changing the claim winner would break their automations.
 
-### C. Detect endpoint by probing both `/caps-man/` and `/interface/wifi/registration-table`
-Considered. Currently the code picks the endpoint based on `major.minor` version. @fuecy is on 7.21.4 with the legacy WiFi package still installed and `/caps-man/` populated, so the version check routes him to the wifi endpoint which returns empty — meaning v2.3.17 will still **not** show `capsman-interface` for him. **Deferred to ENH-260523-capsman-endpoint-fallback (v2.3.18 candidate):** if the version-selected endpoint returns no rows, fall back to the other.
+### C. Single-endpoint selection by version (no fallback)
+Considered and rejected during the design pass. The version check (v7.13+ → wifi, otherwise → caps-man) misroutes users like @fuecy who run legacy CAPsMAN on a v7.13+ firmware (their wifi endpoint is empty). v2.3.17 includes the dual-endpoint fallback (Decision §3 above) to handle this case in one shipment rather than deferring to v2.3.18.
 
 ### D. Add v7.13+ debug logging of raw rows for field-schema discovery
 Plan called for this (`_LOGGER.debug("capsman v7.13 raw row: %s", row)`). Skipped in v2.3.17 because the field discovery only helps users who have data on the wifi endpoint, and the simpler path forward is asking volunteers to paste a `/rest/interface/wifi/registration-table` response on a follow-up issue.
@@ -64,8 +77,8 @@ Plan called for this (`_LOGGER.debug("capsman v7.13 raw row: %s", row)`). Skippe
 
 ### Negative
 
-- **@fuecy's specific case is not yet fixed by v2.3.17 alone.** His RouterOS 7.21.4 routes to `/interface/wifi/registration-table` which returns empty for him; the new `capsman-interface` attribute will populate from that empty result, i.e. not at all. He needs ENH-260523-capsman-endpoint-fallback (probe both endpoints) to actually see the attribute. Documented in the CR-260523 follow-up section and the new ENH entry.
 - The new attribute appears on *every* device-tracker entity declaration's `DEVICE_ATTRIBUTES_HOST` list — non-capsman hosts simply won't have the key in their data and `copy_attrs` will omit it. Side effect: there is no protection if a non-wireless host ever ends up with a stray `capsman-interface` key (no current code path that does this, but worth noting).
+- Dual-endpoint probing makes one extra API call per poll for v7.13+ users when the primary endpoint returns no rows — i.e. only for users in @fuecy's exact configuration. Once they upgrade to the new WiFi package, the fallback stops firing and the second query disappears. Cheap in practice (registration tables are small).
 
 ### Neutral
 

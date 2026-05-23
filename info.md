@@ -12,6 +12,7 @@ Monitor and control your MikroTik router from Home Assistant.
 
 ### What's new in v2.3.17
 - **CAPsMAN AP-virtual interface as a device-tracker attribute** — New `capsman-interface` attribute on every device tracker showing which AP a wireless client is connected to (e.g. `Slaapkamer`). Populated even when DHCP/ARP/bridge claimed the host first, which is the common case for routers with persistent DHCP leases. Existing `interface` / `source` attributes unchanged. Addresses #68.
+- **Dual-endpoint probe for CAPsMAN** — v7.13+ routers still running legacy CAPsMAN (where `/interface/wifi/registration-table` is empty) now automatically fall back to `/caps-man/registration-table`. Logs the fallback transition at INFO level for visibility.
 
 ### v2.3.16
 - **API concurrency fix** — `set_value`/`execute` now hold the API lock around the librouteros response iteration, preventing a race with the 30s coordinator poll that could disconnect the integration on rapid switch toggles. Addresses #64.

@@ -2103,60 +2103,92 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
     # ---------------------------
     #   get_capsman_hosts
     # ---------------------------
+    # Field lists shared between primary and fallback endpoint probing.
+    # /caps-man/ returns the full payload (RSSI/rates/uptime/bytes/packets/last-ip/eap);
+    # /interface/wifi/ field schema isn't yet verified from a live device, so the
+    # conservative shape ships first and expands once a v7.13+ payload is observed.
+    _CAPSMAN_VALS_LEGACY = (
+        {"name": "mac-address"},
+        {"name": "interface", "default": "unknown"},
+        {"name": "ssid", "default": "unknown"},
+        {"name": "rx-signal", "default": "unknown"},
+        {"name": "tx-rate", "default": "unknown"},
+        {"name": "rx-rate", "default": "unknown"},
+        {"name": "tx-rate-set", "default": "unknown"},
+        {"name": "uptime", "default": "unknown"},
+        {"name": "bytes", "default": "unknown"},
+        {"name": "packets", "default": "unknown"},
+        {"name": "last-ip", "default": "unknown"},
+        {"name": "eap-identity", "default": "unknown"},
+    )
+    _CAPSMAN_VALS_WIFI = (
+        {"name": "mac-address"},
+        {"name": "interface", "default": "unknown"},
+        {"name": "ssid", "default": "unknown"},
+    )
+    _CAPSMAN_LEGACY_PATH = "/caps-man/registration-table"
+    _CAPSMAN_WIFI_PATH = "/interface/wifi/registration-table"
+
     def get_capsman_hosts(self) -> None:
-        """Get CAPS-MAN hosts data from Mikrotik.
+        """Get CAPS-MAN hosts data from Mikrotik with dual-endpoint fallback.
 
-        Two endpoints depending on RouterOS major.minor:
-        - `/caps-man/registration-table` (v6, v7 ≤ 12): legacy CAPsMAN with
-          full per-client metrics (signal, rates, uptime, bytes).
-        - `/interface/wifi/registration-table` (v7.13+): new wifi package;
-          field schema not yet verified from a live device, so the
-          conservative shape (mac/interface/ssid) ships first.
+        RouterOS exposes two overlapping endpoints:
+        - `/caps-man/registration-table` (legacy CAPsMAN — full metrics).
+        - `/interface/wifi/registration-table` (new WiFi package on v7.13+).
 
-        Note: some v7.13+ users still run legacy CAPsMAN (see #68
-        commenter on RouterOS 7.21.4 reporting wifi endpoint empty while
-        caps-man endpoint has data). Dual-endpoint probing is a separate
-        follow-up (ENH-260523-capsman-endpoint-fallback).
+        The version-based primary picks the modern endpoint on v7.13+, legacy
+        on v6 / v7 ≤ 12. But some v7.13+ users (#68 @fuecy on RouterOS 7.21.4)
+        still run legacy CAPsMAN — their version-preferred endpoint returns
+        empty. We probe primary first; if it returns no rows, fall back to
+        the other endpoint and log so the operator can confirm the fallback
+        is firing in their environment.
         """
-        if self.major_fw_version > 7 or (self.major_fw_version == 7 and self.minor_fw_version >= 13):
-            registration_path = "/interface/wifi/registration-table"
-            vals = [
-                {"name": "mac-address"},
-                {"name": "interface", "default": "unknown"},
-                {"name": "ssid", "default": "unknown"},
-            ]
-        else:
-            registration_path = "/caps-man/registration-table"
-            # Field list verified against the payload in jnctech/homeassistant-mikrotik_router#68.
-            # `rx-signal` is renamed to `signal-strength` below for cross-endpoint
-            # consistency with `/interface/wireless/registration-table`.
-            vals = [
-                {"name": "mac-address"},
-                {"name": "interface", "default": "unknown"},
-                {"name": "ssid", "default": "unknown"},
-                {"name": "rx-signal", "default": "unknown"},
-                {"name": "tx-rate", "default": "unknown"},
-                {"name": "rx-rate", "default": "unknown"},
-                {"name": "tx-rate-set", "default": "unknown"},
-                {"name": "uptime", "default": "unknown"},
-                {"name": "bytes", "default": "unknown"},
-                {"name": "packets", "default": "unknown"},
-                {"name": "last-ip", "default": "unknown"},
-                {"name": "eap-identity", "default": "unknown"},
-            ]
+        endpoints = self._capsman_endpoints_to_probe()
+        chosen_path = None
+        for path, vals in endpoints:
+            self.ds["capsman_hosts"] = self._fetch_capsman_table(path, list(vals))
+            if self.ds["capsman_hosts"]:
+                chosen_path = path
+                break
 
-        self.ds["capsman_hosts"] = parse_api(
+        # If we fell back to a non-preferred endpoint, log the transition so
+        # users can correlate the new attribute showing up with the fallback.
+        if chosen_path is not None and chosen_path != endpoints[0][0]:
+            _LOGGER.info(
+                "CAPsMAN endpoint fallback: primary %s returned no rows, using %s instead",
+                endpoints[0][0],
+                chosen_path,
+            )
+
+        # parse_api doesn't support field aliasing; rename rx-signal to
+        # signal-strength so the rest of the integration sees one key.
+        if chosen_path == self._CAPSMAN_LEGACY_PATH:
+            for host_vals in self.ds["capsman_hosts"].values():
+                host_vals["signal-strength"] = host_vals.pop("rx-signal", "unknown")
+
+    def _capsman_endpoints_to_probe(self) -> list[tuple[str, tuple]]:
+        """Return capsman endpoints to probe in preference order.
+
+        v7.13+ → wifi first, caps-man fallback.
+        v6 / v7 ≤ 12 → caps-man only (wifi endpoint doesn't exist there).
+        """
+        if self.major_fw_version > 7 or (
+            self.major_fw_version == 7 and self.minor_fw_version >= 13
+        ):
+            return [
+                (self._CAPSMAN_WIFI_PATH, self._CAPSMAN_VALS_WIFI),
+                (self._CAPSMAN_LEGACY_PATH, self._CAPSMAN_VALS_LEGACY),
+            ]
+        return [(self._CAPSMAN_LEGACY_PATH, self._CAPSMAN_VALS_LEGACY)]
+
+    def _fetch_capsman_table(self, path: str, vals: list) -> dict:
+        """Query one capsman endpoint and return parsed rows (empty on no data)."""
+        return parse_api(
             data={},
-            source=self.api.query(registration_path),
+            source=self.api.query(path),
             key="mac-address",
             vals=vals,
         )
-
-        # parse_api doesn't support field aliasing; rename post-parse so the
-        # rest of the integration sees a single consistent key for RSSI.
-        if registration_path == "/caps-man/registration-table":
-            for host_vals in self.ds["capsman_hosts"].values():
-                host_vals["signal-strength"] = host_vals.pop("rx-signal", "unknown")
 
     # ---------------------------
     #   get_wireless
