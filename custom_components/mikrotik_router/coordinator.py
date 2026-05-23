@@ -2172,9 +2172,7 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
         v7.13+ → wifi first, caps-man fallback.
         v6 / v7 ≤ 12 → caps-man only (wifi endpoint doesn't exist there).
         """
-        if self.major_fw_version > 7 or (
-            self.major_fw_version == 7 and self.minor_fw_version >= 13
-        ):
+        if self.major_fw_version > 7 or (self.major_fw_version == 7 and self.minor_fw_version >= 13):
             return [
                 (self._CAPSMAN_WIFI_PATH, self._CAPSMAN_VALS_WIFI),
                 (self._CAPSMAN_LEGACY_PATH, self._CAPSMAN_VALS_LEGACY),
