@@ -34,9 +34,9 @@ The fix is package-driven: an enabled legacy `wireless` package routes both `sup
 | Pytest | 235 passed locally (incl. 16 detection tests) | ✅ |
 | coordinator-reviewer | Logic verified across all 6 scenarios; ADR-004/005/006/007/009 clean | ✅ |
 
----
+### Release ops
 
-## CR-260523-issue-68-capsman-interface — v2.3.17: AP-virtual interface as a device-tracker attribute
+Retired the stale `v2.4.0-beta.3` pre-release + git tag (2026-03-27, manifest 2.3.13, commit `3f813ae`). Its headline feature (dispatcher-based device discovery) was subsequently disabled on `dev` pending an entity-guard fix (ISS-260320 reopened), and it carried no commits not already reachable via `dev`. Release page + tag deleted by the maintainer; the `v2.4.0-beta` name is now free for the #59 PoE-energy beta.
 
 **Date:** 2026-05-23
 **Branch:** `feature/issue-68-capsman-interface`
