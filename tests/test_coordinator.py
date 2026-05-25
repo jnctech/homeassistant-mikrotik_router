@@ -4820,3 +4820,120 @@ async def test_async_process_host_sets_is_wireless():
 
     assert coordinator.ds["host"]["AA:BB:CC:DD:EE:01"]["is_wireless"] is True
     assert coordinator.ds["host"]["AA:BB:CC:DD:EE:02"]["is_wireless"] is False
+
+
+# ---------------------------------------------------------------------------
+# Group: RouterOS v7 capability detection (_detect_capabilities_v7)
+#   Regression coverage for #68 — a 7.13+ router still running the legacy
+#   `wireless` package must keep CAPsMAN and the /interface/wireless stack.
+# ---------------------------------------------------------------------------
+
+
+def _make_v7_coordinator(minor):
+    coordinator = make_coordinator(major_fw_version=7)
+    coordinator.minor_fw_version = minor
+    coordinator.host = "10.0.0.1"
+    coordinator.support_capsman = False
+    coordinator.support_wireless = False
+    coordinator.support_ppp = False
+    coordinator._wifimodule = "wireless"
+    return coordinator
+
+
+def _pkg(*enabled):
+    return {name: {"enabled": True} for name in enabled}
+
+
+def test_v7_legacy_wireless_package_on_modern_fw_keeps_capsman():
+    """7.21 with the legacy `wireless` package: CAPsMAN on, legacy endpoints."""
+    coordinator = _make_v7_coordinator(21)
+
+    coordinator._detect_capabilities_v7(_pkg("wireless"))
+
+    assert coordinator.support_capsman is True
+    assert coordinator._wifimodule == "wireless"
+    # Pins the #68 regression: the old else-branch line
+    # `support_wireless = bool(minor_fw_version < 13)` lowered this to False
+    # for 7.13+ legacy boxes. _make_v7_coordinator seeds it False, so True
+    # here proves the override is gone — do not re-introduce one.
+    assert coordinator.support_wireless is True
+
+
+def test_v7_wifi_qcom_package_disables_capsman():
+    coordinator = _make_v7_coordinator(13)
+
+    coordinator._detect_capabilities_v7(_pkg("wifi-qcom"))
+
+    assert coordinator.support_capsman is False
+    assert coordinator._wifimodule == "wifi"
+
+
+def test_v7_wifi_qcom_ac_package_disables_capsman():
+    coordinator = _make_v7_coordinator(13)
+
+    coordinator._detect_capabilities_v7(_pkg("wifi-qcom-ac"))
+
+    assert coordinator.support_capsman is False
+    assert coordinator._wifimodule == "wifi"
+
+
+def test_v7_wifiwave2_package_uses_wifiwave2_module():
+    coordinator = _make_v7_coordinator(13)
+
+    coordinator._detect_capabilities_v7(_pkg("wifiwave2"))
+
+    assert coordinator.support_capsman is False
+    assert coordinator._wifimodule == "wifiwave2"
+
+
+def test_v7_modern_fw_without_packages_assumes_builtin_wifi():
+    """7.13+ with no wireless package signals the built-in wifi driver."""
+    coordinator = _make_v7_coordinator(13)
+
+    coordinator._detect_capabilities_v7({})
+
+    assert coordinator.support_capsman is False
+    assert coordinator._wifimodule == "wifi"
+
+
+def test_v7_older_fw_without_packages_uses_legacy_wireless():
+    coordinator = _make_v7_coordinator(5)
+
+    coordinator._detect_capabilities_v7({})
+
+    assert coordinator.support_capsman is True
+    assert coordinator._wifimodule == "wireless"
+
+
+def test_v7_wifi_package_wins_over_legacy_wireless():
+    """A migrating box with both packages prefers the modern wifi stack."""
+    coordinator = _make_v7_coordinator(15)
+
+    coordinator._detect_capabilities_v7(_pkg("wireless", "wifi-qcom"))
+
+    assert coordinator.support_capsman is False
+    assert coordinator._wifimodule == "wifi"
+
+
+def test_has_wifi_package_legacy_wireless_overrides_version_heuristic():
+    coordinator = _make_v7_coordinator(21)
+
+    assert coordinator._has_wifi_package(_pkg("wireless")) is False
+
+
+def test_has_wifi_package_modern_fw_without_packages_is_true():
+    coordinator = _make_v7_coordinator(21)
+
+    assert coordinator._has_wifi_package({}) is True
+
+
+def test_has_wifi_package_explicit_wifi_package_is_true():
+    coordinator = _make_v7_coordinator(5)
+
+    assert coordinator._has_wifi_package(_pkg("wifi")) is True
+
+
+def test_has_wifi_package_disabled_wireless_falls_back_to_version():
+    coordinator = _make_v7_coordinator(21)
+
+    assert coordinator._has_wifi_package({"wireless": {"enabled": False}}) is True

@@ -545,8 +545,10 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
             self.support_capsman = False
             self._wifimodule = "wifi"
         else:
+            # Legacy `wireless` package (CAPsMAN-capable /interface/wireless
+            # stack), including RouterOS 7.13+ routers that still run it.
             self.support_capsman = True
-            self.support_wireless = bool(self.minor_fw_version < 13)
+            self._wifimodule = "wireless"
 
         _LOGGER.debug("Mikrotik %s wifi module=%s", self.host, self._wifimodule)
 
@@ -554,6 +556,11 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
         """Check if a wifi package is enabled or version implies wifi module."""
         if any(pkg in packages and packages[pkg]["enabled"] for pkg in ("wifi", "wifi-qcom", "wifi-qcom-ac")):
             return True
+        # An explicitly enabled legacy `wireless` package wins over the
+        # version heuristic: 7.13+ routers that still ship it are not on
+        # the built-in wifi driver.
+        if "wireless" in packages and packages["wireless"]["enabled"]:
+            return False
         return (self.major_fw_version == 7 and self.minor_fw_version >= 13) or self.major_fw_version > 7
 
     async def async_get_host_hass(self):

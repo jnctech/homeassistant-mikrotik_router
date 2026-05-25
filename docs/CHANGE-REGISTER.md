@@ -4,6 +4,38 @@ Changes listed in reverse chronological order.
 
 ---
 
+## CR-260525-issue-68-capsman-detection — CAPsMAN disabled for 7.13+ routers on the legacy `wireless` package
+
+**Date:** 2026-05-25
+**Branch:** `claude/modest-einstein-0Ulby`
+**Status:** In Review — pending @fuecy validation on a `dev` pre-release before version bump/tag
+
+### What Changed
+
+| Area | Change |
+|------|--------|
+| `custom_components/mikrotik_router/coordinator.py` | `_has_wifi_package()` now returns `False` when an enabled legacy `wireless` package is present, *before* the `>=7.13` version heuristic. An explicitly enabled `wifi`/`wifi-qcom`/`wifi-qcom-ac` package still wins first. |
+| `custom_components/mikrotik_router/coordinator.py` | `_detect_capabilities_v7()` else-branch now sets `_wifimodule = "wireless"` explicitly and drops the dead `support_wireless = bool(self.minor_fw_version < 13)` line (a no-op in its only reachable path that, under the corrected routing, would have wrongly disabled wireless support for 7.13+ legacy boxes). |
+| `tests/test_coordinator.py` | New detection test group (11 tests) covering `_detect_capabilities_v7` and `_has_wifi_package` across wifiwave2 / wifi-qcom / wifi-qcom-ac / legacy-wireless-on-7.13+ / no-package-on-7.13+ / no-package-on-7.5 / both-packages, plus the legacy-wireless regression pin. |
+| `docs/ISSUES.md` | New ISS-260525-issue-68-capsman-detection entry; #68 priority note updated. |
+
+### Why
+
+The v2.3.17 dual-endpoint fallback (CR-260523) only runs when `support_capsman` is `True` — it is gated by `_run_if_enabled(self.get_capsman_hosts, requires=self.support_capsman)`. @fuecy is on RouterOS 7.21.4 still running the legacy `wireless` package, so `_has_wifi_package()` returned `True` on the version heuristic alone, setting `support_capsman=False` **and** `_wifimodule="wifi"`. Result: the entire CAPsMAN fetch (and therefore the v2.3.17 fallback) was skipped, and wireless interface enrichment queried the empty `/interface/wifi*` endpoints. His manual `support_capsman=True` patch confirmed the diagnosis but only fixed half — interface enrichment was still mis-routed.
+
+The fix is package-driven: an enabled legacy `wireless` package routes both `support_capsman` and `_wifimodule` to the CAPsMAN-capable `/interface/wireless` path regardless of firmware version. The version heuristic remains the correct fallback for genuine 7.13+ boxes using the built-in wifi driver (no separate `wifi*` package to detect).
+
+### Quality Gate Results
+
+| Metric | Value | Gate |
+|--------|-------|------|
+| Ruff lint + `C901` | All checks passed (custom_components + tests) | ✅ |
+| Cognitive complexity | `_detect_capabilities_v7` ≈6, `_has_wifi_package` ≈5 (≤15) | ✅ |
+| Pytest | 235 passed locally (incl. 16 detection tests) | ✅ |
+| coordinator-reviewer | Logic verified across all 6 scenarios; ADR-004/005/006/007/009 clean | ✅ |
+
+---
+
 ## CR-260523-issue-68-capsman-interface — v2.3.17: AP-virtual interface as a device-tracker attribute
 
 **Date:** 2026-05-23

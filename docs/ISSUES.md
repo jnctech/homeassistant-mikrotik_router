@@ -2,7 +2,8 @@
 
 ## Current Priorities
 
-1. ISS-260523-issue-68-capsman-interface — CAPsMAN AP-virtual interface not exposed when DHCP/ARP claimed the host first; AND fix for v7.13+ users still on legacy CAPsMAN (empty primary endpoint). **In Progress in `feature/issue-68-capsman-interface` (v2.3.17). Closes ENH-260523-capsman-endpoint-fallback in the same PR.**
+1. ISS-260525-issue-68-capsman-detection — CAPsMAN + wireless enrichment disabled for 7.13+ routers still on the legacy `wireless` package (detection gates the v2.3.17 fallback). **In Review in `claude/modest-einstein-0Ulby`; pending @fuecy validation on a `dev` pre-release.**
+2. ISS-260523-issue-68-capsman-interface — CAPsMAN AP-virtual interface not exposed when DHCP/ARP claimed the host first; AND fix for v7.13+ users still on legacy CAPsMAN (empty primary endpoint). **In Progress in `feature/issue-68-capsman-interface` (v2.3.17). Closes ENH-260523-capsman-endpoint-fallback in the same PR.**
 3. ISS-260509-mikrotikapi-concurrency — `set_value`/`execute` iterate the librouteros response outside the API lock; fixed in v2.3.16 (#64)
 4. ISS-260509-ha-2026.5-untested — HA 2026.5.0 not yet validated against the integration; testing planned
 5. ISS-260417-librouteros-4x-break — librouteros 4.0.1 breaks `connect()` kwarg; hotfix v2.3.14 pinned `<4.0` (proper 4.x migration tracked separately)
@@ -15,6 +16,23 @@
 ---
 
 ## Active
+
+### ISS-260525-issue-68-capsman-detection — CAPsMAN + wireless disabled for 7.13+ routers on the legacy `wireless` package
+**Type:** Bug
+**Priority:** High
+**Created:** 2026-05-25
+**Status:** 🟡 In Review — fix in `claude/modest-einstein-0Ulby`; awaiting @fuecy validation on a `dev` pre-release
+
+**Symptom:**
+On RouterOS 7.13+ routers still running the legacy `wireless` package (not the new wifi driver), CAPsMAN client data never appears and wireless interface attributes are empty — even after the v2.3.17 dual-endpoint fallback. Reported in [#68](https://github.com/jnctech/homeassistant-mikrotik_router/issues/68) by @fuecy (RouterOS 7.21.4).
+
+**Root cause:**
+`coordinator._has_wifi_package()` returned `True` on the firmware version alone (`major==7 and minor>=13`), so a 7.13+ router still on the legacy `wireless` package was misclassified as a built-in-wifi-driver box. That set `support_capsman=False` — which gates the *entire* CAPsMAN fetch via `_run_if_enabled(self.get_capsman_hosts, requires=self.support_capsman)`, so the v2.3.17 (ISS-260523) endpoint fallback never even ran — **and** `_wifimodule="wifi"`, routing `get_wireless`/`get_wireless_hosts` at the empty `/interface/wifi*` endpoints. @fuecy's manual `support_capsman=True` patch confirmed the diagnosis but only restored CAPsMAN; interface enrichment was still mis-routed.
+
+**Fix (`claude/modest-einstein-0Ulby`):**
+Package-driven detection. `_has_wifi_package()` returns `False` when an enabled legacy `wireless` package is present (before the version heuristic); an explicitly enabled `wifi`/`wifi-qcom`/`wifi-qcom-ac` package still wins first. `_detect_capabilities_v7()` else-branch sets `_wifimodule="wireless"` explicitly. The version heuristic stays as the fallback for genuine 7.13+ boxes with no separate wifi package (built-in driver). 16 detection tests added; reviewed by the coordinator-reviewer agent across all scenarios.
+
+---
 
 ### ISS-260523-issue-68-capsman-interface — CAPsMAN AP-virtual interface hidden when DHCP claimed first
 **Type:** Bug
