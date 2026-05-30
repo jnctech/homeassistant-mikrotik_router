@@ -44,3 +44,9 @@ See [Quality Gates](docs/quality-gates.md) for full checklist. Key additions vs 
 - **Branches:** `master` (main), `dev`, `feature/<desc>`, `fix/<desc>`
 - **Commits:** Conventional (`fix:`, `feat:`, `docs:`, `refactor:`, `chore:`)
 - **PR target:** jnctech fork, never upstream unless explicitly told
+
+## Tracking visibility (public vs private)
+
+This is a **public** fork — `docs/ISSUES.md`, `docs/CHANGE-REGISTER.md`, `docs/FEATURE-POLL.md`, `docs/architecture.md`, and `docs/decisions/ADR-*` are visible to every user. Keep them **integration-facing**: bugs, enhancements, ADRs, and changes about the code/behaviour, with no homelab specifics.
+
+Anything sensitive or internal goes in **`docs/internal/`** (gitignored — see `.gitignore`): tokens, MACs, internal hostnames, router captures/debug dumps, and pure session/process meta. When filing, ask: *is this about the integration's code (public), or does it carry homelab specifics / session meta (→ `docs/internal/`)?*

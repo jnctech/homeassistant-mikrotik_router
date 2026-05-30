@@ -172,9 +172,30 @@ External audit found that `.github/workflows/ci.yml` was installing `librouteros
 3. New `manifest-drift` job fails the PR if any `requirements*.txt` diverges from `manifest.json`.
 4. New `zip-structure` job builds the release zip the same way `release.yml` does and asserts `manifest.json` is at the zip root.
 
-**Follow-up (separate work):**
-- `ISS-260512-librouteros-concurrency-adr` — document the API concurrency model (client ownership, lock scope, timeouts, mid-response failure mode).
-- `ENH-260512-librouteros-test-matrix` — explicit version matrix (`3.4.1`, latest `3.x`, expected-fail `4.x`) before relaxing the `<4.0` cap.
+**Follow-up (separate work):** now tracked as their own entries —
+- `ISS-260512-librouteros-concurrency-adr` (Active, below)
+- `ENH-260512-librouteros-test-matrix` (Backlog)
+
+---
+
+### ISS-260512-librouteros-concurrency-adr — document the API concurrency model
+**Type:** Documentation (ADR)
+**Priority:** High
+**Created:** 2026-05-12
+**Status:** 🔴 Open
+**Promoted:** 2026-05-30 — was a follow-up bullet under `ISS-260512-ci-manifest-drift`; filed as its own entry (handoff-gap backfill, config `ISS-260526`).
+
+**Description:**
+Write an ADR (model on `docs/decisions/`, ADR-007 shape) documenting the librouteros/API concurrency model that the v2.3.14/15/16 fix sequence exposed as fragile:
+1. **Client ownership** — main and tracker coordinators each own a separate `MikrotikAPI` instance (`coordinator.py:146` and `:297`).
+2. **Lock scope** — `threading.Lock` in `mikrotikapi.py`, held around all API path operations including the response iteration (post-v2.3.16), shared by service calls / switches / buttons / main poll on the main client.
+3. **Timeouts** — current constructor values in `mikrotikapi.py`.
+4. **Latency under load** — 10× interfaces, large DHCP lease tables, bridge hosts, wireless registrations.
+5. **Failure mode** — when librouteros raises mid-response (the v2.3.14/15/16 history is the case study).
+
+Land as a doc-only PR to `dev`; add a `CR-260512-…-concurrency-adr` entry and resolve to Done on merge.
+
+**Related:** `ISS-260512-ci-manifest-drift` (parent), `ISS-260509-mikrotikapi-concurrency` (the lock fix this documents), `ADR-005-lock-context-managers`.
 
 ---
 
@@ -319,6 +340,20 @@ On routers with empty registration tables (hAP ac2 with new WiFi package), wirel
 **Fix:**
 - Add `is_wireless` bool field to host data in coordinator (set by `_is_wireless_host`)
 - Update device_tracker.py to check `self._data.get("is_wireless")` instead of source
+
+---
+
+### ENH-260512-librouteros-test-matrix — explicit librouteros version test matrix
+**Type:** Enhancement (CI)
+**Priority:** Medium
+**Created:** 2026-05-12
+**Status:** 🔴 Open
+**Promoted:** 2026-05-30 — was a follow-up bullet under `ISS-260512-ci-manifest-drift`; filed as its own entry (handoff-gap backfill, config `ISS-260526`).
+
+**Need:**
+Explicit CI jobs covering librouteros `3.4.1`, latest `3.x`, and expected-fail `4.x`. Needed before the `manifest.json` `<4.0` cap can be relaxed — the cap exists because 4.0.1 broke `connect()`. The matrix turns the compatibility boundary into an asserted CI fact rather than a manual pin watched by hand.
+
+**Related:** `ISS-260512-ci-manifest-drift` (parent), `ISS-260417-librouteros-4x-break` (the 4.x break the cap guards).
 
 ---
 

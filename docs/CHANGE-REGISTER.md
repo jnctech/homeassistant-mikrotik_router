@@ -4,6 +4,25 @@ Changes listed in reverse chronological order.
 
 ---
 
+## CR-260530-tracking-visibility-and-handoff-backfill — document public/private tracking + promote 2 librouteros follow-ups
+
+**Date:** 2026-05-30
+**Branch:** `docs/iss-260526-mikrotik-backfill`
+**Status:** Docs only — no integration code or behaviour change.
+
+### What Changed
+
+| Area | Change |
+|------|--------|
+| `CLAUDE.md` | New **Tracking visibility (public vs private)** section: integration-facing trackers (`docs/ISSUES.md`, `CHANGE-REGISTER.md`, `FEATURE-POLL.md`, `architecture.md`, `decisions/ADR-*`) are public; sensitive/internal (tokens, MACs, hostnames, captures, session meta) goes in gitignored `docs/internal/`. |
+| `docs/ISSUES.md` | Promoted two follow-ups of `ISS-260512-ci-manifest-drift` from body bullets to their own entries: `ISS-260512-librouteros-concurrency-adr` (Active, High) and `ENH-260512-librouteros-test-matrix` (Backlog, Medium). |
+
+### Why
+
+Part of the cross-repo handoff-gap backfill (config `ISS-260526`) — a one-time sweep promoting un-filed commitments referenced in session handoffs into their owning repo's tracker. The two librouteros follow-ups were named in the 2026-05-12 handoff and listed as bullets under the (now-closed) ci-manifest-drift entry, but never filed as their own trackable entries, so they were invisible to the tracker. Both verified still-live: no concurrency ADR exists (ADR-005 is a narrower lock-context-manager refactor, not the client-ownership/lock-scope/timeout/failure-mode model), and CI has no librouteros version matrix. The CLAUDE.md rule was added because this is a public fork — the public/private split already existed in `.gitignore` but was undocumented.
+
+---
+
 ## CR-260525-issue-68-capsman-detection — CAPsMAN disabled for 7.13+ routers on the legacy `wireless` package
 
 **Date:** 2026-05-25
