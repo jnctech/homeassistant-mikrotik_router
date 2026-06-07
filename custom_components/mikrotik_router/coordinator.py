@@ -1725,6 +1725,11 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
             return
         full_version = self.ds["resource"].get("version")
         if not full_version or full_version == "unknown":
+            _LOGGER.debug(
+                "Mikrotik %s firmware version unavailable from /system/resource (got %r); capability detection deferred until it is",
+                self.host,
+                full_version,
+            )
             return
         try:
             version = re.sub("[^0-9\\.]", "", full_version.split()[0])
