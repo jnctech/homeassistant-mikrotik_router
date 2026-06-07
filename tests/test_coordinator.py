@@ -5098,3 +5098,111 @@ def test_has_wifi_package_disabled_wireless_falls_back_to_version():
     coordinator = _make_v7_coordinator(21)
 
     assert coordinator._has_wifi_package({"wireless": {"enabled": False}}) is True
+
+
+# ---------------------------------------------------------------------------
+# Group: _parse_fw_version_from_resource() — read-side FW version (#82)
+#   Read-only users never reach get_firmware_update() (write+policy+reboot
+#   gated), so major_fw_version must also be parseable from the read-only
+#   /system/resource.version. Without it, get_capabilities() never dispatches
+#   and wireless/CAPsMAN/PPP data stays empty.
+# ---------------------------------------------------------------------------
+
+
+def _resource_coordinator(version, major_fw_version=0):
+    coordinator = make_coordinator(major_fw_version=major_fw_version)
+    coordinator.host = "10.0.0.1"
+    if version is not None:
+        coordinator.ds["resource"]["version"] = version
+    return coordinator
+
+
+def test_parse_fw_version_from_resource_reads_major_minor():
+    """A real /system/resource.version string yields major+minor."""
+    coordinator = _resource_coordinator("7.22.3 (stable)")
+
+    coordinator._parse_fw_version_from_resource()
+
+    assert coordinator.major_fw_version == 7
+    assert coordinator.minor_fw_version == 22
+
+
+def test_parse_fw_version_from_resource_no_minor_defaults_zero():
+    """A bare major version parses with minor defaulting to 0."""
+    coordinator = _resource_coordinator("7")
+
+    coordinator._parse_fw_version_from_resource()
+
+    assert coordinator.major_fw_version == 7
+    assert coordinator.minor_fw_version == 0
+
+
+def test_parse_fw_version_from_resource_self_skips_when_already_set():
+    """get_firmware_update() runs first for privileged users; do not re-parse."""
+    coordinator = _resource_coordinator("6.49.10", major_fw_version=7)
+    coordinator.minor_fw_version = 13
+
+    coordinator._parse_fw_version_from_resource()
+
+    # Authoritative privileged parse is preserved, not overwritten.
+    assert coordinator.major_fw_version == 7
+    assert coordinator.minor_fw_version == 13
+
+
+def test_parse_fw_version_from_resource_unknown_version_is_noop():
+    """The parse_api 'unknown' sentinel must not be parsed as a version."""
+    coordinator = _resource_coordinator("unknown")
+
+    coordinator._parse_fw_version_from_resource()
+
+    assert coordinator.major_fw_version == 0
+
+
+def test_parse_fw_version_from_resource_missing_version_is_noop():
+    """No version key (resource not yet populated) leaves the sentinel intact."""
+    coordinator = _resource_coordinator(None)
+
+    coordinator._parse_fw_version_from_resource()
+
+    assert coordinator.major_fw_version == 0
+
+
+def test_parse_fw_version_from_resource_malformed_is_noop():
+    """A non-numeric version is swallowed without raising or setting a value."""
+    coordinator = _resource_coordinator("garbage")
+
+    coordinator._parse_fw_version_from_resource()
+
+    assert coordinator.major_fw_version == 0
+
+
+def test_readonly_capability_cascade_unblocked_end_to_end():
+    """#82: read-side version parse lets get_capabilities() dispatch on a
+    wifi-qcom router under a user without write/policy/reboot — the helper
+    runs at the tail of get_system_resource(), before get_capabilities()."""
+    coordinator = make_coordinator(
+        major_fw_version=0,
+        api_responses={
+            "/system/package": [
+                {"name": "wifi-qcom", "disabled": False},
+            ],
+        },
+    )
+    coordinator.ds["access"] = ["read", "api", "sensitive"]
+    coordinator.ds["resource"]["version"] = "7.22.3 (stable)"
+    coordinator.host = "10.0.0.1"
+    coordinator.support_ppp = False
+    coordinator.support_capsman = False
+    coordinator.support_wireless = False
+    coordinator.support_ups = False
+    coordinator.support_gps = False
+    coordinator._wifimodule = "wireless"
+
+    # Order mirrors _async_update_hwinfo: resource parse, then capabilities.
+    coordinator._parse_fw_version_from_resource()
+    coordinator.get_capabilities()
+
+    assert coordinator.major_fw_version == 7
+    assert coordinator.support_wireless is True
+    assert coordinator._wifimodule == "wifi"
+    assert coordinator.support_capsman is False
