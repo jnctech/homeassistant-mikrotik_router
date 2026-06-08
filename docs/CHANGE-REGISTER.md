@@ -4,6 +4,21 @@ Changes listed in reverse chronological order.
 
 ---
 
+## CR-260608-actionlint-pin-retry — harden the actionlint CI step against transient 504s
+
+**Date:** 2026-06-08
+**Branch:** `ci/actionlint-pin-retry` → PR to `dev`
+**Status:** In Review
+
+### What changed
+- `.github/workflows/ci.yml` `lint-actions` job: the actionlint binary was downloaded via `curl … | tar -xz` (a pipe, no retry). A GitHub CDN **504** corrupted the stream and failed the job — observed on multiple pushes 2026-06-08, each needing a manual re-run.
+- Now: download to a file with `curl --retry 5 --retry-delay 3 --retry-all-errors --retry-connrefused`, verify the **pinned SHA256** (`023070a…0757` for `actionlint_1.7.7_linux_amd64.tar.gz`, from the official release checksums), then extract. `set -euo pipefail` so any step fails loudly.
+
+### Why
+Transient registry/CDN errors were turning a deterministic lint into a flaky gate. Retries recover from the 504; the checksum keeps the supply-chain posture consistent with the repo's SHA-pinned `uses:` actions.
+
+---
+
 ## CR-260608-declare-quality-scale — declare `quality_scale: silver` in manifest
 
 **Date:** 2026-06-08
