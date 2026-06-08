@@ -31,6 +31,25 @@ The suite leans on unspecced `MagicMock` (yes-man) coordinators/descriptions, ne
 
 ---
 
+### ISS-260608-cleanup-over-logging — cleanup services log one INFO line per removed entity
+**Type:** Bug (log verbosity / quality-scale appropriate-logging)
+**Priority:** Low — benign; no functional impact
+**Created:** 2026-06-08
+**Status:** 🔵 Filed (fix deferred)
+
+`async_cleanup_entities` logs **one INFO line per removed entity** (`__init__.py:137`), so a single cleanup that removes many orphans emits a burst of INFO lines. On the live v2.3.18 box (2026-06-08 15:02:53) a cleanup removed **71 orphaned `client_traffic_tx/rx` entities** (the `_2/_3/_4` naming-collision debris), tripping HA's per-integration rate limiter: `homeassistant.util.logging — Module custom_components.mikrotik_router is logging too frequently. 200 messages since last count`. The per-call summaries also log at INFO even when 0 were removed (`__init__.py:145/236/239`).
+
+**Investigation (2026-06-08):** the cleanup services are **not** driven by any standing automation — searched `/config` (automations.yaml, scripts.yaml, configuration.yaml, `.storage`, `packages/`, `/config/scripts/`): no caller; the integration does not self-schedule. All 224 cleanup log lines are clustered in the 15:xx window only (none after) → a one-off, session-driven batch (the live entity audit + cleanup of ~335 stale entities). Will not recur unless cleanup is re-run over a large orphan set.
+
+**Proposed fix (off `dev`, gated):**
+- `__init__.py:137` per-entity removal → `_LOGGER.debug` (keep one INFO summary per call).
+- Summaries (`:145/236/239`) → INFO when count > 0, DEBUG when 0.
+- Behaviour test: a multi-removal cleanup emits ≤ 1 INFO line.
+
+Present identically on **master (v2.3.18, running)** and **dev**.
+
+---
+
 ### ENH-260608-quality-scale-conformance — close HA Integration Quality Scale gaps
 **Type:** Enhancement (conformance)
 **Priority:** Medium
