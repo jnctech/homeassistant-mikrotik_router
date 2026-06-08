@@ -1,5 +1,21 @@
 # Issues — Mikrotik Router HACS Integration
 
+## In-flight
+
+> **Active thread (2026-06-08) — HA Quality-Scale conformance + test/refactor hardening.** Bronze+Silver are complete pending **PR #89** (`reauthentication-flow`, the last gap; 597 passed on devbox); when it merges, declare `quality_scale` in `manifest.json`. **v2.3.19 is staged and HELD — PR #87 (draft); do NOT release until the maintainer says go.**
+>
+> **Merged to `dev` today:** #83 dev/master reconciliation (`ISS-260608`; `dev ⊇ master` now holds, sync model in `CLAUDE.md`), #84 `parallel-updates` (Silver), #85 `runtime-data` + **ADR-012** (Bronze), #86 `test_sensor.py` exemplar (`ENH-260608-test-suite-hardening` pass 1).
+>
+> **Open threads (where each stands):**
+> - **`ENH-260608-quality-scale-conformance`** — #89 merge → declare `quality_scale`; then Gold `reconfiguration-flow` + Platinum `strict-typing` alongside the coordinator decomposition (Phase 2, `docs/internal/refactor-strategy-2026-06-08.md`).
+> - **`ENH-260608-test-suite-hardening`** — `test_sensor.py` done (#86). Coordinator-factory `spec=` done on **local branch `feature/test-conftest-coordinator-spec` (commit `ae1cdde`, 595 passed, NOT pushed)** — it surfaced no gaps (forward safety net; spec verified to bite). Remaining: the **entity-description factory per-type split** (the higher-yield target) + the other entity modules.
+> - **Code-issue bugs — refactor-strategy §2.1, VERIFIED this session, NOT yet filed as an ENH.** Silent fall-throughs with no `else` (silently no-op when `major_fw_version == 0`): `coordinator.py:518` (`get_capabilities`), `:750` (`_async_update_client_traffic`), `:1583/1600` (`get_system_health` — and the `elif 0 < self.major_fw_version >= 7` is malformed). File an ENH + fix (add `else`/log). Phase 1/Phase 4. Also §2.1: dual-writer temporal coupling, duplicated fw-version regex, bare `except` in `_resolve_manufacturer`/`update.py`, magic RouterOS path literals.
+> - **`ENH-260608-entity-naming` (#88 — side topic).** Root causes verified: dhcp-server name collapses to the static "DHCP server" because `data_name == data_reference == "name"` (`sensor_types.py:876,891` hit the equality shortcut at `entity.py:306`); client trackers/traffic sensors are named by `host-name` (which RouterOS fills with the **interface**, e.g. `lwip0`) instead of the distinguishing MAC. `unique_id` uses `data_reference` and is **stable → no migration** (existing entity_ids keep, new ones get clean names). **ADR required (entity-identity change).** Open UX choices for the ADR: dhcp display format; client hostname-vs-MAC fallback.
+> - **`ISS-260608-env-sensor-empty-state` (#88)** — env sensor returns `''` on an empty RouterOS var; return `None`/unavailable.
+> - **#81/#82 contributor flow** — push local `fix/issue-82-readonly-fw-version` hardening to ahharvey's PR #81 branch (merge, **NOT squash**, to keep authorship).
+>
+> **Why this block exists (the handover lesson):** at the 2026-06-08 session-end this `## In-flight` block was **not** committed to `dev` (parked on the reauth branch to avoid polluting #89). That gap forced a transcript hunt to recover the next task. **Standard going forward: always commit the In-flight block to `dev`.** Full cold-start brief (cite-or-null findings, standards, all PRs): `docs/internal/2026-06-08-mikrotik-resume-brief.md`.
+
 ## Current Priorities
 
 1. ISS-260525-issue-68-capsman-detection — CAPsMAN + wireless enrichment disabled for 7.13+ routers still on the legacy `wireless` package (detection gates the v2.3.17 fallback). **In Review in `claude/modest-einstein-0Ulby`; pending @fuecy validation on a `dev` pre-release.**
