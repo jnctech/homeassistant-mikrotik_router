@@ -17,6 +17,7 @@ Lightweight records of key design decisions for mikrotik_router HACS integration
 | [ADR-009](ADR-009-attribute-filtering-by-hardware.md) | Entity Attribute Filtering by Hardware Capability | Accepted |
 | [ADR-010](ADR-010-claude-tooling-baseline.md) | Claude Code Tooling Baseline + Mechanical Quality Gates via pyproject.toml | Accepted |
 | [ADR-011](ADR-011-capsman-attributes.md) | CAPsMAN AP-virtual interface — additive attribute, no source flip | Accepted |
+| [ADR-012](ADR-012-config-entry-runtime-data.md) | Store runtime data on `ConfigEntry.runtime_data` (typed) | Accepted |
 
 ## Template
 

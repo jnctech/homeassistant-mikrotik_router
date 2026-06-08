@@ -4,6 +4,39 @@ Changes listed in reverse chronological order.
 
 ---
 
+## CR-260608-runtime-data — store runtime data on `ConfigEntry.runtime_data` (quality-scale Bronze)
+
+**Date:** 2026-06-08
+**Branch:** `feature/runtime-data` → PR to `dev`
+**Status:** In Review
+
+### What Changed
+
+| Area | Change |
+|------|--------|
+| `coordinator.py` | New `type MikrotikConfigEntry = ConfigEntry[MikrotikData]`. |
+| `__init__.py` | `async_setup_entry` stores `config_entry.runtime_data`; `_get_mikrotik_data()` resolves via `async_get_entry()` + `isinstance(MikrotikData)` guard, logging not-found vs not-loaded (`entry.state`) distinctly; `async_unload_entry` tears down shared services via `async_loaded_entries()` (`any()` check). |
+| `entity.py`, `device_tracker.py`, `diagnostics.py` | Read coordinators from `config_entry.runtime_data`; entry params typed `MikrotikConfigEntry`; dropped now-dead `DOMAIN`/`ConfigEntry` imports. |
+| `tests/test_init.py` | Migrated setup/unload/`_get_mikrotik_data` **and** the cleanup-service tests to the runtime_data lookup (new `_hass_with_loaded_entry`); `_make_mock_mikrotik_data` builds a real `MikrotikData`. |
+| `docs/decisions/ADR-012-config-entry-runtime-data.md` (new) | Decision record. |
+
+### Why
+
+Satisfies the quality-scale Bronze **`runtime-data`** rule and seeds the typed data model for the planned coordinator decomposition. See ADR-012.
+
+### Quality Gate Results
+
+| Metric | Value | Gate |
+|--------|-------|------|
+| Ruff lint + format | All checks passed | ✅ |
+| Pytest | 593 passed, 5 skipped (devbox `python:3.13`, `__pycache__` cleared) | ✅ |
+| Pre-PR gate | code-review (no blockers); silent-failure-hunter (1 MEDIUM applied — split not-found/not-loaded diagnostics); simplifier (typed reload/setup handlers, `any()`) | ✅ |
+| ADR | ADR-012 (storage-contract change) | ✅ |
+
+> A false-green from stale devbox `__pycache__` initially hid 8 broken cleanup-service tests; caught, fixed, and the runbook hardened (clear cache + `PYTHONDONTWRITEBYTECODE=1 -p no:cacheprovider`).
+
+---
+
 ## CR-260608-parallel-updates — declare `PARALLEL_UPDATES` per platform (quality-scale Silver)
 
 **Date:** 2026-06-08
