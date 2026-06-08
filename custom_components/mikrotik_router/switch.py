@@ -20,6 +20,10 @@ from .switch_types import (
 
 _LOGGER = getLogger(__name__)
 
+# Switches send commands to the router; serialise them — RouterOS can mishandle
+# simultaneous writes (see the API-lock concurrency history, #64).
+PARALLEL_UPDATES = 1
+
 _CAPSMAN_MANAGED = "managed by CAPsMAN"
 _RULE_NOT_FOUND_ENABLE = "Rule not found for %s, cannot enable"
 _RULE_NOT_FOUND_DISABLE = "Rule not found for %s, cannot disable"

@@ -20,6 +20,10 @@ from .binary_sensor_types import SENSOR_TYPES, SENSOR_SERVICES  # noqa: F401
 
 _LOGGER = getLogger(__name__)
 
+# The coordinator centralises all polling; binary-sensor updates perform no
+# per-entity device I/O, so no parallelism limit is needed.
+PARALLEL_UPDATES = 0
+
 
 # ---------------------------
 #   async_setup_entry

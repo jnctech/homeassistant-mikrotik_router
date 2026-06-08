@@ -23,6 +23,10 @@ from .update_types import SENSOR_TYPES, SENSOR_SERVICES  # noqa: F401
 from packaging.version import Version
 
 _LOGGER = getLogger(__name__)
+
+# This platform exposes an install action (firmware update); serialise commands
+# so concurrent installs can't be issued to the router at once.
+PARALLEL_UPDATES = 1
 DEVICE_UPDATE = "device_update"
 
 

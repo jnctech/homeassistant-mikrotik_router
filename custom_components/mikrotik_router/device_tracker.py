@@ -36,6 +36,10 @@ from .const import (
 
 _LOGGER = getLogger(__name__)
 
+# The coordinator centralises all polling; tracker updates perform no per-entity
+# device I/O, so no parallelism limit is needed.
+PARALLEL_UPDATES = 0
+
 
 async def async_add_entities(hass: HomeAssistant, config_entry: ConfigEntry, dispatcher: dict[str, Callable]):
     """Add entities."""

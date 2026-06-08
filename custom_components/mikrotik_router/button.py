@@ -15,6 +15,10 @@ from .exceptions import ApiEntryNotFound
 
 _LOGGER = getLogger(__name__)
 
+# Buttons send commands to the router; serialise them to avoid simultaneous
+# writes the device may mishandle.
+PARALLEL_UPDATES = 1
+
 
 # ---------------------------
 #   async_setup_entry
