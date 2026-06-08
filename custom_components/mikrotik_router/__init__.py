@@ -21,7 +21,12 @@ from homeassistant.const import CONF_NAME, CONF_VERIFY_SSL
 from homeassistant.exceptions import HomeAssistantError
 
 from .const import PLATFORMS, DOMAIN, DEFAULT_VERIFY_SSL
-from .coordinator import MikrotikData, MikrotikCoordinator, MikrotikTrackerCoordinator
+from .coordinator import (
+    MikrotikConfigEntry,
+    MikrotikData,
+    MikrotikCoordinator,
+    MikrotikTrackerCoordinator,
+)
 
 SCRIPT_SCHEMA = vol.Schema({vol.Required("router"): cv.string, vol.Required("script"): cv.string})
 
@@ -78,17 +83,28 @@ def _collect_ids_for_desc(desc, data: dict, inst_lower: str, valid_ids: set) -> 
 
 
 def _get_mikrotik_data(hass: HomeAssistant, entry_id: str) -> MikrotikData | None:
-    """Look up MikrotikData for a config entry, logging an error if missing."""
-    domain_data = hass.data.get(DOMAIN, {})
-    if entry_id in domain_data:
-        return domain_data[entry_id]
+    """Look up MikrotikData for a config entry, logging why if unavailable.
 
-    _LOGGER.error(
-        "Config entry '%s' not found. Available: %s",
-        entry_id,
-        list(domain_data.keys()),
-    )
-    return None
+    Reads the loaded entry's runtime_data (the HA-recommended store) rather than
+    hass.data[DOMAIN]. Returns None for two distinct cases, logged separately so
+    the operator knows which to fix:
+      * the entry_id is unknown (bad/stale argument), or
+      * the entry exists but is not loaded (disabled / setup retrying / reloading)
+        — runtime_data only exists between setup and unload.
+    """
+    entry = hass.config_entries.async_get_entry(entry_id)
+    if entry is None:
+        _LOGGER.error("Config entry '%s' not found in the registry", entry_id)
+        return None
+    if not isinstance(entry.runtime_data, MikrotikData):
+        _LOGGER.error(
+            "Config entry '%s' (%s) is not loaded (state=%s); load the Mikrotik integration before running this service",
+            entry_id,
+            entry.title,
+            entry.state,
+        )
+        return None
+    return entry.runtime_data
 
 
 async def async_cleanup_entities(call: ServiceCall) -> ServiceResponse:
@@ -98,7 +114,7 @@ async def async_cleanup_entities(call: ServiceCall) -> ServiceResponse:
 
     mikrotik_data = _get_mikrotik_data(hass, entry_id)
     if mikrotik_data is None:
-        raise HomeAssistantError(f"Config entry '{entry_id}' not found")
+        raise HomeAssistantError(f"Config entry '{entry_id}' not found or not loaded")
 
     coordinator = mikrotik_data.data_coordinator
     config_entry = coordinator.config_entry
@@ -190,7 +206,7 @@ async def async_cleanup_stale_hosts(call: ServiceCall) -> ServiceResponse:
 
     mikrotik_data = _get_mikrotik_data(hass, entry_id)
     if mikrotik_data is None:
-        raise HomeAssistantError(f"Config entry '{entry_id}' not found")
+        raise HomeAssistantError(f"Config entry '{entry_id}' not found or not loaded")
 
     coordinator = mikrotik_data.data_coordinator
     inst = coordinator.config_entry.data[CONF_NAME].lower()
@@ -255,14 +271,14 @@ def _async_register_services(hass: HomeAssistant) -> None:
 # ---------------------------
 #   async_setup_entry
 # ---------------------------
-async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
+async def async_setup_entry(hass: HomeAssistant, config_entry: MikrotikConfigEntry) -> bool:
     """Set up a config entry."""
     _async_register_services(hass)
     coordinator = MikrotikCoordinator(hass, config_entry)
     await coordinator.async_config_entry_first_refresh()
     coordinator_tracker = MikrotikTrackerCoordinator(hass, config_entry, coordinator)
     await coordinator_tracker.async_config_entry_first_refresh()
-    hass.data.setdefault(DOMAIN, {})[config_entry.entry_id] = MikrotikData(
+    config_entry.runtime_data = MikrotikData(
         data_coordinator=coordinator,
         tracker_coordinator=coordinator_tracker,
     )
@@ -277,7 +293,7 @@ async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> b
 # ---------------------------
 #   async_reload_entry
 # ---------------------------
-async def async_reload_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> None:
+async def async_reload_entry(hass: HomeAssistant, config_entry: MikrotikConfigEntry) -> None:
     """Reload the config entry when it changed."""
     await hass.config_entries.async_reload(config_entry.entry_id)
 
@@ -285,13 +301,14 @@ async def async_reload_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> 
 # ---------------------------
 #   async_unload_entry
 # ---------------------------
-async def async_unload_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
+async def async_unload_entry(hass: HomeAssistant, config_entry: MikrotikConfigEntry) -> bool:
     """Unload a config entry."""
 
     if unload_ok := await hass.config_entries.async_unload_platforms(config_entry, PLATFORMS):
-        hass.data[DOMAIN].pop(config_entry.entry_id)
-
-        if not hass.data[DOMAIN]:
+        # runtime_data is dropped by Home Assistant automatically on unload.
+        # Only remove the shared services once the last entry is gone.
+        other_entries_loaded = any(entry.entry_id != config_entry.entry_id for entry in hass.config_entries.async_loaded_entries(DOMAIN))
+        if not other_entries_loaded:
             hass.services.async_remove(DOMAIN, SERVICE_CLEANUP_ENTITIES)
             hass.services.async_remove(DOMAIN, SERVICE_CLEANUP_STALE_HOSTS)
 

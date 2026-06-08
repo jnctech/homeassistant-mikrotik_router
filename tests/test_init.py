@@ -33,6 +33,7 @@ from custom_components.mikrotik_router.const import (
     PLATFORMS,
     DEFAULT_VERIFY_SSL,
 )
+from custom_components.mikrotik_router.coordinator import MikrotikData
 
 
 # ---------------------------------------------------------------------------
@@ -72,11 +73,15 @@ def _make_mock_coordinator(ds=None, config_entry=None):
 
 
 def _make_mock_mikrotik_data(coordinator=None, tracker=None):
-    """Create a mock MikrotikData."""
-    data = MagicMock()
-    data.data_coordinator = coordinator or _make_mock_coordinator()
-    data.tracker_coordinator = tracker or MagicMock()
-    return data
+    """Create a real MikrotikData wrapping mock coordinators.
+
+    Must be the real dataclass (not a bare MagicMock) so the isinstance check in
+    _get_mikrotik_data passes — runtime_data is validated as MikrotikData.
+    """
+    return MikrotikData(
+        data_coordinator=coordinator or _make_mock_coordinator(),
+        tracker_coordinator=tracker or MagicMock(),
+    )
 
 
 def _make_service_call(hass, data):
@@ -85,6 +90,19 @@ def _make_service_call(hass, data):
     call.hass = hass
     call.data = data
     return call
+
+
+def _hass_with_loaded_entry(mikrotik_data):
+    """hass mock whose config entry exposes mikrotik_data via runtime_data.
+
+    Mirrors the runtime-data lookup in _get_mikrotik_data (reads
+    entry.runtime_data), replacing the old hass.data[DOMAIN][entry_id] store.
+    """
+    hass = MagicMock()
+    entry = MagicMock()
+    entry.runtime_data = mikrotik_data
+    hass.config_entries.async_get_entry = MagicMock(return_value=entry)
+    return hass
 
 
 # ---------------------------------------------------------------------------
@@ -215,8 +233,10 @@ async def test_setup_entry_registers_coordinators_and_platforms():
     assert result is True
     mock_coord.async_config_entry_first_refresh.assert_awaited_once()
     mock_tracker.async_config_entry_first_refresh.assert_awaited_once()
-    assert DOMAIN in hass.data
-    assert config_entry.entry_id in hass.data[DOMAIN]
+    # Data is stored on the entry's runtime_data, not hass.data[DOMAIN].
+    assert isinstance(config_entry.runtime_data, MikrotikData)
+    assert config_entry.runtime_data.data_coordinator is mock_coord
+    assert config_entry.runtime_data.tracker_coordinator is mock_tracker
     hass.config_entries.async_forward_entry_setups.assert_awaited_once_with(config_entry, PLATFORMS)
     config_entry.async_on_unload.assert_called_once()
 
@@ -295,61 +315,57 @@ async def test_setup_entry_skips_service_registration_if_already_registered():
 
 
 @pytest.mark.asyncio
-async def test_unload_entry_removes_data_and_services():
-    """Successful unload clears domain data and removes services when last entry."""
+async def test_unload_entry_removes_services_when_last_entry():
+    """Successful unload removes shared services when no other entries remain.
+
+    runtime_data is cleared by Home Assistant, not by our code, so there's
+    nothing to assert about it here.
+    """
     hass = MagicMock()
     config_entry = _make_mock_config_entry()
 
-    hass.data = {DOMAIN: {config_entry.entry_id: _make_mock_mikrotik_data()}}
     hass.config_entries.async_unload_platforms = AsyncMock(return_value=True)
+    hass.config_entries.async_loaded_entries = MagicMock(return_value=[])  # no others
     hass.services.async_remove = MagicMock()
 
     result = await async_unload_entry(hass, config_entry)
 
     assert result is True
-    assert config_entry.entry_id not in hass.data[DOMAIN]
-    # Last entry — services should be removed
     hass.services.async_remove.assert_any_call(DOMAIN, SERVICE_CLEANUP_ENTITIES)
     hass.services.async_remove.assert_any_call(DOMAIN, SERVICE_CLEANUP_STALE_HOSTS)
 
 
 @pytest.mark.asyncio
 async def test_unload_entry_keeps_services_if_other_entries_remain():
-    """Services not removed when other config entries still loaded."""
+    """Services not removed when other config entries are still loaded."""
     hass = MagicMock()
     config_entry = _make_mock_config_entry(entry_id="entry_1")
+    other_entry = _make_mock_config_entry(entry_id="entry_2")
 
-    hass.data = {
-        DOMAIN: {
-            "entry_1": _make_mock_mikrotik_data(),
-            "entry_2": _make_mock_mikrotik_data(),
-        }
-    }
     hass.config_entries.async_unload_platforms = AsyncMock(return_value=True)
+    # async_loaded_entries may still include the entry being unloaded; the code
+    # filters it out by entry_id, leaving entry_2 -> services stay registered.
+    hass.config_entries.async_loaded_entries = MagicMock(return_value=[config_entry, other_entry])
     hass.services.async_remove = MagicMock()
 
     result = await async_unload_entry(hass, config_entry)
 
     assert result is True
-    assert "entry_1" not in hass.data[DOMAIN]
-    assert "entry_2" in hass.data[DOMAIN]
     hass.services.async_remove.assert_not_called()
 
 
 @pytest.mark.asyncio
-async def test_unload_entry_failure_keeps_data():
-    """Failed platform unload leaves domain data and services intact."""
+async def test_unload_entry_failure_keeps_services():
+    """Failed platform unload leaves services intact."""
     hass = MagicMock()
     config_entry = _make_mock_config_entry()
 
-    hass.data = {DOMAIN: {config_entry.entry_id: _make_mock_mikrotik_data()}}
     hass.config_entries.async_unload_platforms = AsyncMock(return_value=False)
     hass.services.async_remove = MagicMock()
 
     result = await async_unload_entry(hass, config_entry)
 
     assert result is False
-    assert config_entry.entry_id in hass.data[DOMAIN]
     hass.services.async_remove.assert_not_called()
 
 
@@ -397,28 +413,32 @@ def test_register_services_idempotent():
 
 
 def test_get_mikrotik_data_found():
-    """Returns MikrotikData when entry_id exists."""
+    """Returns the entry's runtime_data when it is loaded MikrotikData."""
     hass = MagicMock()
     mock_data = _make_mock_mikrotik_data()
-    hass.data = {DOMAIN: {"entry_1": mock_data}}
+    entry = MagicMock()
+    entry.runtime_data = mock_data
+    hass.config_entries.async_get_entry = MagicMock(return_value=entry)
 
     result = _get_mikrotik_data(hass, "entry_1")
     assert result is mock_data
 
 
-def test_get_mikrotik_data_not_found():
-    """Returns None and logs error when entry_id missing."""
+def test_get_mikrotik_data_entry_not_found():
+    """Returns None and logs error when the entry is unknown."""
     hass = MagicMock()
-    hass.data = {DOMAIN: {}}
+    hass.config_entries.async_get_entry = MagicMock(return_value=None)
 
     result = _get_mikrotik_data(hass, "nonexistent")
     assert result is None
 
 
-def test_get_mikrotik_data_no_domain():
-    """Returns None when DOMAIN not in hass.data."""
+def test_get_mikrotik_data_entry_not_loaded():
+    """Returns None when the entry exists but has no MikrotikData runtime_data."""
     hass = MagicMock()
-    hass.data = {}
+    entry = MagicMock()
+    entry.runtime_data = None  # not loaded
+    hass.config_entries.async_get_entry = MagicMock(return_value=entry)
 
     result = _get_mikrotik_data(hass, "entry_1")
     assert result is None
@@ -699,8 +719,7 @@ async def test_cleanup_entities_empty_valid_ids_aborts():
     coordinator = _make_mock_coordinator(ds={}, config_entry=config_entry)
     mikrotik_data = _make_mock_mikrotik_data(coordinator=coordinator)
 
-    hass = MagicMock()
-    hass.data = {DOMAIN: {config_entry.entry_id: mikrotik_data}}
+    hass = _hass_with_loaded_entry(mikrotik_data)
     call = _make_service_call(hass, {"entry_id": config_entry.entry_id})
 
     with patch(
@@ -744,8 +763,7 @@ async def test_cleanup_entities_removes_orphans():
         other_entry_entity,
     ]
 
-    hass = MagicMock()
-    hass.data = {DOMAIN: {config_entry.entry_id: mikrotik_data}}
+    hass = _hass_with_loaded_entry(mikrotik_data)
     call = _make_service_call(hass, {"entry_id": config_entry.entry_id})
 
     valid_ids = {"testrouter-port_status-ether1"}
@@ -782,8 +800,7 @@ async def test_cleanup_entities_no_orphans():
     mock_registry = MagicMock()
     mock_registry.entities.values.return_value = [valid_entity]
 
-    hass = MagicMock()
-    hass.data = {DOMAIN: {config_entry.entry_id: mikrotik_data}}
+    hass = _hass_with_loaded_entry(mikrotik_data)
     call = _make_service_call(hass, {"entry_id": config_entry.entry_id})
 
     with (
@@ -840,8 +857,7 @@ async def test_cleanup_stale_hosts_dry_run():
     mock_registry = MagicMock()
     mock_registry.entities.values.return_value = [stale_entity]
 
-    hass = MagicMock()
-    hass.data = {DOMAIN: {config_entry.entry_id: mikrotik_data}}
+    hass = _hass_with_loaded_entry(mikrotik_data)
     call = _make_service_call(hass, {"entry_id": config_entry.entry_id, "dry_run": True})
 
     with patch(
@@ -882,8 +898,7 @@ async def test_cleanup_stale_hosts_remove():
     mock_registry = MagicMock()
     mock_registry.entities.values.return_value = [stale_entity, sensor_entity]
 
-    hass = MagicMock()
-    hass.data = {DOMAIN: {config_entry.entry_id: mikrotik_data}}
+    hass = _hass_with_loaded_entry(mikrotik_data)
     call = _make_service_call(hass, {"entry_id": config_entry.entry_id, "dry_run": False})
 
     with patch(
@@ -918,8 +933,7 @@ async def test_cleanup_stale_hosts_no_stale():
     mock_registry = MagicMock()
     mock_registry.entities.values.return_value = [entity]
 
-    hass = MagicMock()
-    hass.data = {DOMAIN: {config_entry.entry_id: mikrotik_data}}
+    hass = _hass_with_loaded_entry(mikrotik_data)
     call = _make_service_call(hass, {"entry_id": config_entry.entry_id, "dry_run": True})
 
     with patch(
@@ -949,8 +963,7 @@ async def test_cleanup_stale_hosts_skips_other_entries():
     mock_registry = MagicMock()
     mock_registry.entities.values.return_value = [other_entity]
 
-    hass = MagicMock()
-    hass.data = {DOMAIN: {config_entry.entry_id: mikrotik_data}}
+    hass = _hass_with_loaded_entry(mikrotik_data)
     call = _make_service_call(hass, {"entry_id": config_entry.entry_id, "dry_run": True})
 
     with patch(
@@ -975,8 +988,7 @@ async def test_cleanup_stale_hosts_default_dry_run():
     mock_registry = MagicMock()
     mock_registry.entities.values.return_value = []
 
-    hass = MagicMock()
-    hass.data = {DOMAIN: {config_entry.entry_id: mikrotik_data}}
+    hass = _hass_with_loaded_entry(mikrotik_data)
     # No dry_run key — should default to True
     call = _make_service_call(hass, {"entry_id": config_entry.entry_id})
 
@@ -1046,8 +1058,7 @@ async def test_diagnostics_returns_redacted_data():
     mikrotik_data.data_coordinator = data_coord
     mikrotik_data.tracker_coordinator = tracker_coord
 
-    hass = MagicMock()
-    hass.data = {DOMAIN: {config_entry.entry_id: mikrotik_data}}
+    hass = _hass_with_loaded_entry(mikrotik_data)
 
     result = await async_get_config_entry_diagnostics(hass, config_entry)
 

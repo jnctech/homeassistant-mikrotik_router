@@ -3,15 +3,15 @@
 from __future__ import annotations
 from typing import Any
 from homeassistant.components.diagnostics import async_redact_data
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from .const import DOMAIN, TO_REDACT
+from .const import TO_REDACT
+from .coordinator import MikrotikConfigEntry
 
 
-async def async_get_config_entry_diagnostics(hass: HomeAssistant, config_entry: ConfigEntry) -> dict[str, Any]:
+async def async_get_config_entry_diagnostics(hass: HomeAssistant, config_entry: MikrotikConfigEntry) -> dict[str, Any]:
     """Return diagnostics for a config entry."""
-    data_coordinator = hass.data[DOMAIN][config_entry.entry_id].data_coordinator
-    tracker_coordinator = hass.data[DOMAIN][config_entry.entry_id].tracker_coordinator
+    data_coordinator = config_entry.runtime_data.data_coordinator
+    tracker_coordinator = config_entry.runtime_data.tracker_coordinator
 
     return {
         "entry": {

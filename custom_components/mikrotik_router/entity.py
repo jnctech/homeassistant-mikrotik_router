@@ -6,7 +6,6 @@ from collections.abc import Mapping
 from logging import getLogger
 from typing import Any, Callable, TypeVar
 
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import ATTR_ATTRIBUTION, CONF_NAME, CONF_HOST
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import (
@@ -32,7 +31,7 @@ from .const import (
     CONF_SENSOR_POE,
     DEFAULT_SENSOR_POE,
 )
-from .coordinator import MikrotikCoordinator, MikrotikTrackerCoordinator
+from .coordinator import MikrotikConfigEntry, MikrotikCoordinator, MikrotikTrackerCoordinator
 from .helper import format_attribute
 from .iface_attributes import (
     DEVICE_ATTRIBUTES_IFACE_CLIENT,
@@ -222,7 +221,7 @@ async def _run_entity_setup_loop(  # pragma: no cover
 #   async_add_entities
 # ---------------------------
 async def async_add_entities(  # pragma: no cover
-    hass: HomeAssistant, config_entry: ConfigEntry, dispatcher: dict[str, Callable]
+    hass: HomeAssistant, config_entry: MikrotikConfigEntry, dispatcher: dict[str, Callable]
 ):
     """Add entities."""
     platform = ep.async_get_current_platform()
@@ -237,7 +236,7 @@ async def async_add_entities(  # pragma: no cover
         """Update the values of the controller."""
         await _run_entity_setup_loop(hass, platform, config_entry, dispatcher, descriptions, coordinator)
 
-    await async_update_controller(hass.data[DOMAIN][config_entry.entry_id].data_coordinator)
+    await async_update_controller(config_entry.runtime_data.data_coordinator)
 
     unsub = async_dispatcher_connect(hass, "update_sensors", async_update_controller)
     config_entry.async_on_unload(unsub)

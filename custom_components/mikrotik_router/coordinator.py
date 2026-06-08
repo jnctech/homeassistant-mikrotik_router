@@ -122,6 +122,12 @@ class MikrotikData:
     tracker_coordinator: MikrotikTrackerCoordinator
 
 
+# Typed config entry — its runtime_data is the MikrotikData above. This is the
+# HA-recommended replacement for hass.data[DOMAIN][entry_id] (quality-scale
+# `runtime-data` rule) and the seed of the integration's typed data model.
+type MikrotikConfigEntry = ConfigEntry[MikrotikData]
+
+
 class MikrotikTrackerCoordinator(DataUpdateCoordinator[None]):
     def __init__(
         self,

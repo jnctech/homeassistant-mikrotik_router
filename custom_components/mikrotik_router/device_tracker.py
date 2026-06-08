@@ -8,7 +8,6 @@ from datetime import timedelta
 from typing import Any, Callable
 
 from homeassistant.components.device_tracker.config_entry import ScannerEntity
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.const import STATE_NOT_HOME
 from homeassistant.helpers import entity_platform as ep
@@ -18,7 +17,7 @@ from homeassistant.util.dt import utcnow
 
 from homeassistant.components.device_tracker.const import SourceType
 
-from .coordinator import MikrotikCoordinator
+from .coordinator import MikrotikConfigEntry, MikrotikCoordinator
 from .device_tracker_types import (
     SENSOR_TYPES,  # noqa: F401
     SENSOR_SERVICES,  # noqa: F401
@@ -27,7 +26,6 @@ from .device_tracker_types import (
 from .entity import _run_entity_setup_loop, MikrotikEntity, copy_attrs
 from .helper import format_attribute
 from .const import (
-    DOMAIN,
     CONF_TRACK_HOSTS,
     DEFAULT_TRACK_HOSTS,
     CONF_TRACK_HOSTS_TIMEOUT,
@@ -41,7 +39,7 @@ _LOGGER = getLogger(__name__)
 PARALLEL_UPDATES = 0
 
 
-async def async_add_entities(hass: HomeAssistant, config_entry: ConfigEntry, dispatcher: dict[str, Callable]):
+async def async_add_entities(hass: HomeAssistant, config_entry: MikrotikConfigEntry, dispatcher: dict[str, Callable]):
     """Add entities."""
     platform = ep.async_get_current_platform()
     services = platform.platform.SENSOR_SERVICES
@@ -50,7 +48,7 @@ async def async_add_entities(hass: HomeAssistant, config_entry: ConfigEntry, dis
     for service in services:
         platform.async_register_entity_service(service[0], service[1], service[2])
 
-    tracker_coord = hass.data[DOMAIN][config_entry.entry_id].tracker_coordinator
+    tracker_coord = config_entry.runtime_data.tracker_coordinator
 
     @callback
     async def async_update_controller(coordinator):
@@ -72,7 +70,7 @@ async def async_add_entities(hass: HomeAssistant, config_entry: ConfigEntry, dis
 # ---------------------------
 async def async_setup_entry(
     hass: HomeAssistant,
-    config_entry: ConfigEntry,
+    config_entry: MikrotikConfigEntry,
     _async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up entry for component"""
