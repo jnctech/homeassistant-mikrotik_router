@@ -17,6 +17,37 @@
 
 ## Active
 
+### ENH-260608-entity-naming — distinct entities collide on friendly names (`_N` entity_id suffixes)
+**Type:** Enhancement (entity naming / quality)
+**Priority:** Medium
+**Created:** 2026-06-08
+**Status:** 🟡 Open
+
+**Symptom:**
+On networks with many clients or multiple DHCP servers, distinct entities receive the **same friendly name**, so Home Assistant disambiguates the entity_ids with `_2`/`_3`/… suffixes — e.g. several clients behind one interface all named after the interface (`lwip0`, `lwip0_2`, …), or one `dhcp_server` sensor per VLAN all named after the router. The entities are valid and distinct (different `unique_id`s); only the *naming* collides. On a large network this produces hundreds of `_N`-suffixed entity_ids.
+
+**Root cause:**
+Client device-trackers and client-traffic sensors are named by their **interface**, and per-instance entities (e.g. per-VLAN DHCP servers) by the **router**, rather than by the value that actually distinguishes them (client MAC/hostname, DHCP-server/VLAN name).
+
+**Proposed fix:**
+Name these entities by their distinguishing key so entity_ids are unique and meaningful (aligns with the HA quality-scale **Gold entity-naming** rule). `unique_id`s already encode the distinguishing key and stay stable, so this changes only friendly names/new entity_ids — no `unique_id` migration required (existing entity_ids won't auto-rename).
+
+---
+
+### ISS-260608-env-sensor-empty-state — environment sensor reports `''` when the RouterOS env var is empty
+**Type:** Bug (state quality)
+**Priority:** Low
+**Created:** 2026-06-08
+**Status:** 🟡 Open
+
+**Symptom:**
+A `*_environment_<name>` sensor reports an empty string (`''`) as its state when the corresponding RouterOS environment variable exists but is empty (observed: `environment_defconfMode`). Empty-string is not a valid HA state convention — HA expects `None` → `unknown`/`unavailable`. On other routers where the same variable has no value the sensor correctly reads `unavailable`, so the behaviour is inconsistent.
+
+**Fix:**
+In the environment sensor's value path, return `None` (or set unavailable) when the variable value is empty/missing, so the entity reports `unknown`/`unavailable` rather than `''`.
+
+---
+
 ### ENH-260608-test-suite-hardening — migrate tests to spec'd mocks, parametrize, behaviour assertions
 **Type:** Enhancement (test quality)
 **Priority:** Medium
