@@ -18,7 +18,7 @@ Bronze and Silver Integration Quality Scale rules are met as of the conformance 
 
 ### Notes / cite-or-null
 - This is a **fork** of the unmaintained `tomaae/homeassistant-mikrotik_router`; the original (not this fork) is the HACS-store-listed copy, so `quality_scale` here is a conformance signal rather than a store gate.
-- hassfest validates the manifest key order and the `quality_scale` value — verified via the `Check hassfest` CI job on this PR. <!-- HASSFEST-STATUS -->
+- hassfest validates the manifest key order and the `quality_scale` value — **verified PASS** via the `Check hassfest` CI job on PR #91 (run 27123239920). No `quality_scale.yaml` rules file is required for this custom integration.
 - Remaining tiers (Gold `reconfiguration-flow`, Platinum `strict-typing`) are tracked under the conformance ENH, to land with the coordinator decomposition.
 
 ---
