@@ -1,6 +1,6 @@
 # ADR-013 — Entity-naming disambiguation for colliding clients and DHCP servers
 
-**Status:** Proposed (awaiting maintainer approval before implementation)
+**Status:** Accepted — implemented on `feature/entity-naming` (CR-260608-entity-naming). Maintainer-approved after independent review (which caught the v7-path consumer, now incorporated).
 **Date:** 2026-06-08
 **Supersedes/relates:** `ENH-260608-entity-naming`. Gold quality-scale *entity-naming*.
 **Numbering note:** ADR-012 = config-entry-runtime-data (on `dev`). This ADR takes **013** (lands first). The local `proto/fw-version-sot` prototype, previously noted to renumber to ADR-013, should now use **ADR-014**.

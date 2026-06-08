@@ -21,16 +21,36 @@
 **Type:** Enhancement (entity naming / quality)
 **Priority:** Medium
 **Created:** 2026-06-08
-**Status:** 🟡 Open
+**Status:** 🟢 Resolved on `feature/entity-naming` (ADR-013, CR-260608-entity-naming) — pending PR merge to `dev`
 
 **Symptom:**
-On networks with many clients or multiple DHCP servers, distinct entities receive the **same friendly name**, so Home Assistant disambiguates the entity_ids with `_2`/`_3`/… suffixes — e.g. several clients behind one interface all named after the interface (`lwip0`, `lwip0_2`, …), or one `dhcp_server` sensor per VLAN all named after the router. The entities are valid and distinct (different `unique_id`s); only the *naming* collides. On a large network this produces hundreds of `_N`-suffixed entity_ids.
+On networks with many clients or multiple DHCP servers, distinct entities receive the **same friendly name**, so Home Assistant disambiguates the entity_ids with `_2`/`_3`/… suffixes — e.g. `device_tracker.lwip0`, `lwip0_2`…`lwip0_6` (six different MACs), or one `dhcp_server` sensor per VLAN all named `…DHCP server`. The entities are valid and distinct (different `unique_id`s); only the *naming* collides.
 
-**Root cause:**
-Client device-trackers and client-traffic sensors are named by their **interface**, and per-instance entities (e.g. per-VLAN DHCP servers) by the **router**, rather than by the value that actually distinguishes them (client MAC/hostname, DHCP-server/VLAN name).
+**Root cause (corrected by live recorder-DB evidence 2026-06-08 — the original "named by interface" premise was wrong):**
+- **Clients:** not interface-naming. The colliding hosts report a **non-unique DHCP hostname** (e.g. `lwip0`, the lwIP embedded-stack default on ESP-class IoT devices); their `interface` attribute is `bridge`, not `lwip0`. The coordinator only falls back to MAC when host-name is `unknown` (`coordinator.py:2548`), so a present-but-duplicate hostname slips through.
+- **DHCP servers:** `dhcp_server_status`/`_lease_count` have `data_name == data_reference == "name"`, so the `entity.py` equality shortcut always fires and drops the distinct VLAN name; all servers share the one `System` device, so there is no device-level disambiguation either.
 
-**Proposed fix:**
-Name these entities by their distinguishing key so entity_ids are unique and meaningful (aligns with the HA quality-scale **Gold entity-naming** rule). `unique_id`s already encode the distinguishing key and stay stable, so this changes only friendly names/new entity_ids — no `unique_id` migration required (existing entity_ids won't auto-rename).
+**Resolution (ADR-013):**
+- Coordinator `_disambiguate_duplicate_hostnames()` appends the MAC to any host-name shared by >1 host → `"{host-name} ({mac})"`. Runs at the end of `async_process_host` so **both** client_traffic copy sites inherit it (`_init_accounting_hosts` fw<7, `process_kid_control_devices` fw≥7).
+- Scoped `data_name_compose` descriptor flag (set only on the two `dhcp_server_*` descriptors) → `"{name} DHCP server"`.
+- `unique_id` unchanged in both families → existing entity_ids/automations preserved; only friendly names + new entities change. No migration. Behaviour tests added (incl. v7 path + unique_id invariance + scope guard).
+- **Out of scope (mechanism-compatible follow-up):** netwatch naming (jnctech #70) — see ENH-260608-netwatch-naming.
+
+---
+
+### ENH-260608-netwatch-naming — name netwatch entities by `name`, not shared `comment` (jnctech #70)
+**Type:** Enhancement (entity naming / quality)
+**Priority:** Low
+**Created:** 2026-06-08
+**Status:** 🔵 Filed (follow-up to ENH-260608-entity-naming)
+
+**Request ([jnctech #70](https://github.com/jnctech/homeassistant-mikrotik_router/issues/70)):** with 50+ netwatch entries, many **share a `comment`**, so they collapse to one display name; the user wants the distinct **`name`** field shown instead.
+
+**Same class of bug as ENH-260608-entity-naming, but needs more than its `data_name_compose` flag:**
+- `get_netwatch` (`coordinator.py:~1542`) does **not** parse a `name` field — it must be added to the dataset first.
+- netwatch's descriptor sets `data_name_comment=True`, so the collapse fires via the **comment branch** (`entity.py:302-303`), not (only) the `data_name==data_reference` shortcut. Honoring the request requires a **name-vs-comment precedence decision** that conflicts with current comment-first behaviour.
+
+**Plan:** extend `get_netwatch` to parse `name`; decide precedence (likely `name` when present, else `comment`); reuse the general `data_name_compose` mechanism from ADR-013 where applicable. Separate PR — kept out of ADR-013 to keep that change small and gated.
 
 ---
 
@@ -50,15 +70,19 @@ In the environment sensor's value path, return `None` (or set unavailable) when 
 
 ### ENH-260608-test-suite-hardening — migrate tests to spec'd mocks, parametrize, behaviour assertions
 **Type:** Enhancement (test quality)
-**Priority:** Medium
+**Priority:** **High — pre-release deliverable** (maintainer 2026-06-08: must land before the next release)
 **Created:** 2026-06-08
-**Status:** 🟡 In Progress — `test_sensor.py` done as the reference; remaining modules to follow
+**Status:** 🟡 In Progress — `test_sensor.py` done as the reference; new tests written spec'd from now on; remaining modules to follow
 
 The suite leans on unspecced `MagicMock` (yes-man) coordinators/descriptions, near-zero `parametrize`, and assertions on internal representation rather than behaviour. Migrate each module to: `spec=`/real-type mocks (typos/renames fail), `@pytest.mark.parametrize` for data-driven cases, fixtures for shared arrange, and input→output assertions. Full findings: `docs/internal/test-suite-review-2026-06-08.md`.
 
+**Standing rule (maintainer):** new tests must be spec'd/real-typed at write time — do **not** lean on the yes-man factories. (Applied in ADR-013: its `custom_name` tests build the real `MikrotikSensorEntityDescription`.)
+
 - [x] `test_sensor.py` — reference implementation (`feature/test-sensor-exemplar`, CR-260608-test-sensor-exemplar)
+- [x] new ADR-013 tests written spec'd (real description dataclass; behaviour assertions) — `feature/entity-naming`
 - [ ] `conftest.py` — add `spec=` to the shared `make_mock_*` factories (highest value; surfaces yes-man passes across all entity tests)
 - [ ] remaining entity test modules (binary_sensor, switch, button, device_tracker, entity, update)
+- [ ] T1 fw-version decoupling, T4 parametrize clusters, T6 fixtures, T3 `make_coordinator` `object.__new__` (last)
 
 ---
 

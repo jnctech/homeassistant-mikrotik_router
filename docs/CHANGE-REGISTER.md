@@ -4,6 +4,30 @@ Changes listed in reverse chronological order.
 
 ---
 
+## CR-260608-entity-naming — disambiguate colliding client + DHCP-server entity names (ADR-013)
+
+**Date:** 2026-06-08
+**Branch:** `feature/entity-naming` → PR to `dev`
+**Status:** In Review
+
+### What changed
+- **Clients:** new `coordinator.py::_disambiguate_duplicate_hostnames()` (called at end of `async_process_host`) appends the MAC to any `host-name` shared by >1 host → `"{host-name} ({mac})"`. Both client_traffic copy sites inherit it: `_init_accounting_hosts` (fw<7) and `process_kid_control_devices` (fw≥7).
+- **DHCP servers:** new scoped descriptor flag `data_name_compose` on `MikrotikSensorEntityDescription`, set only on `dhcp_server_status` / `dhcp_server_lease_count`; `entity.py::custom_name` honours it to bypass the `data_name==data_reference` equality shortcut → `"{name} DHCP server"`.
+- **Tests:** `tests/test_coordinator.py` (7 cases: shared→suffixed, unique untouched, distinct-MAC-fallback not suffixed, unknown-MAC skip, idempotent, both fw paths propagate) and `tests/test_entity.py` (compose override + scope guard, built from the **real** description dataclass per the test-hardening standard). `conftest.py` mock default updated for the new field.
+
+### Root cause (live-verified, corrected the resume brief)
+Recorder-DB evidence on the running v2.3.18 box showed the client collisions are **non-unique DHCP hostnames** (`lwip0` = lwIP stack default across 6 MACs; `interface`=`bridge`), **not** interface-naming as the brief assumed. DHCP collisions are the `entity.py:306` equality shortcut dropping the distinct per-VLAN `name`. Full analysis + independent-review findings: `docs/decisions/ADR-013-entity-naming-disambiguation.md`.
+
+### Non-breaking
+`unique_id` is unchanged in both families (mac-address / name), so existing entity_ids and automations are preserved; only friendly names + *new* entities change. No migration.
+
+### Notes / cite-or-null
+- Independent review caught and the ADR/impl fixed a v7-path miss (`process_kid_control_devices` is the live RouterOS-7 client_traffic copy site, not `_init_accounting_hosts`).
+- Resolves `ENH-260608-entity-naming`. Netwatch naming (jnctech #70) tracked separately as `ENH-260608-netwatch-naming` (same mechanism, needs `get_netwatch` to parse `name` + a precedence decision).
+- Verified: full suite **606 passed, 5 skipped** under `python:3.14` (WSL-local runner); CI covers 3.13 + 3.14.
+
+---
+
 ## CR-260608-actionlint-pin-retry — harden the actionlint CI step against transient 504s
 
 **Date:** 2026-06-08
