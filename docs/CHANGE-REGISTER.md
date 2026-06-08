@@ -4,6 +4,24 @@ Changes listed in reverse chronological order.
 
 ---
 
+## CR-260608-release-v2.3.19-beta.2 — pre-release for validation of the v2.3.19 roll-up
+
+**Date:** 2026-06-08
+**Branch:** `chore/release-v2.3.19-beta.2` → PR to `dev`
+**Status:** Pre-release — pre-release tag `v2.3.19-beta.2` cut from `dev` for validation before the stable `v2.3.19` (dev→master).
+
+### What Changed
+- `manifest.json` version `2.3.18 → 2.3.19-beta.2`.
+- `README.md`, `info.md` — `v2.3.19-beta.2` What's New rolling up the cycle's user-facing changes.
+
+### Why
+Cut a pre-release (`v2.3.19-beta.2`) so beta-opted HACS users can validate the rolled `dev` state — read-only fw-version capability detection (#82, @ahharvey), reauthentication flow (#89), entity-naming (#94/ADR-013), `quality_scale: silver`, and the §2.1 fw-version fall-through fixes (#97) — before the stable `v2.3.19` is tagged on `master`. (`v2.3.19-beta.1` was cut and deleted earlier this cycle; this is beta.2.)
+
+### Release ops
+Stable `v2.3.19` will bump `2.3.19-beta.2 → 2.3.19`, merge `dev→master`, and tag on `master` (not pre-release), crediting @ahharvey in the What's New.
+
+---
+
 ## CR-260608-fw-version-silent-fallthrough — handle unknown firmware version (0) in fw-gated paths (§2.1)
 
 **Date:** 2026-06-08

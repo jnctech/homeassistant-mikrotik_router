@@ -10,6 +10,15 @@ Monitor and control your MikroTik router from Home Assistant.
 
 ![Mikrotik Logo](https://raw.githubusercontent.com/tomaae/homeassistant-mikrotik_router/master/docs/assets/images/ui/header.png)
 
+### What's new in v2.3.19-beta.2 (pre-release)
+Rolls up the quality-scale and read-only fixes on `dev` for validation before the v2.3.19 stable release. ⚠️ Pre-release — please report issues on GitHub.
+- **Read-only users now get wireless / CAPsMAN / PPP data** — on RouterOS 7.x, an HA user without write/policy/reboot rights previously saw zero wireless clients. The firmware version is now read from `/system/resource`, so capability detection works without granting write access. Thanks to @ahharvey for the fix and wifi-qcom testing. Addresses #82.
+- **Reauthentication flow** — if your router credentials change, re-enter them via the normal Home Assistant reauth prompt instead of deleting and re-adding the integration.
+- **Cleaner entity names** — distinct device-trackers and per-VLAN DHCP-server sensors no longer collide into `_2`/`_3` names (e.g. several devices all reporting the hostname `lwip0`). `unique_id`s are unchanged, so existing entity IDs and automations are preserved.
+- **HA Quality Scale: Silver** — Bronze + Silver tiers met and declared (typed runtime-data, per-platform parallel updates, reauthentication).
+- **More diagnosable firmware detection** — version-gated polling paths now log at debug instead of silently doing nothing while the firmware version is briefly unknown.
+- Internal: test-suite hardening and CI resilience.
+
 ### What's new in v2.3.18
 - **CAPsMAN now works on legacy-wireless routers** — RouterOS 7.13+ devices still running the legacy `wireless` package weren't detecting CAPsMAN wireless clients. Fixed. Addresses #68.
 - **See which AP a wireless client is on** — new `capsman-interface` attribute on device trackers (e.g. `Slaapkamer`), useful for per-room automations. Works even when DHCP/ARP claimed the host first. Existing `interface` / `source` attributes unchanged.
