@@ -1,5 +1,6 @@
 """Unit tests for Mikrotik Router coordinator and apiparser logic."""
 
+import logging
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
 
@@ -17,6 +18,7 @@ from custom_components.mikrotik_router.coordinator import (
 )
 from custom_components.mikrotik_router.const import (
     CONF_SCAN_INTERVAL,
+    CONF_SENSOR_CLIENT_TRAFFIC,
     CONF_SENSOR_POE,
     CONF_SENSOR_PORT_TRAFFIC,
     CONF_TRACK_IFACE_CLIENTS,
@@ -296,6 +298,19 @@ def test_health_fw7_flattens_name_value_pairs():
     assert coordinator.ds["health"]["temperature"] == 50
     assert coordinator.ds["health"]["voltage"] == pytest.approx(12.1)
     assert coordinator.ds["health"]["poe-in-voltage"] == pytest.approx(48.0)
+
+
+def test_health_v0_unknown_skips_and_logs(caplog):
+    """FW version 0 (unknown): system health is skipped, not silently no-op'd."""
+    coordinator = make_coordinator(major_fw_version=0)
+    coordinator.host = "10.0.0.1"
+
+    with caplog.at_level(logging.DEBUG):
+        coordinator.get_system_health()
+
+    assert coordinator.ds["health"] == {}
+    assert coordinator.ds["health7"] == {}
+    assert "skipping system health" in caplog.text
 
 
 # ---------------------------------------------------------------------------
@@ -3394,6 +3409,47 @@ def test_capabilities_ups_and_gps():
     coordinator.get_capabilities()
     assert coordinator.support_ups is True
     assert coordinator.support_gps is True
+
+
+def test_capabilities_v0_unknown_skips_detection_and_logs(caplog):
+    """FW version 0 (unknown): capability detection is skipped, not silently no-op'd."""
+    coordinator = make_coordinator(major_fw_version=0)
+    coordinator.support_ppp = False
+    coordinator.support_capsman = False
+    coordinator.support_wireless = False
+    coordinator.support_ups = False
+    coordinator.support_gps = False
+    coordinator.host = "10.0.0.1"
+    coordinator._wifimodule = "wireless"
+
+    with caplog.at_level(logging.DEBUG):
+        coordinator.get_capabilities()
+
+    assert coordinator.support_capsman is False
+    assert coordinator.support_wireless is False
+    assert coordinator.support_ppp is False
+    assert coordinator._wifimodule == "wireless"
+    assert "skipping capability detection" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_client_traffic_v0_unknown_skips_and_logs(caplog):
+    """FW version 0 (unknown): client traffic collection is skipped, not silently no-op'd."""
+    coordinator = make_coordinator(
+        major_fw_version=0,
+        options={CONF_SENSOR_CLIENT_TRAFFIC: True},
+    )
+    coordinator.host = "10.0.0.1"
+    coordinator.api = MagicMock()
+    coordinator.api.connected.return_value = True
+    coordinator.hass = MagicMock()
+    coordinator.hass.async_add_executor_job = AsyncMock()
+
+    with caplog.at_level(logging.DEBUG):
+        await coordinator._async_update_client_traffic()
+
+    coordinator.hass.async_add_executor_job.assert_not_called()
+    assert "skipping client traffic collection" in caplog.text
 
 
 # ---------------------------------------------------------------------------

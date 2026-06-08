@@ -520,6 +520,11 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
             self._detect_capabilities_v6(packages)
         elif self.major_fw_version >= 7:
             self._detect_capabilities_v7(packages)
+        else:
+            _LOGGER.debug(
+                "Mikrotik %s firmware version unknown (0); skipping capability detection this cycle",
+                self.host,
+            )
 
         for pkg, attr in [
             ("ups", "support_ups"),
@@ -765,6 +770,11 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
             await self.hass.async_add_executor_job(self.process_accounting)
         elif self.major_fw_version >= 7:
             await self.hass.async_add_executor_job(self.process_kid_control_devices)
+        else:
+            _LOGGER.debug(
+                "Mikrotik %s firmware version unknown (0); skipping client traffic collection this cycle",
+                self.host,
+            )
 
     def get_access(self) -> None:
         """Get access rights from Mikrotik"""
@@ -1611,7 +1621,7 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
                     {"name": "poe-in-current", "default": 0},
                 ],
             )
-        elif 0 < self.major_fw_version >= 7:
+        elif self.major_fw_version >= 7:
             self.ds["health7"] = parse_api(
                 data=self.ds["health7"],
                 source=self.api.query("/system/health"),
@@ -1623,6 +1633,11 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
             if self.ds["health7"]:
                 for uid, vals in self.ds["health7"].items():
                     self.ds["health"][uid] = vals["value"]
+        else:
+            _LOGGER.debug(
+                "Mikrotik %s firmware version unknown (0); skipping system health this cycle",
+                self.host,
+            )
 
     # ---------------------------
     #   get_system_resource
