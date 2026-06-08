@@ -4,6 +4,25 @@ Changes listed in reverse chronological order.
 
 ---
 
+## CR-260608-declare-quality-scale — declare `quality_scale: silver` in manifest
+
+**Date:** 2026-06-08
+**Branch:** `feature/declare-quality-scale` → PR to `dev`
+**Status:** In Review
+
+### What changed
+- `custom_components/mikrotik_router/manifest.json`: added `"quality_scale": "silver"` (alphabetical key position, between `issue_tracker` and `requirements`).
+
+### Why
+Bronze and Silver Integration Quality Scale rules are met as of the conformance work this session (parallel-updates, runtime-data, reauthentication-flow merged in #84/#85/#89; scorecard reviewed 2026-06-08 — see `ENH-260608-quality-scale-conformance`). Declaring the tier in the manifest records the achieved level.
+
+### Notes / cite-or-null
+- This is a **fork** of the unmaintained `tomaae/homeassistant-mikrotik_router`; the original (not this fork) is the HACS-store-listed copy, so `quality_scale` here is a conformance signal rather than a store gate.
+- hassfest validates the manifest key order and the `quality_scale` value — verified via the `Check hassfest` CI job on this PR. <!-- HASSFEST-STATUS -->
+- Remaining tiers (Gold `reconfiguration-flow`, Platinum `strict-typing`) are tracked under the conformance ENH, to land with the coordinator decomposition.
+
+---
+
 ## CR-260608-reauthentication-flow — re-auth on invalid credentials (quality-scale Silver)
 
 **Date:** 2026-06-08

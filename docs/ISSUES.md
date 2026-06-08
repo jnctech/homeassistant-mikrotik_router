@@ -42,10 +42,11 @@ Bring the integration to the HA Integration Quality Scale Bronze/Silver baseline
 - [x] **parallel-updates** (Silver) — `PARALLEL_UPDATES` per platform (`feature/parallel-updates`, CR-260608-parallel-updates)
 - [x] **runtime-data** (Bronze) — typed `ConfigEntry.runtime_data` (`feature/runtime-data`, ADR-012, CR-260608-runtime-data)
 - [x] **reauthentication-flow** (Silver) — `async_step_reauth` + raise `ConfigEntryAuthFailed` on `wrong_login` (`feature/reauthentication-flow`, CR-260608-reauthentication-flow)
+- [x] **declare `quality_scale`** — `"quality_scale": "silver"` in `manifest.json` now that Bronze+Silver are met (`feature/declare-quality-scale`, CR-260608-declare-quality-scale)
 - [ ] **reconfiguration-flow** (Gold), **strict-typing** (Platinum) — later, alongside the coordinator decomposition
 - Already conformant: config-flow, has-entity-name, test-before-setup/-configure, entity-unique-id, brands, entity-translations (26 locales), diagnostics, config-entry-unloading.
 
-After Bronze+Silver are met, declare `quality_scale` in `manifest.json`.
+Bronze+Silver met and declared (`quality_scale: silver`). Remaining tiers (Gold reconfiguration-flow, Platinum strict-typing) tracked above.
 
 ---
 
