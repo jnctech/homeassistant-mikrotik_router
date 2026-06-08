@@ -4,6 +4,30 @@ Changes listed in reverse chronological order.
 
 ---
 
+## CR-260608-fw-version-silent-fallthrough — handle unknown firmware version (0) in fw-gated paths (§2.1)
+
+**Date:** 2026-06-08
+**Branch:** `fix/fw-version-silent-fallthrough` → PR to `dev`
+**Status:** In Review
+
+### What changed
+- `coordinator.py` — three `major_fw_version`-gated methods silently no-op'd when the version is `0`; each now has an explicit `else:` that logs at **DEBUG**:
+  - `get_capabilities` (`:519`) — capability detection was skipped, leaving `support_*` flags at defaults silently.
+  - `_async_update_client_traffic` (`:764`) — client-traffic collection was skipped silently.
+  - `get_system_health` (`:1597`) — fixed the malformed chained comparison `elif 0 < self.major_fw_version >= 7` → `elif self.major_fw_version >= 7` (the `0 <` clause was dead; the bug was the `else`-less skip at v0), plus the new `else` log.
+- `tests/test_coordinator.py` — added `major_fw_version=0` cases for all three methods (caplog asserts the no-op is logged and state is unchanged). Existing v7 health tests cover the elif fix.
+
+### Why
+`major_fw_version` initialises to `0` (`coordinator.py:324`) and is only set in `get_firmware_update` (`:1719`), which early-returns for accounts lacking write/policy/reboot and leaves `0` on a firmware-parse failure. So `0` is a real runtime state (primarily read-only accounts), in which capability detection, client-traffic and health silently did nothing with no diagnostic. Resolves `ISS-260608-fw-version-silent-fallthrough` (§2.1).
+
+### Log level
+DEBUG, not WARNING: on a read-only account the version never self-heals, so a per-30s-poll warning would spam. The contributor read-only fw-version fix (#82) addresses the *reachability* at source; this change makes the residual (parse-failure) case observable rather than silent. Coordinated to land alongside #82 in the v2.3.19 roll-up.
+
+### Verification
+Full suite **609 passed, 5 skipped** under `python:3.14` (WSL-local runner on twentyone); ruff lint + format clean (local 0.11.4; CI pins 0.9.0). coordinator-reviewer agent: PASS (one NIT fixed — `@pytest.mark.asyncio` added for consistency). 3.13 leg → CI.
+
+---
+
 ## CR-260608-spec-entity-description — real-typed entity-description test factory (test-hardening pass #1a)
 
 **Date:** 2026-06-08

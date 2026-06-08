@@ -10,7 +10,7 @@
 >
 > **Open threads — the "remaining" for the planning session:**
 > - **`ENH-260608-test-suite-hardening` (HIGH — pre-release deliverable).** Done: `test_sensor.py` (#86), `make_mock_entity_description` real-typed across 6 modules (#95). **Remaining (the big one): `make_mock_coordinator` → `spec=MikrotikCoordinator` — 96 call sites / 7 modules; the review warns it WILL surface real yes-man gaps.** Then T1 fw-version decouple (set `ds["resource"]["version"]`, not `major_fw_version`), T4 parametrize clusters, T6 fixtures, T3 `make_coordinator` `object.__new__` (last/hardest). NOTE: an *older* local branch `feature/test-conftest-coordinator-spec` (`ae1cdde`, unpushed) attempted the coordinator-factory spec early-session — superseded; re-do fresh against current `dev`.
-> - **Code-issue bugs — `refactor-strategy-2026-06-08.md` §2.1, VERIFIED, still NOT filed/fixed.** Silent fall-throughs (no `else`, silently no-op at `major_fw_version == 0`): `coordinator.py:518` (`get_capabilities`), `:750` (`_async_update_client_traffic`), `:1583/1600` (`get_system_health`; the `elif 0 < self.major_fw_version >= 7` is malformed). File an ENH + fix (add `else`/log). Also §2.1: dual-writer temporal coupling, duplicated fw-version regex, bare `except` in `_resolve_manufacturer`/`update.py`, magic RouterOS path literals. (Line numbers predate #94 — re-confirm before fixing.)
+> - **Code-issue bugs — §2.1.** Silent fall-throughs (no `else`, silently no-op at `major_fw_version == 0`): **FILED + FIXED** as `ISS-260608-fw-version-silent-fallthrough` on branch `fix/fw-version-silent-fallthrough` (re-confirmed current lines `coordinator.py:519/764/1597`; the malformed `elif 0 < self.major_fw_version >= 7` corrected). Remaining §2.1 (NOT yet done): dual-writer temporal coupling, duplicated fw-version regex, bare `except` in `_resolve_manufacturer`/`update.py`, magic RouterOS path literals.
 > - **Gold/Platinum conformance** — `reconfiguration-flow` (Gold) + `strict-typing` (Platinum), alongside the coordinator god-object decomposition (`refactor-strategy-2026-06-08.md` Phase 2).
 > - **`ENH-260608-netwatch-naming` (jnctech #70)** — same mechanism as ADR-013's `data_name_compose`, but needs `get_netwatch` to parse `name` + a name-vs-comment precedence decision. Own PR.
 > - **`ISS-260608-env-sensor-empty-state`** — env sensor returns `''` on empty RouterOS var; return `None`/unavailable.
@@ -35,6 +35,25 @@
 ---
 
 ## Active
+
+### ISS-260608-fw-version-silent-fallthrough — fw-version-gated paths silently no-op at version 0
+**Type:** Bug
+**Priority:** Medium
+**Created:** 2026-06-08
+**Status:** 🟡 In Review — fix in `fix/fw-version-silent-fallthrough` → `dev` (CR-260608-fw-version-silent-fallthrough)
+
+**Symptom:**
+When `major_fw_version` is `0`, three version-gated coordinator methods silently did nothing with no diagnostic log: `get_capabilities` (capability detection skipped → `support_*` flags left at defaults), `_async_update_client_traffic` (client-traffic collection skipped), and `get_system_health` (health skipped). For read-only accounts this is a persistent state, so capsman/wireless/ppp sensors and client-traffic could be silently absent.
+
+**Root cause:**
+`major_fw_version` initialises to `0` (`coordinator.py:324`) and is only set in `get_firmware_update` (`:1719`), which early-returns for accounts lacking write/policy/reboot rights and leaves `0` on a firmware-string parse failure. The three `if 0 < v < 7 / elif v >= 7` chains had no `else`, so version 0 fell through silently. `get_system_health` additionally had a malformed `elif 0 < self.major_fw_version >= 7` (dead `0 <` clause; worked for v7 by accident).
+
+**Fix (§2.1):**
+Add an explicit `else:` to each chain that logs at **DEBUG** ("firmware version unknown (0); skipping … this cycle"); fix the malformed elif to `elif self.major_fw_version >= 7`. DEBUG (not WARNING) because a read-only account never self-heals the version → a per-poll warning would spam; the contributor read-only fw-version fix (#82) addresses the *reachability* at source. Tests: `major_fw_version=0` cases for all three (caplog). Verified 609 passed/5 skipped (py3.14); coordinator-reviewer PASS.
+
+**Related:** #82/#81 (read-only fw-version at source); part of the §2.1 batch (remaining §2.1 items still open — see In-flight).
+
+---
 
 ### ENH-260608-entity-naming — distinct entities collide on friendly names (`_N` entity_id suffixes)
 **Type:** Enhancement (entity naming / quality)
