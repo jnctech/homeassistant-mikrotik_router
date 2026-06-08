@@ -146,9 +146,21 @@ async def test_reauth_flow_updates_credentials(hass):
     assert result["type"] == data_entry_flow.FlowResultType.FORM
     assert result["step_id"] == "reauth_confirm"
 
-    with patch(
-        "custom_components.mikrotik_router.config_flow.MikrotikAPI",
-        return_value=_mock_api(connect_return=True),
+    # Patch both import sites: config_flow uses MikrotikAPI for the credential
+    # check, and async_update_reload_and_abort reloads the entry, so coordinator
+    # async_setup_entry instantiates it too. Without the coordinator patch the
+    # real librouteros.connect() reaches the socket layer (HASocketBlockedError);
+    # the reload task is scheduled and only runs before teardown on some Python
+    # versions, so this surfaced as a 3.14-only CI error.
+    with (
+        patch(
+            "custom_components.mikrotik_router.config_flow.MikrotikAPI",
+            return_value=_mock_api(connect_return=True),
+        ),
+        patch(
+            "custom_components.mikrotik_router.coordinator.MikrotikAPI",
+            return_value=_mock_api(connect_return=True),
+        ),
     ):
         result = await hass.config_entries.flow.async_configure(result["flow_id"], {CONF_USERNAME: "admin", CONF_PASSWORD: "newpass"})
 
