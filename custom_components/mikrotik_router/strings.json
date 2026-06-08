@@ -39,6 +39,14 @@
                     "ssl": "Use SSL",
                     "verify_ssl": "Verify SSL"
                 }
+            },
+            "reauth_confirm": {
+                "title": "Re-authenticate Mikrotik Router",
+                "description": "The Mikrotik credentials are no longer valid. Enter the updated username and password.",
+                "data": {
+                    "username": "Username",
+                    "password": "Password"
+                }
             }
         },
         "error": {
@@ -48,6 +56,9 @@
             "ssl_verify_failure": "Certificate verify failed",
             "connection_timeout": "Mikrotik connection timeout.",
             "wrong_login": "Invalid user name or password."
+        },
+        "abort": {
+            "reauth_successful": "Re-authentication was successful"
         }
     },
     "options": {

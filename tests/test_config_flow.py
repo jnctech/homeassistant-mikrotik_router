@@ -2,7 +2,7 @@
 
 from unittest.mock import patch, MagicMock
 
-from homeassistant import data_entry_flow
+from homeassistant import config_entries, data_entry_flow
 from homeassistant.const import (
     CONF_HOST,
     CONF_NAME,
@@ -126,6 +126,52 @@ async def test_flow_user_ssl_error(hass):
 
     assert result["type"] == data_entry_flow.FlowResultType.FORM
     assert result["errors"] == {CONF_HOST: "ssl_handshake_failure"}
+
+
+async def _start_reauth(hass, entry):
+    """Start a reauth flow and return the reauth_confirm form result."""
+    return await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={"source": config_entries.SOURCE_REAUTH, "entry_id": entry.entry_id},
+        data=dict(entry.data),
+    )
+
+
+async def test_reauth_flow_updates_credentials(hass):
+    """Valid new credentials update the entry and abort with reauth_successful."""
+    entry = MockConfigEntry(domain=DOMAIN, data=MOCK_USER_INPUT, unique_id="reauth-1")
+    entry.add_to_hass(hass)
+
+    result = await _start_reauth(hass, entry)
+    assert result["type"] == data_entry_flow.FlowResultType.FORM
+    assert result["step_id"] == "reauth_confirm"
+
+    with patch(
+        "custom_components.mikrotik_router.config_flow.MikrotikAPI",
+        return_value=_mock_api(connect_return=True),
+    ):
+        result = await hass.config_entries.flow.async_configure(result["flow_id"], {CONF_USERNAME: "admin", CONF_PASSWORD: "newpass"})
+
+    assert result["type"] == data_entry_flow.FlowResultType.ABORT
+    assert result["reason"] == "reauth_successful"
+    assert entry.data[CONF_PASSWORD] == "newpass"
+
+
+async def test_reauth_flow_wrong_login_shows_error(hass):
+    """Invalid credentials re-show the reauth form with the wrong_login error."""
+    entry = MockConfigEntry(domain=DOMAIN, data=MOCK_USER_INPUT, unique_id="reauth-2")
+    entry.add_to_hass(hass)
+
+    result = await _start_reauth(hass, entry)
+    with patch(
+        "custom_components.mikrotik_router.config_flow.MikrotikAPI",
+        return_value=_mock_api(connect_return=False, error="wrong_login"),
+    ):
+        result = await hass.config_entries.flow.async_configure(result["flow_id"], {CONF_USERNAME: "admin", CONF_PASSWORD: "bad"})
+
+    assert result["type"] == data_entry_flow.FlowResultType.FORM
+    assert result["step_id"] == "reauth_confirm"
+    assert result["errors"] == {"base": "wrong_login"}
 
 
 async def test_flow_user_duplicate_name(hass):

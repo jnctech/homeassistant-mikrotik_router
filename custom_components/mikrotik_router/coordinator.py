@@ -15,6 +15,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.util.dt import now as dt_now, utcnow
 
 
@@ -622,10 +623,23 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
             await self._run_if_enabled(func)
 
         if not self.api.connected():
-            raise UpdateFailed("Mikrotik Disconnected")
+            self._raise_disconnected()
 
         self.last_hwinfo_update = dt_now().replace(microsecond=0)
         return True
+
+    # ---------------------------
+    #   _raise_disconnected
+    # ---------------------------
+    def _raise_disconnected(self) -> None:
+        """Raise the appropriate error for a lost connection.
+
+        Invalid credentials raise ConfigEntryAuthFailed so HA starts the reauth
+        flow; any other disconnect raises UpdateFailed (transient — retried).
+        """
+        if self.api.error == "wrong_login":
+            raise ConfigEntryAuthFailed("Invalid Mikrotik username or password")
+        raise UpdateFailed("Mikrotik Disconnected")
 
     # ---------------------------
     #   _async_update_data
@@ -690,7 +704,7 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
             await self._run_if_enabled(func, requires=enabled)
 
         if not self.api.connected():
-            raise UpdateFailed("Mikrotik Disconnected")
+            self._raise_disconnected()
 
         # UID tracking: monitor for new entities across update cycles.
         # Dispatcher is NOT fired automatically — _check_entity_exists guard

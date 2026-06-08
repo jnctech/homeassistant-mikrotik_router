@@ -115,16 +115,9 @@ class MikrotikControllerConfigFlow(ConfigFlow, domain=DOMAIN):
                 errors["base"] = "name_exists"
 
             # Test connection
-            api = MikrotikAPI(
-                host=user_input[CONF_HOST],
-                username=user_input[CONF_USERNAME],
-                password=user_input[CONF_PASSWORD],
-                port=user_input[CONF_PORT],
-                use_ssl=user_input[CONF_SSL],
-                ssl_verify=user_input[CONF_VERIFY_SSL],
-            )
-            if not await self.hass.async_add_executor_job(api.connect):
-                errors[CONF_HOST] = api.error
+            error = await self.hass.async_add_executor_job(self._validate_connection, user_input)
+            if error:
+                errors[CONF_HOST] = error
 
             # Save instance
             if not errors:
@@ -142,6 +135,44 @@ class MikrotikControllerConfigFlow(ConfigFlow, domain=DOMAIN):
                 CONF_SSL: DEFAULT_SSL,
                 CONF_VERIFY_SSL: DEFAULT_VERIFY_SSL,
             },
+            errors=errors,
+        )
+
+    def _validate_connection(self, data) -> str | None:
+        """Test the RouterOS connection (sync). Returns an error key, or None on success."""
+        api = MikrotikAPI(
+            host=data[CONF_HOST],
+            username=data[CONF_USERNAME],
+            password=data[CONF_PASSWORD],
+            port=data[CONF_PORT],
+            use_ssl=data[CONF_SSL],
+            ssl_verify=data[CONF_VERIFY_SSL],
+        )
+        if not api.connect():
+            return api.error or "cannot_connect"
+        return None
+
+    async def async_step_reauth(self, entry_data):
+        """Handle re-auth triggered by ConfigEntryAuthFailed (invalid credentials)."""
+        return await self.async_step_reauth_confirm()
+
+    async def async_step_reauth_confirm(self, user_input=None):
+        """Re-prompt for credentials and validate them against the router."""
+        errors = {}
+        reauth_entry = self._get_reauth_entry()
+        if user_input is not None:
+            error = await self.hass.async_add_executor_job(self._validate_connection, {**reauth_entry.data, **user_input})
+            if not error:
+                return self.async_update_reload_and_abort(reauth_entry, data_updates=user_input)
+            errors["base"] = error
+        return self.async_show_form(
+            step_id="reauth_confirm",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(CONF_USERNAME, default=reauth_entry.data[CONF_USERNAME]): str,
+                    vol.Required(CONF_PASSWORD): str,
+                }
+            ),
             errors=errors,
         )
 
