@@ -21,6 +21,15 @@ Monitor and control your entire MikroTik network from Home Assistant. This HACS 
 
 ---
 
+## What's New — v2.3.19
+
+Internal reliability and Home Assistant best-practice (Integration Quality Scale) work — no new entities or user-facing behaviour changes.
+
+- Runtime state is now stored on Home Assistant's typed `ConfigEntry.runtime_data` instead of a global dict, so config-entry reloads and unloads are cleaner ([ADR-012](docs/decisions/ADR-012-config-entry-runtime-data.md)).
+- Each platform declares its update concurrency (`PARALLEL_UPDATES`).
+- The `cleanup_entities` / `cleanup_stale_hosts` services now distinguish "entry not found" from "entry not loaded" in their errors.
+- Test-suite quality improvements (no shipped behaviour change).
+
 ## What's New — v2.3.18
 
 CAPsMAN now works on RouterOS 7.13+ devices that still run the legacy `wireless` package. Wireless clients on those setups weren't being detected before; they are now.

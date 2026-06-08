@@ -4,6 +4,32 @@ Changes listed in reverse chronological order.
 
 ---
 
+## CR-260608-release-v2.3.19 — version bump + What's New for the v2.3.19 stable release
+
+**Date:** 2026-06-08
+**Branch:** `chore/release-v2.3.19` → PR to `dev` (DRAFT — hold until `v2.3.19-beta.1` validates)
+**Status:** Draft
+
+### What Changed
+
+| Area | Change |
+|------|--------|
+| `custom_components/mikrotik_router/manifest.json` | Version `2.3.18 → 2.3.19`. |
+| `info.md`, `README.md` | v2.3.19 "What's New" — honest framing: internal reliability + HA Quality-Scale conformance, no new entities / user-facing behaviour. |
+
+### Why
+
+Stable release-prep for the conformance line already on `dev` (runtime-data CR-260608-runtime-data / ADR-012, parallel-updates CR-260608-parallel-updates, test-sensor-exemplar). Cut as a **draft** so the manifest bump lands only after `v2.3.19-beta.1` (cut from `dev`, manifest still 2.3.18 per the beta convention) is validated.
+
+### Release sequence (fire when beta validates)
+
+1. Mark this PR ready → merge to `dev` (manifest on `dev` becomes 2.3.19).
+2. Merge `dev → master` with a **real merge commit** (keeps `dev ⊇ master`; per ISS-260608 sync rule).
+3. Create a GitHub Release, tag **`v2.3.19`**, target `master`, **not** pre-release → `release.yml` builds + attaches `mikrotik_router.zip`.
+4. HACS serves `v2.3.19` as the stable version.
+
+---
+
 ## CR-260608-test-sensor-exemplar — rework test_sensor.py as the test-quality reference
 
 **Date:** 2026-06-08
