@@ -4,11 +4,39 @@ Changes listed in reverse chronological order.
 
 ---
 
+## CR-260608-parallel-updates — declare `PARALLEL_UPDATES` per platform (quality-scale Silver)
+
+**Date:** 2026-06-08
+**Branch:** `feature/parallel-updates` → PR to `dev`
+**Status:** In Review
+
+### What Changed
+
+| Area | Change |
+|------|--------|
+| `sensor.py`, `binary_sensor.py`, `device_tracker.py` | `PARALLEL_UPDATES = 0` — read-only platforms; the coordinator centralises all polling, so entity updates do no per-entity device I/O. |
+| `switch.py`, `button.py`, `update.py` | `PARALLEL_UPDATES = 1` — these send commands to the router (switch toggle, button press, `update.async_install`); serialise to avoid simultaneous writes RouterOS can mishandle. |
+
+### Why
+
+Closes the HA Integration Quality-Scale **Silver `parallel-updates`** rule: every platform must explicitly declare update parallelism. Values follow the rule's guidance for coordinator-based integrations (0 for read-only, a limit for command platforms).
+
+### Quality Gate Results
+
+| Metric | Value | Gate |
+|--------|-------|------|
+| Ruff lint + format | All checks passed | ✅ |
+| Pre-PR review | **Light pass** (per workflow: scale to diff size) — declarative module constants; nothing for `/simplify` (no logic) or silent-failure-hunter (no error handling); values verified against the official rule | ✅ |
+| Pytest | 593 passed, 5 skipped (devbox `python:3.13`) | ✅ |
+| ADR | None — not a data-format / entity-identity / API-contract change | n/a |
+
+---
+
 ## CR-260608-sync-master-to-dev — reconcile diverged branches + document the sync model
 
 **Date:** 2026-06-08
-**Branch:** `chore/sync-master-to-dev` → PR to `dev`
-**Status:** In Review
+**Branch:** `chore/sync-master-to-dev` → PR #83 to `dev` (merge commit)
+**Status:** Merged
 
 ### What Changed
 

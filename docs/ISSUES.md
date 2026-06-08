@@ -17,11 +17,29 @@
 
 ## Active
 
+### ENH-260608-quality-scale-conformance — close HA Integration Quality Scale gaps
+**Type:** Enhancement (conformance)
+**Priority:** Medium
+**Created:** 2026-06-08
+**Status:** 🟡 In Progress
+
+Bring the integration to the HA Integration Quality Scale Bronze/Silver baseline. Verified scorecard reviewed against the official rules 2026-06-08.
+
+- [x] **parallel-updates** (Silver) — `PARALLEL_UPDATES` per platform (`feature/parallel-updates`, CR-260608-parallel-updates)
+- [ ] **runtime-data** (Bronze) — typed `ConfigEntry.runtime_data` (drafted; ADR pending)
+- [ ] **reauthentication-flow** (Silver) — `async_step_reauth` + raise `ConfigEntryAuthFailed` on `wrong_login`
+- [ ] **reconfiguration-flow** (Gold), **strict-typing** (Platinum) — later, alongside the coordinator decomposition
+- Already conformant: config-flow, has-entity-name, test-before-setup/-configure, entity-unique-id, brands, entity-translations (26 locales), diagnostics, config-entry-unloading.
+
+After Bronze+Silver are met, declare `quality_scale` in `manifest.json`.
+
+---
+
 ### ISS-260608-dev-master-divergence — `dev` and `master` synced by parallel commits, not merges
 **Type:** Process / repo hygiene
 **Priority:** Medium
 **Created:** 2026-06-08
-**Status:** 🟢 Reconciled on `chore/sync-master-to-dev` (PR to `dev`); going-forward rule added to CLAUDE.md
+**Status:** 🟢 Reconciled on `dev` (PR #83, merge commit); going-forward rule added to CLAUDE.md
 
 **Symptom:**
 `git merge-base --is-ancestor origin/master origin/dev` returned **false** — `master` appeared "4 commits ahead" of `dev` even though the *code trees were content-identical* (only `README.md` differed by the PoE-energy guide). The 4 commits were patch-duplicates already on `dev` under different SHAs (e.g. `b98b7e2 fix(ci): lock-threads` vs `f71da08 …(dev parity)`; `1877bb5 Release v2.3.18` vs `4adda71`).
@@ -30,7 +48,7 @@
 master↔dev were kept in sync by **re-applying changes as parallel commits** (`…(dev parity)`, duplicate release commits) instead of true merges, so git never recorded shared history and the branches drift permanently. This makes feature branching ambiguous (which base?) and PRs noisy (a master-based branch rebased onto dev drags master-only commits along).
 
 **Resolution:**
-One-time `master → dev` reconciliation merge (`chore/sync-master-to-dev`) — clean, brought only the README PoE guide. Going forward: features → `dev` → `master`; releases cut by **merging** `dev → master`; any hotfix landing on `master` first is **back-merged to `dev` with a real merge commit** so `dev ⊇ master` always holds. Rule documented in CLAUDE.md § Branch Strategy.
+One-time `master → dev` reconciliation **merge commit** (PR #83) — clean, brought only the README PoE guide. Going forward: features → `dev` → `master`; releases cut by **merging** `dev → master`; any hotfix landing on `master` first is **back-merged to `dev` with a real merge commit** so `dev ⊇ master` always holds. Rule documented in CLAUDE.md § Branch Strategy.
 
 ---
 
