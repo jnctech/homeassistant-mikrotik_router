@@ -44,6 +44,7 @@ def _entity_with_real_desc(data_path, uid, row, **desc_kwargs):
     with patch_coordinator_entity_init():
         return MikrotikEntity(coord, desc, uid)
 
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
