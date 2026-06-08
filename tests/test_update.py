@@ -12,6 +12,10 @@ from custom_components.mikrotik_router.update import (
     decrement_version,
 )
 
+from custom_components.mikrotik_router.update_types import (
+    MikrotikUpdateEntityDescription,
+)
+
 from .conftest import (
     make_mock_coordinator,
     make_mock_entity_description,
@@ -82,7 +86,7 @@ class TestGenerateVersionList:
 
 def _make_update_entity(cls=MikrotikRouterOSUpdate, coordinator=None, desc_overrides=None, uid=None):
     coord = coordinator or make_mock_coordinator()
-    desc = make_mock_entity_description(**(desc_overrides or {}))
+    desc = make_mock_entity_description(cls=MikrotikUpdateEntityDescription, **(desc_overrides or {}))
     with patch_coordinator_entity_init():
         entity = cls(coord, desc, uid)
     entity.hass = MagicMock()

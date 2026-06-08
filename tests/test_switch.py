@@ -15,6 +15,10 @@ from custom_components.mikrotik_router.switch import (
     MikrotikContainerSwitch,
 )
 
+from custom_components.mikrotik_router.switch_types import (
+    MikrotikSwitchEntityDescription,
+)
+
 from .conftest import (
     make_mock_coordinator,
     make_mock_entity_description,
@@ -24,7 +28,7 @@ from .conftest import (
 
 def _make_switch(cls=MikrotikSwitch, coordinator=None, desc_overrides=None, uid=None):
     coord = coordinator or make_mock_coordinator()
-    desc = make_mock_entity_description(**(desc_overrides or {}))
+    desc = make_mock_entity_description(cls=MikrotikSwitchEntityDescription, **(desc_overrides or {}))
     with patch_coordinator_entity_init():
         entity = cls(coord, desc, uid)
     entity.hass = MagicMock()

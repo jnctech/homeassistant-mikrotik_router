@@ -9,6 +9,9 @@ from custom_components.mikrotik_router.button import (
     MikrotikScriptButton,
 )
 from custom_components.mikrotik_router.exceptions import ApiEntryNotFound
+from custom_components.mikrotik_router.button_types import (
+    MikrotikButtonEntityDescription,
+)
 
 from .conftest import (
     make_mock_coordinator,
@@ -19,7 +22,7 @@ from .conftest import (
 
 def _make_button(cls=MikrotikButton, coordinator=None, desc_overrides=None, uid=None):
     coord = coordinator or make_mock_coordinator()
-    desc = make_mock_entity_description(**(desc_overrides or {}))
+    desc = make_mock_entity_description(cls=MikrotikButtonEntityDescription, **(desc_overrides or {}))
     with patch_coordinator_entity_init():
         entity = cls(coord, desc, uid)
     entity.hass = MagicMock()

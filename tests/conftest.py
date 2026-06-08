@@ -1,10 +1,15 @@
 """Fixtures for Mikrotik Router tests."""
 
+import dataclasses
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from homeassistant.const import CONF_NAME, CONF_HOST
+
+from custom_components.mikrotik_router.sensor_types import (
+    MikrotikSensorEntityDescription,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -18,36 +23,50 @@ def auto_enable_custom_integrations(enable_custom_integrations):
 # ---------------------------------------------------------------------------
 
 
-def make_mock_entity_description(**overrides):
-    """Build a MagicMock entity description with all fields entity.py expects."""
-    desc = MagicMock()
-    defaults = {
-        "key": "test_key",
-        "name": "Test Sensor",
-        "func": "MikrotikSensor",
-        "ha_group": "System",
-        "ha_connection": None,
-        "ha_connection_value": None,
-        "data_path": "interface",
-        "data_attribute": "enabled",
-        "data_name": "name",
-        "data_name_comment": False,
-        "data_name_compose": False,
-        "data_uid": "",
-        "data_reference": "name",
-        "data_attributes_list": [],
-        "data_switch_path": "/interface",
-        "data_switch_parameter": "disabled",
-        "icon_enabled": "mdi:check",
-        "icon_disabled": "mdi:close",
-        "native_unit_of_measurement": None,
-        "suggested_unit_of_measurement": None,
-        "title": "Test",
-    }
-    defaults.update(overrides)
-    for k, v in defaults.items():
-        setattr(desc, k, v)
-    return desc
+# Shared defaults spanning every platform's description. The factory filters
+# these to the fields the chosen class actually declares, so e.g. a switch test
+# can't lean on a sensor-only field.
+_ENTITY_DESC_DEFAULTS = {
+    "key": "test_key",
+    "name": "Test Sensor",
+    "func": "MikrotikSensor",
+    "ha_group": "System",
+    "ha_connection": None,
+    "ha_connection_value": None,
+    "data_path": "interface",
+    "data_attribute": "enabled",
+    "data_name": "name",
+    "data_name_comment": False,
+    "data_name_compose": False,
+    "data_uid": "",
+    "data_reference": "name",
+    "data_attributes_list": [],
+    "data_switch_path": "/interface",
+    "data_switch_parameter": "disabled",
+    "icon_enabled": "mdi:check",
+    "icon_disabled": "mdi:close",
+    "native_unit_of_measurement": None,
+    "suggested_unit_of_measurement": None,
+}
+
+
+def make_mock_entity_description(cls=MikrotikSensorEntityDescription, **overrides):
+    """Build a REAL Mikrotik*EntityDescription of the given platform type.
+
+    Unlike the old yes-man MagicMock (which returned a truthy Mock for *any*
+    attribute, hiding renamed/removed fields), this constructs the real frozen-ish
+    dataclass. Shared defaults are filtered to the fields the class declares;
+    overrides are passed straight through, so a field that does not exist on `cls`
+    raises TypeError — surfacing a test coupled to the wrong platform's description.
+
+    Pass `cls=` the platform description under test (e.g.
+    MikrotikSwitchEntityDescription for switch tests).
+    """
+    valid = {f.name for f in dataclasses.fields(cls)}
+    fields = {k: v for k, v in _ENTITY_DESC_DEFAULTS.items() if k in valid}
+    fields.update(overrides)
+    fields.setdefault("key", "test_key")
+    return cls(**fields)
 
 
 def make_mock_coordinator(data=None, options=None, name="TestRouter", host="10.0.0.1"):

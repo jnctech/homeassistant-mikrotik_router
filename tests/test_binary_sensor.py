@@ -6,6 +6,9 @@ from custom_components.mikrotik_router.binary_sensor import (
     MikrotikPortBinarySensor,
 )
 from custom_components.mikrotik_router.const import CONF_SENSOR_PPP
+from custom_components.mikrotik_router.binary_sensor_types import (
+    MikrotikBinarySensorEntityDescription,
+)
 
 from .conftest import (
     make_mock_coordinator,
@@ -16,7 +19,7 @@ from .conftest import (
 
 def _make_binary_sensor(cls=MikrotikBinarySensor, coordinator=None, desc_overrides=None, uid=None):
     coord = coordinator or make_mock_coordinator()
-    desc = make_mock_entity_description(**(desc_overrides or {}))
+    desc = make_mock_entity_description(cls=MikrotikBinarySensorEntityDescription, **(desc_overrides or {}))
     with patch_coordinator_entity_init():
         entity = cls(coord, desc, uid)
     return entity
