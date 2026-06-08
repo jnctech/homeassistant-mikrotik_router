@@ -55,6 +55,23 @@ Add an explicit `else:` to each chain that logs at **DEBUG** ("firmware version 
 
 ---
 
+### ISS-260608-readonly-capability-detection — capability detection fails for read-only users on RouterOS 7.x
+**Type:** Bug
+**Priority:** High
+**Created:** 2026-06-08
+**Status:** 🟢 Core fix MERGED to `dev` (PR [#81](https://github.com/jnctech/homeassistant-mikrotik_router/pull/81), @ahharvey, merge `3b14465`). Maintainer hardening (tests + log + docs) In Review in `fix/issue-82-hardening` → `dev`. Ships in the rolled `v2.3.19` release.
+
+**Symptom:**
+On RouterOS 7.x, an integration user without `write`/`policy`/`reboot` permissions silently gets no wireless / CAPsMAN / PPP / per-client-traffic data — e.g. `sensor._wireless_clients` reads `0` with clients connected, and `wifi-qcom` routers are queried on the non-existent `/interface/wireless` endpoint (`400 "no such command or directory (wireless)"`). Reported in [#82](https://github.com/jnctech/homeassistant-mikrotik_router/issues/82) by @ahharvey (hAP ax³ / wifi-qcom, RouterOS 7.22.3).
+
+**Root cause:**
+`major_fw_version` is only parsed inside `get_firmware_update()`, which early-returns under read-only access. It stays `0`, so `get_capabilities()` dispatch (gated on `major_fw_version`) never runs and support flags / `_wifimodule` keep their defaults.
+
+**Fix:**
+New `_parse_fw_version_from_resource()` parses the version from the read-only `/system/resource.version` at the tail of `get_system_resource()` (runs before `get_capabilities()` in the hwinfo loop). Self-skips when `major_fw_version > 0`, leaving the privileged `get_firmware_update()` path authoritative. Maintainer hardening adds 7 tests + a DEBUG log on the version-unavailable branch. No ADR (internal sourcing change). Complements `ISS-260608-fw-version-silent-fallthrough` (§2.1, downstream consumers).
+
+---
+
 ### ENH-260608-entity-naming — distinct entities collide on friendly names (`_N` entity_id suffixes)
 **Type:** Enhancement (entity naming / quality)
 **Priority:** Medium

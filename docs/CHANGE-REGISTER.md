@@ -24,7 +24,36 @@ Changes listed in reverse chronological order.
 DEBUG, not WARNING: on a read-only account the version never self-heals, so a per-30s-poll warning would spam. The contributor read-only fw-version fix (#82) addresses the *reachability* at source; this change makes the residual (parse-failure) case observable rather than silent. Coordinated to land alongside #82 in the v2.3.19 roll-up.
 
 ### Verification
-Full suite **609 passed, 5 skipped** under `python:3.14` (WSL-local runner on twentyone); ruff lint + format clean (local 0.11.4; CI pins 0.9.0). coordinator-reviewer agent: PASS (one NIT fixed — `@pytest.mark.asyncio` added for consistency). 3.13 leg → CI.
+Full suite **609 passed, 5 skipped** under `python:3.14` (WSL-local runner on twentyone); ruff lint + format clean (local 0.11.4; CI pins 0.9.0). coordinator-reviewer agent: PASS (one NIT fixed — `@pytest.mark.asyncio` added for consistency). 3.13 + 3.14 green in CI (#97).
+
+---
+
+## CR-260608-issue-82-readonly-fw-version — read-only users get capability detection on RouterOS 7.x
+
+**Date:** 2026-06-08
+**Branch:** core fix in PR [#81](https://github.com/jnctech/homeassistant-mikrotik_router/pull/81) (`ahharvey:fix/major-fw-version-readonly-fallback`, **merged to `dev`** via merge commit `3b14465`, authorship preserved); maintainer hardening (tests + log + docs) in `fix/issue-82-hardening` → PR to `dev`.
+**Status:** Core fix merged (#81); hardening In Review. Version bump deferred to the rolled `v2.3.19` release (crediting @ahharvey there).
+
+### What Changed
+
+| Area | Change |
+|------|--------|
+| `coordinator.py` | New `_parse_fw_version_from_resource()` parses `major`/`minor_fw_version` from the read-only `/system/resource.version`, called at the tail of `get_system_resource()`. Self-skips when `major_fw_version > 0`, so `get_firmware_update()` (write-gated) stays authoritative for privileged users. *(ahharvey, #81)* |
+| `coordinator.py` | **Hardening:** DEBUG log when `/system/resource.version` is unavailable/`unknown` — a silent-failure-hunter finding; the falsy/`unknown` early-return otherwise degraded to default capability detection with no log signal. |
+| `tests/test_coordinator.py` | **Hardening:** 7 tests — major/minor parse, bare-major default, privileged self-skip, `unknown`/missing/malformed no-ops, and an end-to-end read-only cascade (wifi-qcom under a `read,api,sensitive` user → `_wifimodule="wifi"`, `support_wireless=True`). |
+| `docs/ISSUES.md` | New `ISS-260608-readonly-capability-detection`. |
+
+### Why
+
+On RouterOS 7.x, `major_fw_version` had only one writer outside `__init__` — `get_firmware_update()`, which early-returns when the user lacks `write`+`policy`+`reboot`. Under a read-only HA user it stayed `0`, so `get_capabilities()` (dispatch gated on `major_fw_version`) never ran: `support_wireless`/`support_capsman`/`support_ppp` kept defaults and `_wifimodule` stayed `"wireless"`, querying `/interface/wireless/registration-table` — which returns `400 "no such command or directory (wireless)"` on wifi-qcom. The current firmware version is read-accessible at `/system/resource.version`, so parsing it there (before `get_capabilities()` in the hwinfo loop) restores detection without granting write access; the `check-for-updates` action and `update.*` entities remain write-gated. Relates to `ISS-260608-fw-version-silent-fallthrough` (§2.1) which makes the *downstream* consumers diagnosable when the version is still unknown.
+
+### Quality Gate Results
+
+| Metric | Value | Gate |
+|--------|-------|------|
+| Pytest | Full suite **613 passed, 5 skipped** under `python:3.14` (WSL2 runner) on the hardening branch (dev + #81 + hardening). | ✅ |
+| Ruff | lint + format clean (local 0.11.4; CI pins 0.9.0). | ✅ |
+| ADR | None — internal version-sourcing change, not a data-format / entity-identity / API-contract change. | n/a |
 
 ---
 
