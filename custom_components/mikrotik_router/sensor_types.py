@@ -94,6 +94,10 @@ class MikrotikSensorEntityDescription(SensorEntityDescription):
     data_attribute: str | None = None
     data_name: str | None = None
     data_name_comment: bool = False
+    # When True, custom_name always composes "{data_name} {name}" and skips the
+    # data_name==data_reference equality shortcut (used where a single device
+    # hosts several same-typed entities, e.g. per-VLAN DHCP servers). See ADR-013.
+    data_name_compose: bool = False
     data_uid: str | None = None
     data_reference: str | None = None
     data_attributes_list: list = field(default_factory=list)
@@ -884,6 +888,7 @@ SENSOR_TYPES: tuple[MikrotikSensorEntityDescription, ...] = (
         data_path="dhcp-server",
         data_attribute="status",
         data_name="name",
+        data_name_compose=True,
         data_uid="name",
         data_reference="name",
         data_attributes_list=DEVICE_ATTRIBUTES_DHCP_SERVER,
@@ -900,6 +905,7 @@ SENSOR_TYPES: tuple[MikrotikSensorEntityDescription, ...] = (
         data_path="dhcp-server",
         data_attribute="lease-count",
         data_name="name",
+        data_name_compose=True,
         data_uid="name",
         data_reference="name",
         data_attributes_list=DEVICE_ATTRIBUTES_DHCP_SERVER,

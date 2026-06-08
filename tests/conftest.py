@@ -32,6 +32,7 @@ def make_mock_entity_description(**overrides):
         "data_attribute": "enabled",
         "data_name": "name",
         "data_name_comment": False,
+        "data_name_compose": False,
         "data_uid": "",
         "data_reference": "name",
         "data_attributes_list": [],

@@ -420,6 +420,111 @@ def make_coordinator_for_host(arp_entries=None, dhcp_entries=None, host_entries=
     return coordinator
 
 
+# ---------------------------------------------------------------------------
+# _disambiguate_duplicate_hostnames (ADR-013)
+# ---------------------------------------------------------------------------
+
+
+def _host(mac, host_name, address="192.168.88.1"):
+    return {"mac-address": mac, "host-name": host_name, "address": address}
+
+
+def test_disambiguate_appends_mac_for_shared_hostname():
+    """Distinct MACs reporting the same host-name (e.g. lwIP 'lwip0') get the MAC
+    appended, yielding distinct, stable display names."""
+    coord = make_coordinator()
+    coord.ds["host"] = {
+        "B0:F8:93:DE:60:AD": _host("B0:F8:93:DE:60:AD", "lwip0"),
+        "C0:F8:53:9C:E6:E3": _host("C0:F8:53:9C:E6:E3", "lwip0"),
+    }
+    coord._disambiguate_duplicate_hostnames()
+    names = [v["host-name"] for v in coord.ds["host"].values()]
+    assert names == ["lwip0 (B0:F8:93:DE:60:AD)", "lwip0 (C0:F8:53:9C:E6:E3)"]
+    assert len(set(names)) == 2  # distinct
+
+
+def test_disambiguate_leaves_unique_hostname_unchanged():
+    coord = make_coordinator()
+    coord.ds["host"] = {
+        "AA:BB:CC:00:00:01": _host("AA:BB:CC:00:00:01", "mypc"),
+        "AA:BB:CC:00:00:02": _host("AA:BB:CC:00:00:02", "lwip0"),
+        "AA:BB:CC:00:00:03": _host("AA:BB:CC:00:00:03", "lwip0"),
+    }
+    coord._disambiguate_duplicate_hostnames()
+    assert coord.ds["host"]["AA:BB:CC:00:00:01"]["host-name"] == "mypc"  # unique → untouched
+    assert coord.ds["host"]["AA:BB:CC:00:00:02"]["host-name"] == "lwip0 (AA:BB:CC:00:00:02)"
+
+
+def test_disambiguate_distinct_mac_fallbacks_not_suffixed():
+    """Two hosts that fell back to their own MAC have distinct host-names already,
+    so they are not 'shared' and must not be double-suffixed."""
+    coord = make_coordinator()
+    coord.ds["host"] = {
+        "AA:BB:CC:00:00:01": _host("AA:BB:CC:00:00:01", "AA:BB:CC:00:00:01"),
+        "AA:BB:CC:00:00:02": _host("AA:BB:CC:00:00:02", "AA:BB:CC:00:00:02"),
+    }
+    coord._disambiguate_duplicate_hostnames()
+    assert coord.ds["host"]["AA:BB:CC:00:00:01"]["host-name"] == "AA:BB:CC:00:00:01"
+    assert coord.ds["host"]["AA:BB:CC:00:00:02"]["host-name"] == "AA:BB:CC:00:00:02"
+
+
+def test_disambiguate_skips_unknown_mac():
+    """A shared host-name with no usable MAC cannot be disambiguated → left as-is."""
+    coord = make_coordinator()
+    coord.ds["host"] = {
+        "h1": {"mac-address": "unknown", "host-name": "lwip0", "address": "x"},
+        "h2": {"mac-address": "unknown", "host-name": "lwip0", "address": "y"},
+    }
+    coord._disambiguate_duplicate_hostnames()
+    assert coord.ds["host"]["h1"]["host-name"] == "lwip0"
+    assert coord.ds["host"]["h2"]["host-name"] == "lwip0"
+
+
+def test_disambiguate_is_idempotent():
+    """Re-running must not append the MAC twice (suffixed names are unique → count 1)."""
+    coord = make_coordinator()
+    coord.ds["host"] = {
+        "B0:F8:93:DE:60:AD": _host("B0:F8:93:DE:60:AD", "lwip0"),
+        "C0:F8:53:9C:E6:E3": _host("C0:F8:53:9C:E6:E3", "lwip0"),
+    }
+    coord._disambiguate_duplicate_hostnames()
+    coord._disambiguate_duplicate_hostnames()
+    assert coord.ds["host"]["B0:F8:93:DE:60:AD"]["host-name"] == "lwip0 (B0:F8:93:DE:60:AD)"
+
+
+def test_disambiguated_name_propagates_to_client_traffic_fw_lt7():
+    """fw<7 path: _init_accounting_hosts copies the disambiguated host-name."""
+    coord = make_coordinator(major_fw_version=6)
+    coord.ds["host"] = {
+        "B0:F8:93:DE:60:AD": {
+            "mac-address": "B0:F8:93:DE:60:AD",
+            "host-name": "lwip0 (B0:F8:93:DE:60:AD)",
+            "address": "192.168.88.71",
+        }
+    }
+    coord.ds["client_traffic"] = {}
+    coord._init_accounting_hosts()
+    assert coord.ds["client_traffic"]["B0:F8:93:DE:60:AD"]["host-name"] == "lwip0 (B0:F8:93:DE:60:AD)"
+
+
+def test_disambiguated_name_propagates_to_client_traffic_fw_ge7():
+    """fw>=7 path (the live RouterOS-7 path): process_kid_control_devices copies it."""
+    coord = make_coordinator(major_fw_version=7)
+    coord.ds["host"] = {
+        "B0:F8:93:DE:60:AD": {
+            "mac-address": "B0:F8:93:DE:60:AD",
+            "host-name": "lwip0 (B0:F8:93:DE:60:AD)",
+            "address": "192.168.88.71",
+        }
+    }
+    coord.ds["client_traffic"] = {}
+    coord.notified_flags = []
+    coord.api.query = MagicMock(return_value=[])  # no kid-control data → early return after copy
+    coord.api.take_client_traffic_snapshot = MagicMock(return_value=0)
+    coord.process_kid_control_devices()
+    assert coord.ds["client_traffic"]["B0:F8:93:DE:60:AD"]["host-name"] == "lwip0 (B0:F8:93:DE:60:AD)"
+
+
 @pytest.mark.asyncio
 async def test_arp_host_becomes_available():
     """ARP host present in current ARP table is marked available=True."""

@@ -2723,6 +2723,37 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
         if mac_tasks:
             await asyncio.gather(*mac_tasks)
 
+        self._disambiguate_duplicate_hostnames()
+
+    # ---------------------------
+    #   _disambiguate_duplicate_hostnames
+    # ---------------------------
+    def _disambiguate_duplicate_hostnames(self) -> None:
+        """Append the MAC to host-names shared by more than one host.
+
+        Some devices report a non-unique DHCP hostname (e.g. the lwIP stack
+        default "lwip0" on ESP-class IoT devices), so several distinct MACs share
+        one display name and HA disambiguates them with _2/_3 entity_id suffixes.
+        When a host-name is shared, append the MAC for a distinct, stable name.
+
+        Runs at the end of async_process_host (before client_traffic is built by
+        either _init_accounting_hosts (fw<7) or process_kid_control_devices (fw>=7),
+        both of which copy host-name), so device_tracker and client_traffic sensors
+        all inherit the disambiguated name. unique_id keys on mac-address, so it is
+        unchanged and existing entity_ids are preserved. See ADR-013.
+
+        Idempotent across polls: host-name is re-read raw from the API each cycle,
+        and suffixed names are unique per MAC (count == 1), so they never re-suffix.
+        """
+        counts: dict[str, int] = {}
+        for vals in self.ds["host"].values():
+            counts[vals["host-name"]] = counts.get(vals["host-name"], 0) + 1
+
+        for uid, vals in self.ds["host"].items():
+            mac = vals["mac-address"]
+            if counts.get(vals["host-name"], 0) > 1 and mac != "unknown":
+                self.ds["host"][uid]["host-name"] = f"{vals['host-name']} ({mac})"
+
     # ---------------------------
     #   process_accounting
     # ---------------------------

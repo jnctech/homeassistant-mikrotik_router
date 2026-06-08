@@ -134,6 +134,47 @@ class TestMikrotikEntityCustomName:
         )
         assert entity.custom_name == "Port"
 
+    def test_custom_name_compose_overrides_equality_shortcut(self):
+        """data_name_compose=True composes even when data_reference == data_name.
+
+        Per-VLAN DHCP servers share the System device and have
+        data_name == data_reference == 'name', so the equality shortcut would
+        collapse them all to the static label. data_name_compose keeps the
+        distinguishing name. See ADR-013.
+        """
+        coord = make_mock_coordinator()
+        coord.data["dhcp-server"] = {"dhcp88": {"name": "dhcp88", "status": "enabled"}}
+        entity = _make_entity(
+            coordinator=coord,
+            desc_overrides={
+                "name": "DHCP server",
+                "data_path": "dhcp-server",
+                "data_reference": "name",
+                "data_name": "name",
+                "data_name_compose": True,
+            },
+            uid="dhcp88",
+        )
+        assert entity.custom_name == "dhcp88 DHCP server"
+
+    def test_custom_name_compose_false_still_shortens(self):
+        """Scope guard: without data_name_compose the equality shortcut still fires,
+        so unrelated entities (queue, poe, …) are unaffected by ADR-013."""
+        coord = make_mock_coordinator()
+        coord.data["queue"] = {"q1": {"name": "q1"}}
+        entity = _make_entity(
+            coordinator=coord,
+            desc_overrides={
+                "name": "Queue",
+                "data_path": "queue",
+                "data_reference": "name",
+                "data_name": "name",
+                "data_name_compose": False,
+            },
+            uid="q1",
+        )
+        assert entity.custom_name == "Queue"
+
     def test_custom_name_with_uid_different_reference_and_name(self):
         """When data_reference != data_name, includes data_name in output."""
         coord = make_mock_coordinator()

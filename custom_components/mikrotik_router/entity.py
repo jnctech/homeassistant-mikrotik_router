@@ -303,7 +303,12 @@ class MikrotikEntity(CoordinatorEntity[_MikrotikCoordinatorT], Entity):
             return f"{self._data['comment']}"
 
         if self.entity_description.name:
-            if self._data[self.entity_description.data_reference] == self._data[self.entity_description.data_name]:
+            # data_name_compose forces composition where data_name == data_reference
+            # would otherwise collapse to the static name (e.g. per-VLAN DHCP servers
+            # on the one System device). Other platforms' descriptions lack the field,
+            # so read it defensively. See ADR-013.
+            compose = getattr(self.entity_description, "data_name_compose", False)
+            if not compose and self._data[self.entity_description.data_reference] == self._data[self.entity_description.data_name]:
                 return f"{self.entity_description.name}"
 
             return f"{self._data[self.entity_description.data_name]} {self.entity_description.name}"
