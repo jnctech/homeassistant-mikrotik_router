@@ -4,6 +4,24 @@ Changes listed in reverse chronological order.
 
 ---
 
+## CR-260608-spec-entity-description — real-typed entity-description test factory (test-hardening pass #1a)
+
+**Date:** 2026-06-08
+**Branch:** `test/spec-entity-description` → PR to `dev`
+**Status:** In Review
+
+### What changed
+- `tests/conftest.py::make_mock_entity_description` now builds the **real** `Mikrotik*EntityDescription` dataclass (parameterised by platform `cls`, defaults filtered to the class's fields, overrides passed through) instead of a specless `MagicMock`. A field that doesn't exist on the platform's description now raises `TypeError` rather than silently passing on an auto-created Mock attribute.
+- The 5 non-sensor module helpers (`test_switch/update/binary_sensor/button/device_tracker`) pass their platform description class; `test_entity`'s generic `MikrotikEntity` tests keep the sensor default.
+
+### Why
+T2 in `docs/internal/test-suite-review-2026-06-08.md` — yes-man description mocks hide renamed/removed fields. First slice of `ENH-260608-test-suite-hardening` (pre-release deliverable). Surfaced (and fixed) that the switch/update tests were building sensor-typed descriptions.
+
+### Verification
+Full suite **606 passed, 5 skipped** under `python:3.14` (WSL-local); ruff format + lint clean. The larger `make_mock_coordinator` `spec=` pass (96 sites) is tracked separately under the ENH.
+
+---
+
 ## CR-260608-entity-naming — disambiguate colliding client + DHCP-server entity names (ADR-013)
 
 **Date:** 2026-06-08

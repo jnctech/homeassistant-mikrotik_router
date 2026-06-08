@@ -80,9 +80,9 @@ The suite leans on unspecced `MagicMock` (yes-man) coordinators/descriptions, ne
 
 - [x] `test_sensor.py` — reference implementation (`feature/test-sensor-exemplar`, CR-260608-test-sensor-exemplar)
 - [x] new ADR-013 tests written spec'd (real description dataclass; behaviour assertions) — `feature/entity-naming`
-- [ ] `conftest.py` — add `spec=` to the shared `make_mock_*` factories (highest value; surfaces yes-man passes across all entity tests)
-- [ ] remaining entity test modules (binary_sensor, switch, button, device_tracker, entity, update)
-- [ ] T1 fw-version decoupling, T4 parametrize clusters, T6 fixtures, T3 `make_coordinator` `object.__new__` (last)
+- [x] `conftest.py::make_mock_entity_description` — now builds the **real** `Mikrotik*EntityDescription` per platform (8 sites / 6 modules) so renamed/removed fields fail (`test/spec-entity-description`). Surfaced + fixed the switch/update tests building sensor-typed descriptions.
+- [ ] `conftest.py::make_mock_coordinator` — add `spec=MikrotikCoordinator` (**96 sites / 7 modules** — the big one; will surface yes-man passes; own PR)
+- [ ] remaining: T1 fw-version decoupling, T4 parametrize clusters, T6 fixtures, T3 `make_coordinator` `object.__new__` (last)
 
 ---
 
