@@ -17,6 +17,20 @@
 
 ## Active
 
+### ENH-260608-test-suite-hardening — migrate tests to spec'd mocks, parametrize, behaviour assertions
+**Type:** Enhancement (test quality)
+**Priority:** Medium
+**Created:** 2026-06-08
+**Status:** 🟡 In Progress — `test_sensor.py` done as the reference; remaining modules to follow
+
+The suite leans on unspecced `MagicMock` (yes-man) coordinators/descriptions, near-zero `parametrize`, and assertions on internal representation rather than behaviour. Migrate each module to: `spec=`/real-type mocks (typos/renames fail), `@pytest.mark.parametrize` for data-driven cases, fixtures for shared arrange, and input→output assertions. Full findings: `docs/internal/test-suite-review-2026-06-08.md`.
+
+- [x] `test_sensor.py` — reference implementation (`feature/test-sensor-exemplar`, CR-260608-test-sensor-exemplar)
+- [ ] `conftest.py` — add `spec=` to the shared `make_mock_*` factories (highest value; surfaces yes-man passes across all entity tests)
+- [ ] remaining entity test modules (binary_sensor, switch, button, device_tracker, entity, update)
+
+---
+
 ### ENH-260608-quality-scale-conformance — close HA Integration Quality Scale gaps
 **Type:** Enhancement (conformance)
 **Priority:** Medium

@@ -4,6 +4,33 @@ Changes listed in reverse chronological order.
 
 ---
 
+## CR-260608-test-sensor-exemplar — rework test_sensor.py as the test-quality reference
+
+**Date:** 2026-06-08
+**Branch:** `feature/test-sensor-exemplar` → PR to `dev`
+**Status:** In Review
+
+### What Changed
+
+| Area | Change |
+|------|--------|
+| `tests/test_sensor.py` | Rewritten as the reference implementation for the test-suite review: local `MagicMock(spec=MikrotikCoordinator)` + the real `MikrotikSensorEntityDescription` (no yes-man mocks), `@pytest.mark.parametrize` for the native_value / unit-of-measurement / DHCP cases, a `dhcp_client_data` fixture, and input→output assertions. 12 cases (was 10), ~half the per-case code. |
+
+### Why
+
+First, lowest-risk pass of the test-suite hardening (`ENH-260608-test-suite-hardening`). Provides a concrete pattern the other test modules can be migrated to. Background + findings: `docs/internal/test-suite-review-2026-06-08.md` (internal).
+
+### Quality Gate Results
+
+| Metric | Value | Gate |
+|--------|-------|------|
+| Ruff lint + format | All checks passed | ✅ |
+| Pytest | 595 passed, 5 skipped (devbox `python:3.13`, `__pycache__` cleared) | ✅ |
+| Pre-PR gate | code-review: clean — coverage preserved + extended (10→12), no false passes, spec'd mocks verified; silent-failure-hunter / simplifier N/A (test-only) | ✅ |
+| ADR | None — test-only | n/a |
+
+---
+
 ## CR-260608-runtime-data — store runtime data on `ConfigEntry.runtime_data` (quality-scale Bronze)
 
 **Date:** 2026-06-08
