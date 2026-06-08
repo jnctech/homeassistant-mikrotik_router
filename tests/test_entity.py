@@ -2,11 +2,17 @@
 
 from unittest.mock import MagicMock, patch
 
+from homeassistant.const import CONF_NAME
+
 from custom_components.mikrotik_router.entity import (
     copy_attrs,
     _skip_sensor,
     MikrotikEntity,
     MikrotikInterfaceEntityMixin,
+)
+from custom_components.mikrotik_router.coordinator import MikrotikCoordinator
+from custom_components.mikrotik_router.sensor_types import (
+    MikrotikSensorEntityDescription,
 )
 from custom_components.mikrotik_router.const import (
     CONF_SENSOR_PORT_TRAFFIC,
@@ -20,6 +26,23 @@ from .conftest import (
     make_mock_entity_description,
     patch_coordinator_entity_init,
 )
+
+
+def _entity_with_real_desc(data_path, uid, row, **desc_kwargs):
+    """Build a MikrotikEntity from a REAL MikrotikSensorEntityDescription and a
+    spec'd coordinator — no yes-man description mock (ADR-013 tests).
+
+    Only the API/HA boundaries are mocked; the description is the real dataclass,
+    so a renamed/removed field (e.g. data_name_compose) breaks the test instead of
+    silently passing.
+    """
+    coord = MagicMock(spec=MikrotikCoordinator)
+    coord.data = {data_path: {uid: row}}
+    coord.config_entry = MagicMock()
+    coord.config_entry.data = {CONF_NAME: "Mikrotik"}
+    desc = MikrotikSensorEntityDescription(data_path=data_path, **desc_kwargs)
+    with patch_coordinator_entity_init():
+        return MikrotikEntity(coord, desc, uid)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -140,38 +163,33 @@ class TestMikrotikEntityCustomName:
         Per-VLAN DHCP servers share the System device and have
         data_name == data_reference == 'name', so the equality shortcut would
         collapse them all to the static label. data_name_compose keeps the
-        distinguishing name. See ADR-013.
+        distinguishing name. Built from the REAL description dataclass. See ADR-013.
         """
-        coord = make_mock_coordinator()
-        coord.data["dhcp-server"] = {"dhcp88": {"name": "dhcp88", "status": "enabled"}}
-        entity = _make_entity(
-            coordinator=coord,
-            desc_overrides={
-                "name": "DHCP server",
-                "data_path": "dhcp-server",
-                "data_reference": "name",
-                "data_name": "name",
-                "data_name_compose": True,
-            },
-            uid="dhcp88",
+        entity = _entity_with_real_desc(
+            "dhcp-server",
+            "dhcp88",
+            {"name": "dhcp88", "status": "enabled"},
+            key="dhcp_server_status",
+            name="DHCP server",
+            data_name="name",
+            data_reference="name",
+            data_name_compose=True,
         )
         assert entity.custom_name == "dhcp88 DHCP server"
 
     def test_custom_name_compose_false_still_shortens(self):
-        """Scope guard: without data_name_compose the equality shortcut still fires,
-        so unrelated entities (queue, poe, …) are unaffected by ADR-013."""
-        coord = make_mock_coordinator()
-        coord.data["queue"] = {"q1": {"name": "q1"}}
-        entity = _make_entity(
-            coordinator=coord,
-            desc_overrides={
-                "name": "Queue",
-                "data_path": "queue",
-                "data_reference": "name",
-                "data_name": "name",
-                "data_name_compose": False,
-            },
-            uid="q1",
+        """Scope guard: with the real description's default (data_name_compose=False)
+        the equality shortcut still fires, so unrelated same-key entities (queue, poe,
+        …) are unaffected by ADR-013."""
+        entity = _entity_with_real_desc(
+            "queue",
+            "q1",
+            {"name": "q1"},
+            key="queue",
+            name="Queue",
+            data_name="name",
+            data_reference="name",
+            # data_name_compose omitted → real dataclass default (False)
         )
         assert entity.custom_name == "Queue"
 
