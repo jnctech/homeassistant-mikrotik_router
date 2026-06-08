@@ -41,7 +41,7 @@ Bring the integration to the HA Integration Quality Scale Bronze/Silver baseline
 
 - [x] **parallel-updates** (Silver) — `PARALLEL_UPDATES` per platform (`feature/parallel-updates`, CR-260608-parallel-updates)
 - [x] **runtime-data** (Bronze) — typed `ConfigEntry.runtime_data` (`feature/runtime-data`, ADR-012, CR-260608-runtime-data)
-- [ ] **reauthentication-flow** (Silver) — `async_step_reauth` + raise `ConfigEntryAuthFailed` on `wrong_login`
+- [x] **reauthentication-flow** (Silver) — `async_step_reauth` + raise `ConfigEntryAuthFailed` on `wrong_login` (`feature/reauthentication-flow`, CR-260608-reauthentication-flow)
 - [ ] **reconfiguration-flow** (Gold), **strict-typing** (Platinum) — later, alongside the coordinator decomposition
 - Already conformant: config-flow, has-entity-name, test-before-setup/-configure, entity-unique-id, brands, entity-translations (26 locales), diagnostics, config-entry-unloading.
 

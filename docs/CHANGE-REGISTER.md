@@ -4,6 +4,37 @@ Changes listed in reverse chronological order.
 
 ---
 
+## CR-260608-reauthentication-flow — re-auth on invalid credentials (quality-scale Silver)
+
+**Date:** 2026-06-08
+**Branch:** `feature/reauthentication-flow` → PR to `dev`
+**Status:** In Review
+
+### What Changed
+
+| Area | Change |
+|------|--------|
+| `coordinator.py` | New `_raise_disconnected()`: raises `ConfigEntryAuthFailed` when `api.error == "wrong_login"` (→ HA starts the reauth flow), else `UpdateFailed` (transient). Both disconnect sites call it. |
+| `config_flow.py` | `async_step_reauth` + `async_step_reauth_confirm` re-prompt for credentials and validate via a shared `_validate_connection()` helper (also used by `async_step_user`); success → `async_update_reload_and_abort`. |
+| `strings.json`, `translations/en.json` | `reauth_confirm` step + `reauth_successful` abort. |
+| `tests/test_config_flow.py` | 2 tests — reauth updates credentials (→ abort `reauth_successful`); wrong_login re-shows the form with the error. |
+
+### Why
+
+Closes the HA Integration Quality-Scale **Silver `reauthentication-flow`** rule. Previously, invalid credentials (e.g. a rotated RouterOS password) left the integration retrying `UpdateFailed` forever with no prompt; now HA surfaces a re-auth dialog. The API already distinguished `wrong_login` from connection failure, so only the wiring was missing.
+
+### Quality Gate Results
+
+| Metric | Value | Gate |
+|--------|-------|------|
+| Ruff lint + format | All checks passed | ✅ |
+| JSON validity | `strings.json` + `en.json` valid | ✅ |
+| Pytest | 597 passed, 5 skipped (devbox `python:3.13`, clean `__pycache__`) | ✅ |
+| Pre-PR review | Light pass (session-end context) — self-reviewed; the contained error-handling change (`_raise_disconnected`) only narrows one `UpdateFailed` to `ConfigEntryAuthFailed`. Full agent gate can run on the PR. | ~ |
+| ADR | None — standard HA reauth pattern, no contract change | n/a |
+
+---
+
 ## CR-260608-test-sensor-exemplar — rework test_sensor.py as the test-quality reference
 
 **Date:** 2026-06-08
