@@ -478,6 +478,8 @@ librouteros 4.0.1 renamed the `connect()` keyword argument `login_methods` → `
 - Audit remaining librouteros 4.0.1 breaking changes
 - Bump floor to `>=4.0`, drop upper bound
 
+**Salvage (circle-back, 2026-06-08):** a migration plan + upstream-engagement notes were drafted on the **retained** branch `claude/review-engagement-requests-dIZVx` (it carries a *stale* `ADR-010-librouteros-4x-migration` — ADR-010 is now claude-tooling-baseline, so renumber on salvage). When this work starts: lift the plan into a correctly-numbered ADR, then drop the `<4.0` cap behind a librouteros version test matrix (`ENH-260512-librouteros-test-matrix`).
+
 ---
 
 ### ISS-260320-new-device-discovery — New devices require HA restart to appear
