@@ -56,6 +56,8 @@ def make_coordinator(options=None, api_responses=None, major_fw_version=6):
         "ppp_secret": {},
         "ppp_active": {},
         "fw-update": {},
+        "lte": {},
+        "lte_firmware": {},
         "script": {},
         "queue": {},
         "dns": {},
@@ -5409,3 +5411,86 @@ def test_resolve_poe_power_non_numeric_measured_yields_no_value():
     coordinator = _poe_coordinator()
     iface = {"poe-out-power": "n/a", "poe-out-status": "powered-on", "default-name": "ether1"}
     assert coordinator._resolve_poe_power(iface) == (None, None, None)
+
+
+# Group: LTE (get_lte_signal / get_lte_firmware)
+# ---------------------------------------------------------------------------
+def test_get_lte_signal_parses_monitor():
+    """LTE monitor populates ds[lte]; numeric fields cast to int, connected set."""
+    coordinator = make_coordinator(
+        api_responses={
+            "/interface/lte": [{".id": "*8", "name": "lte1"}],
+            ("/interface/lte", "monitor"): [
+                {
+                    "rssi": -77,
+                    "rsrp": -107,
+                    "rsrq": "-10",
+                    "sinr": "16",
+                    "cqi": "15",
+                    "current-operator": "TestNet",
+                    "data-class": "LTE",
+                    "status": "running",
+                    "session-uptime": "2h8m9s",
+                    "imei": "123456789012345",
+                }
+            ],
+        }
+    )
+    coordinator.get_lte_signal()
+    lte = coordinator.ds["lte"]
+    assert lte["rssi"] == -77
+    assert lte["sinr"] == 16
+    assert lte["current-operator"] == "TestNet"
+    assert lte["connected"] is True
+    # session-uptime is converted to a session-start datetime (TIMESTAMP model)
+    from datetime import datetime as _dt
+
+    assert isinstance(lte["session-uptime"], _dt)
+
+
+def test_get_lte_signal_unknown_fields_become_none():
+    """Non-numeric monitor values (e.g. during cell reselect) -> None, not "unknown",
+    so signal_strength/measurement sensors never get an invalid non-numeric state."""
+    coordinator = make_coordinator(
+        api_responses={
+            "/interface/lte": [{".id": "*8", "name": "lte1"}],
+            ("/interface/lte", "monitor"): [{"status": "running", "current-operator": "TestNet", "session-uptime": "1m"}],
+        }
+    )
+    coordinator.get_lte_signal()
+    lte = coordinator.ds["lte"]
+    for field in ("rssi", "rsrp", "rsrq", "sinr", "cqi"):
+        assert lte[field] is None
+    assert lte["connected"] is True
+
+
+def test_get_lte_firmware_parses_check():
+    """firmware-upgrade check populates installed/latest/available from section 1."""
+    coordinator = make_coordinator(
+        api_responses={
+            "/interface/lte": [{".id": "*8"}],
+            ("/interface/lte", "firmware-upgrade"): [
+                {".section": "0", "installed": "EG18_X", "status": "checking..."},
+                {
+                    ".section": "1",
+                    "installed": "EG18_X",
+                    "latest": "EG18_X",
+                    "status": "firmware is already up to date",
+                },
+            ],
+        }
+    )
+    coordinator.get_lte_firmware()
+    fw = coordinator.ds["lte_firmware"]
+    assert fw["installed"] == "EG18_X"
+    assert fw["latest"] == "EG18_X"
+    assert fw["available"] is False
+
+
+def test_get_lte_no_interface_creates_nothing():
+    """No LTE interface -> ds[lte]/ds[lte_firmware] stay empty (no entities)."""
+    coordinator = make_coordinator(api_responses={"/interface/lte": []})
+    coordinator.get_lte_signal()
+    coordinator.get_lte_firmware()
+    assert coordinator.ds["lte"] == {}
+    assert coordinator.ds["lte_firmware"] == {}
