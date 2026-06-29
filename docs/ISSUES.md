@@ -2,22 +2,22 @@
 
 ## In-flight
 
-> **Updated 2026-06-16 (session-end, netwatch-naming cycle).** Shipped the netwatch `name` feature (#70), added a homelab-leak CI guardrail, and cut **v2.3.20-beta.3**. Full live per-class validation passed on the 4-device fleet (beta.3 side-load).
+> **Updated 2026-06-29 (release session).** **Cut stable [v2.3.20](https://github.com/jnctech/homeassistant-mikrotik_router/releases/tag/v2.3.20)** — both release gates cleared by reporters, so the v2.3.20 beta cycle (beta.1/2/3) rolled up to stable via a `dev→master` PR + back-merge (`master ⊆ dev` restored, branch-sync-guard green). CR-260629.
 >
-> **Shipped to `dev` this session (both merged, CI green on py3.13/3.14):**
-> - **[#114](https://github.com/jnctech/homeassistant-mikrotik_router/pull/114)** `ENH-260608-netwatch-naming` (#70) — netwatch entities now resolve `name` (non-empty) → `comment` → static "Netwatch", **bare** (no suffix; `has_entity_name` prepends `<inst> Netwatch`). New netwatch-only `data_name_prefer` flag; `get_netwatch` parses `name`; `custom_name` split into a dispatcher + `_compose_uid_name` (ADR-007) after the whitespace-strip tipped complexity to 16. `unique_id` host-derived → no migration. **ADR-018**, CR-260615. 11 new tests (669 total, 88% cov). Spun off **ENH-260615** (same-host key collision, deferred).
-> - **[#115](https://github.com/jnctech/homeassistant-mikrotik_router/pull/115)** `CR-260616-leak-guardrail` — `scripts/check_no_homelab_leaks.py` (pre-commit hook + CI job `homelab-leak`) fails on private IPs/MACs in public files (docs excl. internal, custom_components, README, info.md); redacted six real client MACs in ADR-013. **A homelab IP + Pi-hole/DNS-failover infra leaked into ADR-018/ISSUES from live-validation evidence — caught and scrubbed in the #114 branch before merge (force-push `33874be`→`a419b8d`).** Git-history purge of the old values: **won't-do** (user: low-risk, no action).
+> **Gates cleared (both confirmed by reporters):**
+> - **#59 PoE energy (@Dillton)** — 2026-06-29: "everything works as expected," value increments, **survives HA restart**, **selectable in the Energy Dashboard as an individual device** → confirms the one open **G1** that tests couldn't verify. `ENH-260509-poe-energy` → Closed.
+> - **#70 netwatch naming (@L2jLiga)** — validated on beta.3 ("works like a charm"), **closed #70 himself** (2026-06-18); entity-level naming sufficient, no per-host devices wanted. `ENH-260608-netwatch-naming` → Closed.
 >
-> **Released 2026-06-16 (pre-release off `dev`):** **[v2.3.20-beta.3](https://github.com/jnctech/homeassistant-mikrotik_router/releases/tag/v2.3.20-beta.3)** (netwatch naming; rolls up beta.1/2). `release.yml` built the zip. Reporter **@L2jLiga** given HACS beta-install steps on #70 ([comment](https://github.com/jnctech/homeassistant-mikrotik_router/issues/70#issuecomment-4714957763)); **awaiting their reply** on whether entity-level naming suffices vs wanting per-host devices.
+> **v2.3.20 rolls up:** PoE-out energy (ADR-017, #59/#109) · netwatch naming (ADR-018, #70/#114) · librouteros `login_method` fix (ISS-260417) · HA device_tracker/config-flow reload deprecation cleanup · connect-contract test · homelab-leak guardrail (#115).
 >
-> **Live HA state:** the homelab HA is running the **side-loaded beta.3** (user chose to keep it, not restore); beta.2 backup parked at `/config/mikrotik_router.bak-beta2` (outside `custom_components/`). It will be overwritten when HACS installs the official beta.3.
+> **Live HA state:** the homelab HA was running the side-loaded beta.3; v2.3.20 stable == beta.3 code + version bump only (no code change), so no re-validation needed. HACS will offer the official v2.3.20.
 >
 > **NEXT SESSION:**
-> 1. **Cut stable v2.3.20** once **both** gates clear: @Dillton's measured-energy validation on #59 (no metering hardware in fleet) **and** @L2jLiga's #70 reply. Stable rolls up beta.1/2/3 via a `dev→master` PR + back-merge. One live G1 to eyeball: the PoE energy entity is **selectable in the Energy Dashboard** (`entity_category=None`, tests can't verify). Restart-restore + deprecation-clearance already confirmed live on beta.2; netwatch naming confirmed live on beta.3.
-> 2. **librouteros cap-lift** — `ENH-260512-librouteros-test-matrix`: 3.4.1 / latest-3.x / expected-fail-4.x CI matrix, then lift `manifest` to `>=4.0,<5` (the floor-bump is the **v2.4.0** trigger, with deferred coordinator decomposition).
+> 1. **librouteros cap-lift** — `ENH-260512-librouteros-test-matrix`: 3.4.1 / latest-3.x / expected-fail-4.x CI matrix, then lift `manifest` to `>=4.0,<5` (the floor-bump is the **v2.4.0** trigger, with deferred coordinator decomposition). This is now the lead thread.
+> 2. **Stale-debt sweep** — write the deferred `ISS-260512-librouteros-concurrency-adr` (Open ~7 weeks, doc-only); reconcile stale "In Review/In Progress" statuses on already-shipped issues.
 >
 > **Open threads (durable):**
-> - **`ENH-260608-netwatch-naming` (#70)** — ✅ Done/shipped beta.3; **awaiting reporter confirmation** (entity vs device naming). **`ENH-260615-netwatch-host-key-collision`** — Filed/deferred (same-host probe collapse; needs `.id` re-key + unique_id migration). **`ISS-260616-test-fixture-subnet`** — Filed/Low (test_coordinator fixtures use the real `192.168.88.x` subnet; guard excludes tests).
+> - **`ENH-260615-netwatch-host-key-collision`** — Filed/deferred (same-host probe collapse; needs `.id` re-key + unique_id migration). **`ISS-260616-test-fixture-subnet`** — Filed/Low (test_coordinator fixtures use the real `192.168.88.x` subnet; guard excludes tests).
 > - **Upstream-ported enhancements:** `ENH-260614-sfp-temperature` ([tomaae#499], Low — hardware-gated) · `ENH-260614-lte-modem-info` ([tomaae#249], Medium — needs LTE hardware/contributor).
 > - **Test-catch hardening:** deprecation-as-failure `setup_integration` test (folded into `ENH-260608` goldens) + `ENH-260614-ha-canary-ci` (non-blocking HA-latest lane).
 > - **Goldens BUILD (ADR-014 / `ENH-260608-test-suite-hardening`)** — `setup_integration` fixture → per-path `MockMikrotikAPI` fixtures → per-platform exemplars → drop `sonar-project.properties` exclusions → portable `config/docs/templates/hacs-testing/`.
@@ -104,7 +104,7 @@ On networks with many clients or multiple DHCP servers, distinct entities receiv
 **Type:** Enhancement (entity naming / quality)
 **Priority:** Low
 **Created:** 2026-06-08
-**Status:** ✅ Done — merged to `dev` ([#114](https://github.com/jnctech/homeassistant-mikrotik_router/pull/114), CR-260615, ADR-018) and shipped in **v2.3.20-beta.3**. Live-validated on the 4-device fleet (name-shown + name-less→comment). Reporter (#70) given HACS beta-install steps; **awaiting their confirmation** that entity-level naming suffices vs wanting per-host devices.
+**Status:** 🔴 Closed — shipped in stable **v2.3.20** ([#114](https://github.com/jnctech/homeassistant-mikrotik_router/pull/114), CR-260615, ADR-018, CR-260629). Reporter **@L2jLiga** validated on beta.3 ("works like a charm") and **closed [#70](https://github.com/jnctech/homeassistant-mikrotik_router/issues/70)** himself (2026-06-18) — entity-level naming is sufficient; no per-host devices wanted.
 
 **Request ([jnctech #70](https://github.com/jnctech/homeassistant-mikrotik_router/issues/70)):** with 50+ netwatch entries, many **share a `comment`**, so they collapse to one display name; the user wants the distinct **`name`** field shown instead.
 
@@ -157,7 +157,7 @@ A `*_environment_<name>` sensor reports an empty string (`''`) as its state when
 **Type:** Enhancement (new sensors)
 **Priority:** Medium
 **Created:** 2026-05-09
-**Status:** 🟢 Implemented on `feature/poe-energy-sensors` (ADR-017, CR-260614-poe-energy-sensors) — native measured **and** nameplate-estimate energy. Ships **v2.3.20-beta.1** (pre-release); awaiting @Dillton validation on metering hardware before stable. (G0 panel 2026-06-14 recommended the Option A blueprint; maintainer chose the turnkey native path, beta-gated.)
+**Status:** 🔴 Closed — shipped in stable **v2.3.20** (ADR-017, CR-260614-poe-energy-sensors, CR-260629, [#59](https://github.com/jnctech/homeassistant-mikrotik_router/issues/59)/#109). **@Dillton validated measured energy on metering hardware (2026-06-29):** value increments correctly, survives HA restart, and is **selectable in the Energy Dashboard as an individual device** — confirming the one open **G1** (Energy-Dashboard selectability; `entity_category=None`). (G0 panel 2026-06-14 recommended the Option A blueprint; maintainer chose the turnkey native path, beta-gated; validation now complete.)
 
 **Summary:**
 Native per-port PoE-out **energy** sensors (kWh, `total_increasing`) derived from the existing PoE-out **power** reading, so users get Energy-dashboard-compatible consumption without template sensors. Detail/scoping notes live on the retained branch `docs/enh-260509-poe-energy` (commit `339932e`, +22 lines to ISSUES); the reserved beta name `v2.4.0-beta` is earmarked for this feature. `[branch contents verified 2026-06-14; full design UNVERIFIED — to be scoped next session]`
