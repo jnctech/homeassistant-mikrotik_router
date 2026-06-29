@@ -557,7 +557,9 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
             if pkg in packages and packages[pkg]["enabled"]:
                 setattr(self, attr, True)
 
-        # LTE has no /system/package entry (built-in); detect by interface presence
+        # LTE has no /system/package entry (built-in); detect by interface presence.
+        # Safe on non-LTE routers: /interface/lte returns an empty list (not an error)
+        # when no LTE interface exists, so support_lte is simply False.
         self.support_lte = bool(self.api.query("/interface/lte"))
 
     def _detect_capabilities_v6(self, packages: dict) -> None:
@@ -1951,14 +1953,18 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
         """Read LTE modem signal/network info via /interface/lte/monitor."""
         lte = self.api.query("/interface/lte")
         if not lte:
+            self.ds["lte"] = {}
             return
 
         lte_id = lte[0].get(".id")
         if not lte_id:
+            self.ds["lte"] = {}
             return
 
         result = self.api.query("/interface/lte", "monitor", {".id": lte_id, "once": True})
         if not result:
+            _LOGGER.debug("Mikrotik %s LTE monitor returned no data", self.host)
+            self.ds["lte"] = {}
             return
 
         previous_session_start = self.ds["lte"].get("session-uptime")
@@ -1993,6 +1999,7 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
         # monitor returns numeric fields as int or str; coerce to int, or None when
         # absent / non-numeric (e.g. "unknown" during cell reselect) so the
         # signal_strength / measurement sensors stay valid instead of erroring.
+        # RouterOS reports these as integers (whole dBm/dB and index values).
         lte = self.ds["lte"]
         for field in ("rssi", "rsrp", "rsrq", "sinr", "cqi", "mcs", "ri"):
             try:
@@ -2003,13 +2010,19 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
 
         # session-uptime ("2h8m9s") -> session-start timestamp, same model as
         # system uptime (device_class TIMESTAMP). Drift-guard avoids per-poll jitter.
-        session_seconds = _parse_uptime_to_seconds(result[0].get("session-uptime", ""))
-        now = dt_now().replace(microsecond=0)
-        session_start = datetime.timestamp(now - timedelta(seconds=session_seconds))
-        if not previous_session_start or abs(session_start - datetime.timestamp(previous_session_start)) > 10:
-            lte["session-uptime"] = utc_from_timestamp(session_start)
+        # When session-uptime is absent or the modem isn't connected, leave it None
+        # so the sensor reads "unknown" instead of fabricating "connected just now".
+        raw_session_uptime = result[0].get("session-uptime")
+        if not raw_session_uptime or not lte["connected"]:
+            lte["session-uptime"] = None
         else:
-            lte["session-uptime"] = previous_session_start
+            session_seconds = _parse_uptime_to_seconds(raw_session_uptime)
+            now = dt_now().replace(microsecond=0)
+            session_start = datetime.timestamp(now - timedelta(seconds=session_seconds))
+            if not previous_session_start or abs(session_start - datetime.timestamp(previous_session_start)) > 10:
+                lte["session-uptime"] = utc_from_timestamp(session_start)
+            else:
+                lte["session-uptime"] = previous_session_start
 
     # ---------------------------
     #   get_lte_firmware
@@ -2018,14 +2031,18 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
         """Check LTE modem firmware (read-only firmware-upgrade, no upgrade param)."""
         lte = self.api.query("/interface/lte")
         if not lte:
+            self.ds["lte_firmware"] = {}
             return
 
         lte_id = lte[0].get(".id")
         if not lte_id:
+            self.ds["lte_firmware"] = {}
             return
 
         result = self.api.query("/interface/lte", "firmware-upgrade", {".id": lte_id})
         if not result:
+            _LOGGER.debug("Mikrotik %s LTE firmware-upgrade returned no data", self.host)
+            self.ds["lte_firmware"] = {}
             return
 
         info = next((row for row in result if "latest" in row), result[-1])

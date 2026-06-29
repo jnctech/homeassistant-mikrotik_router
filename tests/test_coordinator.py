@@ -5494,3 +5494,58 @@ def test_get_lte_no_interface_creates_nothing():
     coordinator.get_lte_firmware()
     assert coordinator.ds["lte"] == {}
     assert coordinator.ds["lte_firmware"] == {}
+
+
+def test_get_lte_signal_clears_stale_when_monitor_empty():
+    """Modem stops reporting mid-session (monitor empty) -> ds[lte] cleared, not
+    left showing the previous poll's RSSI/operator as if current."""
+    coordinator = make_coordinator(
+        api_responses={
+            "/interface/lte": [{".id": "*8", "name": "lte1"}],
+            ("/interface/lte", "monitor"): [],
+        }
+    )
+    coordinator.host = "10.0.0.1"
+    coordinator.ds["lte"] = {"rssi": -77.0, "current-operator": "TestNet", "connected": True}
+    coordinator.get_lte_signal()
+    assert coordinator.ds["lte"] == {}
+
+
+def test_get_lte_firmware_clears_stale_when_check_empty():
+    """firmware-upgrade returns nothing -> ds[lte_firmware] cleared, not left stale."""
+    coordinator = make_coordinator(
+        api_responses={
+            "/interface/lte": [{".id": "*8"}],
+            ("/interface/lte", "firmware-upgrade"): [],
+        }
+    )
+    coordinator.host = "10.0.0.1"
+    coordinator.ds["lte_firmware"] = {"installed": "EG18_X", "latest": "EG18_X"}
+    coordinator.get_lte_firmware()
+    assert coordinator.ds["lte_firmware"] == {}
+
+
+def test_get_lte_signal_absent_session_uptime_is_none():
+    """No session-uptime field -> session-start stays None (sensor reads unknown),
+    never fabricated to "connected just now"."""
+    coordinator = make_coordinator(
+        api_responses={
+            "/interface/lte": [{".id": "*8", "name": "lte1"}],
+            ("/interface/lte", "monitor"): [{"status": "running", "rssi": -80}],
+        }
+    )
+    coordinator.get_lte_signal()
+    assert coordinator.ds["lte"]["session-uptime"] is None
+
+
+def test_get_lte_signal_disconnected_session_uptime_is_none():
+    """Modem not connected (status != running) -> session-start None, not a fake time."""
+    coordinator = make_coordinator(
+        api_responses={
+            "/interface/lte": [{".id": "*8", "name": "lte1"}],
+            ("/interface/lte", "monitor"): [{"status": "disconnected", "session-uptime": "5m"}],
+        }
+    )
+    coordinator.get_lte_signal()
+    assert coordinator.ds["lte"]["connected"] is False
+    assert coordinator.ds["lte"]["session-uptime"] is None

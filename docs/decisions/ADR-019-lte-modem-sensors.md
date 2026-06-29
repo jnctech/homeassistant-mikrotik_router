@@ -1,4 +1,4 @@
-# ADR-015: LTE modem sensors (B10)
+# ADR-019: LTE modem sensors (B10)
 
 **Date:** 2026-06-04
 **Status:** Proposed
