@@ -2,19 +2,18 @@
 
 ## In-flight
 
-> **Updated 2026-06-29 (release session).** **Cut stable [v2.3.20](https://github.com/jnctech/homeassistant-mikrotik_router/releases/tag/v2.3.20)** — both release gates cleared by reporters, so the v2.3.20 beta cycle (beta.1/2/3) rolled up to stable via a `dev→master` PR + back-merge (`master ⊆ dev` restored, branch-sync-guard green). CR-260629.
+> **Updated 2026-06-29 (release + LTE-PR-review session).** **Cut stable [v2.3.20](https://github.com/jnctech/homeassistant-mikrotik_router/releases/tag/v2.3.20)** (both reporter gates cleared; beta.1/2/3 rolled up via `dev→master` PR #117/#118 + back-merge, `master ⊆ dev` green; CR-260629). **HACS-installed + live-validated PASS** on the fleet — 488 integration entities, bad-state sweep all explained (no regressions). Then **full-reviewed contributor LTE PR #116**.
 >
-> **Gates cleared (both confirmed by reporters):**
-> - **#59 PoE energy (@Dillton)** — 2026-06-29: "everything works as expected," value increments, **survives HA restart**, **selectable in the Energy Dashboard as an individual device** → confirms the one open **G1** that tests couldn't verify. `ENH-260509-poe-energy` → Closed.
-> - **#70 netwatch naming (@L2jLiga)** — validated on beta.3 ("works like a charm"), **closed #70 himself** (2026-06-18); entity-level naming sufficient, no per-host devices wanted. `ENH-260608-netwatch-naming` → Closed.
+> **v2.3.20 gates cleared:** **#59 PoE energy (@Dillton)** — value increments, survives restart, Energy-Dashboard-selectable (confirms the open G1); `ENH-260509-poe-energy` → Closed. **#70 netwatch (@L2jLiga)** — validated + closed by reporter; `ENH-260608-netwatch-naming` → Closed.
 >
-> **v2.3.20 rolls up:** PoE-out energy (ADR-017, #59/#109) · netwatch naming (ADR-018, #70/#114) · librouteros `login_method` fix (ISS-260417) · HA device_tracker/config-flow reload deprecation cleanup · connect-contract test · homelab-leak guardrail (#115).
+> **Live-validation note (don't re-flag):** RB4011 WireGuard server interface was **renamed on the router `wireguard1`→`wg-home`** (same pubkey `BUmwYLL6`; happened during the Privado egress work, config CR-260616). So HA's `wireguard1_*` entities orphaned→`unavailable` and fresh `wg_home_*` entities are live/reporting — **integration working as designed, NOT a v2.3.20 regression.** Bare-name `sensor.mikrotik_tx/rx` + `device_tracker.mikrotik` are pre-existing legacy orphans.
 >
-> **Live HA state:** the homelab HA was running the side-loaded beta.3; v2.3.20 stable == beta.3 code + version bump only (no code change), so no re-validation needed. HACS will offer the official v2.3.20.
+> **NEXT SESSION (lead):**
+> 1. **LTE PR #116 (`ENH-260614-lte-modem-info`, @zvldz)** — change-request posted ([comment](https://github.com/jnctech/homeassistant-mikrotik_router/pull/116#issuecomment-4834057662)); **awaiting contributor** to apply 4 required changes (session-uptime null, stale-data clear, debug logging, ADR-015→**019** renumber). When they push: re-review, approve fork CI, merge-commit (preserve @zvldz authorship), fold in What's New + `CR-…-lte-modem-sensors`, credit @zvldz. **No v2.4.0 coupling.**
+> 2. **librouteros cap-lift** — `ENH-260512-librouteros-test-matrix`: 3.4.1 / latest-3.x / expected-fail-4.x CI matrix, then lift `manifest` to `>=4.0,<5` (the floor-bump is the **v2.4.0** trigger).
+> 3. **Stale-debt sweep** — write the deferred `ISS-260512-librouteros-concurrency-adr` (Open ~7 weeks, doc-only); reconcile stale statuses on shipped issues.
 >
-> **NEXT SESSION:**
-> 1. **librouteros cap-lift** — `ENH-260512-librouteros-test-matrix`: 3.4.1 / latest-3.x / expected-fail-4.x CI matrix, then lift `manifest` to `>=4.0,<5` (the floor-bump is the **v2.4.0** trigger, with deferred coordinator decomposition). This is now the lead thread.
-> 2. **Stale-debt sweep** — write the deferred `ISS-260512-librouteros-concurrency-adr` (Open ~7 weeks, doc-only); reconcile stale "In Review/In Progress" statuses on already-shipped issues.
+> **Cross-repo housekeeping (config repo, not this repo):** `config/.claude/domains/network.yaml` is now **stale** — says `interface wireguard1` (lines 285/386), real name is `wg-home`; update on next config session. Homelab HA dashboard WireGuard card should repoint `wireguard1_*`→`wg_home_*` (+ delete orphaned `wireguard1_*` entities). **Tooling:** `ha-query` MCP is wedged after the PowerShell migration (config aligned, server+token+HA all verified working via REST/SSH) — a session restart re-spawns it; use REST/SSH meanwhile. Sessions now run on **PowerShell** (not bash).
 >
 > **Open threads (durable):**
 > - **`ENH-260615-netwatch-host-key-collision`** — Filed/deferred (same-host probe collapse; needs `.id` re-key + unique_id migration). **`ISS-260616-test-fixture-subnet`** — Filed/Low (test_coordinator fixtures use the real `192.168.88.x` subnet; guard excludes tests).
@@ -198,9 +197,18 @@ Some boards (e.g. CRS317-1G-16S+) report `sfp-temperature` in `/system/health`, 
 **Type:** Enhancement (new sensors)
 **Priority:** Medium — high upstream demand (26 comments)
 **Created:** 2026-06-14
-**Status:** 🔵 Filed — ported from upstream [tomaae#249](https://github.com/tomaae/homeassistant-mikrotik_router/issues/249)
+**Status:** 🟡 In Review — **contributor PR [#116](https://github.com/jnctech/homeassistant-mikrotik_router/pull/116) (@zvldz)** implements it (+433/−0, 7 files; live-validated on a Chateau S53UG / Quectel EG18-EA, RouterOS 7.23.1). Full maintainer review done 2026-06-29; **change-request posted** ([comment](https://github.com/jnctech/homeassistant-mikrotik_router/pull/116#issuecomment-4834057662)) — awaiting @zvldz to apply 4 required changes.
 
-Expose LTE modem cell metrics (RSSI/RSRP/RSRQ/SINR, registration status, operator, band/EARFCN, cell-id) for RouterOS LTE interfaces from `/interface/lte/monitor [find] once`, gated on LTE-interface detection + a new `CONF_SENSOR_LTE` opt-in. Neither upstream nor the Csontikka alternative implements this → a genuine differentiator. Needs capability detection, a `get_lte()` coordinator fetch, descriptors, and live validation on LTE hardware (none in the maintainer fleet — contributor/beta gate, like PoE energy). Scope its own ADR if the dataset shape is non-trivial.
+Expose LTE modem cell metrics (RSSI/RSRP/RSRQ/SINR, registration status, operator, band/EARFCN, cell-id) for RouterOS LTE interfaces from `/interface/lte/monitor [find] once`, gated on LTE-interface detection. Neither upstream nor the Csontikka alternative implements this → a genuine differentiator. **Contributor hardware closes the LTE-hardware gate** (maintainer fleet has none).
+
+**Review outcome (PR #116, change-request — 4 required):**
+1. `session-uptime` fabricates a "now" TIMESTAMP when the field is absent / modem not `running` (null-not-guess violation) → set `None`.
+2. Early-return guards don't clear `ds["lte"]`/`ds["lte_firmware"]` (unlike `get_ups`) → stale RSSI/operator persist; clear on absent paths.
+3. No debug logging on absent-data returns (repo convention) → add.
+4. **ADR-number collision:** PR adds `ADR-015` (reserved for librouteros salvage; 016 reserved coordinator-decomp; 017/018 taken) → **renumber to ADR-019** + fix `docs/decisions/README.md`.
+- Nits (optional): `int()` nulls decimal metrics (`sinr="13.5"`); add stale-data + absent-session-uptime tests.
+- ✅ **Verified safe:** the `support_lte = bool(query("/interface/lte"))` probe returns empty (not error) on 4 non-LTE fleet archs (RB4011/hAP ac²/CRS310/hAP ax3) — no non-LTE disconnect (ISS-260507 shape ruled out). Complexity OK (`get_lte_signal`≈9, `get_lte_firmware`≈5, ≤15). Descriptors consistent; IMEI/IMSI/ICCID hidden-by-default + in `TO_REDACT`.
+- Merge plan: preserve @zvldz authorship (merge commit, like #81); maintainer folds in What's New / `CR-…-lte-modem-sensors` + credits @zvldz; approve fork CI run (0 checks so far). **No v2.4.0 coupling** (per maintainer 2026-06-29).
 
 ---
 
