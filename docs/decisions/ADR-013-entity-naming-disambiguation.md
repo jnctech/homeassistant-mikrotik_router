@@ -15,9 +15,9 @@ Distinct entities collapse to identical friendly names → Home Assistant disamb
 
 **Live evidence (REFUTES the brief's "named after the interface"):**
 ```
-device_tracker.lwip0    mac=B0:F8:93:DE:60:AD  host_name="lwip0"  interface="bridge"  source=dhcp
-device_tracker.lwip0_2  mac=C0:F8:53:9C:E6:E3  host_name="lwip0"  interface="bridge"  source=dhcp
-… _3 38:2C:E5:5F:79:4A, _4 C0:F8:53:9D:16:A0, _5 C0:F8:53:9C:EB:A8, _6 FC:3C:D7:EA:04:C4
+device_tracker.lwip0    mac=AA:BB:CC:DD:EE:01  host_name="lwip0"  interface="bridge"  source=dhcp
+device_tracker.lwip0_2  mac=AA:BB:CC:DD:EE:02  host_name="lwip0"  interface="bridge"  source=dhcp
+… _3 AA:BB:CC:DD:EE:03, _4 AA:BB:CC:DD:EE:04, _5 AA:BB:CC:DD:EE:05, _6 AA:BB:CC:DD:EE:06
 ```
 `host-name == "lwip0"` but `interface == "bridge"` — **not equal**. `"lwip0"` is the **DHCP hostname these devices report** (`lwIP` is the lightweight embedded TCP/IP stack; ESP8266/ESP32-class IoT devices default their hostname to `lwip0`). So this is a **non-unique reported hostname**, not interface-based naming. The coordinator already falls back to MAC (`_hostname_from_dhcp` → `return uid`, `coordinator.py:2593`) but only when `host-name == "unknown"` (`:2548`); a non-unique-but-present hostname slips through. The only stable distinguisher among the colliding hosts is the **MAC** (IP is dynamic; interface/source/host-name are identical).
 
@@ -44,7 +44,7 @@ At the **end of `async_process_host()`** (called at `coordinator.py:676`, *befor
 2. For each host whose `host-name` is shared by **more than one** host, set the display name to **`"{host-name} ({mac-address})"`** (maintainer's chosen format — keep the reported name, append the MAC to disambiguate).
 3. Unique real hostnames are left unchanged. Empty/`unknown` already resolves to the MAC via the existing fallback — unchanged.
 
-This fixes both client families with one change, at the source ("one owner per fact"). `device_tracker.lwip0` → `lwip0 (B0:F8:93:DE:60:AD)`; its traffic sensors → `lwip0 (B0:F8:93:DE:60:AD) LAN TX`, etc.
+This fixes both client families with one change, at the source ("one owner per fact"). `device_tracker.lwip0` → `lwip0 (AA:BB:CC:DD:EE:01)`; its traffic sensors → `lwip0 (AA:BB:CC:DD:EE:01) LAN TX`, etc.
 
 > **Insertion point is load-bearing (independent review catch).** `client_traffic` inherits `host-name` at **two** sites, gated by firmware in `_async_update_client_traffic` (`:761-767`): **v<7 → `process_accounting`/`_init_accounting_hosts`** (copy at `:2736`) and **v≥7 → `process_kid_control_devices`** (copy at `:2911`). The live v2.3.18/RouterOS-7 box uses the **`:2911`** path. The pass must therefore run at the end of `async_process_host` (before `:691`) so it precedes **both** copies — *not* inside `process_accounting`, which would silently miss every RouterOS-7 install. `device_tracker` reads `host[uid]` directly, so it is fixed regardless; only the traffic sensors depend on this ordering.
 

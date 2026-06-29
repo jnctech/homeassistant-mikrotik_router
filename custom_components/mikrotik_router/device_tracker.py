@@ -7,7 +7,7 @@ from collections.abc import Mapping
 from datetime import timedelta
 from typing import Any, Callable
 
-from homeassistant.components.device_tracker.config_entry import ScannerEntity
+from homeassistant.components.device_tracker import ScannerEntity, SourceType
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.const import STATE_NOT_HOME
 from homeassistant.helpers import entity_platform as ep
@@ -15,7 +15,6 @@ from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.util.dt import utcnow
 
-from homeassistant.components.device_tracker.const import SourceType
 
 from .coordinator import MikrotikConfigEntry, MikrotikCoordinator
 from .device_tracker_types import (

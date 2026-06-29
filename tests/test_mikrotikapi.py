@@ -521,3 +521,70 @@ class TestQueryExtracted:
 
         result = api.query("/interface/ethernet", command="monitor", args={".id": "*1", "once": True})
         assert result == [{"status": "running"}]
+
+
+# --- login method (librouteros >=3.0 callable kwarg) ---
+
+
+class TestLoginMethod:
+    """connect() must pass librouteros' `login_method` callable, not the old
+    pre-3.0 `login_methods` string kwarg (which was silently dropped, forcing
+    plain auth even for token users). See ISS-260417."""
+
+    def _connect_kwargs(self, login_method):
+        from unittest.mock import patch as _patch
+
+        api = make_api(login_method=login_method)
+        with _patch("custom_components.mikrotik_router.mikrotikapi.librouteros.connect") as mock_connect:
+            mock_connect.return_value = MagicMock()
+            api.connect()
+        return mock_connect.call_args.kwargs
+
+    def test_plain_maps_to_callable_and_drops_old_kwarg(self):
+        from custom_components.mikrotik_router.mikrotikapi import _login_plain
+
+        kwargs = self._connect_kwargs("plain")
+        assert kwargs["login_method"] is _login_plain
+        assert "login_methods" not in kwargs
+
+    def test_token_method_is_honoured(self):
+        from custom_components.mikrotik_router.mikrotikapi import _login_token
+
+        assert self._connect_kwargs("token")["login_method"] is _login_token
+
+    def test_unknown_method_falls_back_to_plain(self):
+        from custom_components.mikrotik_router.mikrotikapi import _login_plain
+
+        assert self._connect_kwargs("bogus")["login_method"] is _login_plain
+
+
+# --- librouteros.connect() call contract ---
+
+
+class TestConnectKwargs:
+    """Pin the exact kwargs passed to librouteros.connect() so a silently-renamed
+    or dropped kwarg (the `login_methods`->`login_method` class of bug, where the
+    old name is accepted-then-ignored by **kwargs) fails loudly here instead of
+    only surfacing as wrong behaviour against a real router. See ISS-260417."""
+
+    def _call(self, **api_kwargs):
+        from unittest.mock import patch as _patch
+
+        api = make_api(**api_kwargs)
+        with _patch("custom_components.mikrotik_router.mikrotikapi.librouteros.connect") as mock_connect:
+            mock_connect.return_value = MagicMock()
+            api.connect()
+        return mock_connect.call_args
+
+    def test_positional_credentials_and_kwarg_set_no_ssl(self):
+        args, kwargs = self._call(use_ssl=False, port=8728)
+        assert args == ("10.0.0.1", "admin", "admin")
+        assert set(kwargs) == {"encoding", "login_method", "port"}
+        assert kwargs["port"] == 8728
+        # the pre-3.0 plural name must never be passed (it is silently ignored)
+        assert "login_methods" not in kwargs
+
+    def test_includes_ssl_wrapper_under_ssl(self):
+        _, kwargs = self._call(use_ssl=True)
+        assert "ssl_wrapper" in kwargs
+        assert "login_methods" not in kwargs

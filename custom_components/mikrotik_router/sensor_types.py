@@ -20,6 +20,7 @@ from homeassistant.const import (
     UnitOfElectricPotential,
     UnitOfElectricCurrent,
     UnitOfPower,
+    UnitOfEnergy,
 )
 
 from .const import DOMAIN
@@ -351,6 +352,50 @@ SENSOR_TYPES: tuple[MikrotikSensorEntityDescription, ...] = (
         data_uid="",
         data_reference="default-name",
         data_attributes_list=DEVICE_ATTRIBUTES_IFACE_POE,
+    ),
+    # Per-port PoE-out energy (kWh) for the Energy Dashboard. Non-diagnostic so
+    # it is selectable as an energy source; ENERGY/TOTAL_INCREASING accumulated
+    # by the RestoreSensor entity from the coordinator's per-poll increment.
+    # See ADR-017, ENH-260509.
+    MikrotikSensorEntityDescription(
+        key="poe_out_energy",
+        name="PoE out energy",
+        icon="mdi:lightning-bolt-circle",
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        suggested_display_precision=3,
+        device_class=SensorDeviceClass.ENERGY,
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        entity_category=None,
+        ha_group="data__default-name",
+        ha_connection=CONNECTION_NETWORK_MAC,
+        ha_connection_value="data__port-mac-address",
+        data_path="interface",
+        data_attribute="poe-out-energy-delta-wh",
+        data_name="default-name",
+        data_uid="",
+        data_reference="default-name",
+        data_attributes_list=DEVICE_ATTRIBUTES_IFACE_POE,
+        func="MikrotikPoEEnergySensor",
+    ),
+    # Device-total PoE-out energy (sum of per-port increments). No-uid sensor on
+    # the System device; only created when at least one port has attributable
+    # (measured or estimated) PoE-out energy.
+    MikrotikSensorEntityDescription(
+        key="poe_out_energy_total",
+        name="PoE out energy total",
+        icon="mdi:lightning-bolt-circle",
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        suggested_display_precision=3,
+        device_class=SensorDeviceClass.ENERGY,
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        entity_category=None,
+        ha_group="System",
+        data_path="resource",
+        data_attribute="poe-out-energy-delta-wh",
+        data_name="",
+        data_uid="",
+        data_reference="",
+        func="MikrotikPoEEnergyTotalSensor",
     ),
     MikrotikSensorEntityDescription(
         key="system_fan1-speed",

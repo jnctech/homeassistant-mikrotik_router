@@ -27,3 +27,12 @@ repos:
       - id: check-merge-conflict
       - id: no-commit-to-branch
         args: [--branch, master]
+
+  - repo: local
+    hooks:
+      - id: homelab-leak-check
+        name: No homelab IPs/MACs in public files
+        entry: python scripts/check_no_homelab_leaks.py
+        language: system
+        pass_filenames: false
+        always_run: true

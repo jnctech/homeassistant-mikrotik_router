@@ -2,7 +2,9 @@
 
 from unittest.mock import MagicMock, patch
 
+import pytest
 from homeassistant.const import CONF_NAME
+from homeassistant.util import slugify
 
 from custom_components.mikrotik_router.entity import (
     copy_attrs,
@@ -13,6 +15,9 @@ from custom_components.mikrotik_router.entity import (
 from custom_components.mikrotik_router.coordinator import MikrotikCoordinator
 from custom_components.mikrotik_router.sensor_types import (
     MikrotikSensorEntityDescription,
+)
+from custom_components.mikrotik_router.binary_sensor_types import (
+    MikrotikBinarySensorEntityDescription,
 )
 from custom_components.mikrotik_router.const import (
     CONF_SENSOR_PORT_TRAFFIC,
@@ -41,6 +46,23 @@ def _entity_with_real_desc(data_path, uid, row, **desc_kwargs):
     coord.config_entry = MagicMock()
     coord.config_entry.data = {CONF_NAME: "Mikrotik"}
     desc = MikrotikSensorEntityDescription(data_path=data_path, **desc_kwargs)
+    with patch_coordinator_entity_init():
+        return MikrotikEntity(coord, desc, uid)
+
+
+def _binary_entity_with_real_desc(data_path, uid, row, **desc_kwargs):
+    """Build a MikrotikEntity from a REAL MikrotikBinarySensorEntityDescription.
+
+    netwatch is a binary_sensor, so its naming must be exercised through the
+    real binary-sensor description (not the sensor one) — a renamed/removed
+    field then fails the test instead of silently passing. See ADR-018.
+    The instance name is "Mikrotik" so unique_ids are prefixed "mikrotik-".
+    """
+    coord = MagicMock(spec=MikrotikCoordinator)
+    coord.data = {data_path: {uid: row}}
+    coord.config_entry = MagicMock()
+    coord.config_entry.data = {CONF_NAME: "Mikrotik"}
+    desc = MikrotikBinarySensorEntityDescription(data_path=data_path, **desc_kwargs)
     with patch_coordinator_entity_init():
         return MikrotikEntity(coord, desc, uid)
 
@@ -194,6 +216,25 @@ class TestMikrotikEntityCustomName:
         )
         assert entity.custom_name == "Queue"
 
+    def test_custom_name_compose_ignores_comment_and_prefer(self):
+        """Scope guard (ADR-018): a data_name_compose descriptor that also carries
+        a comment still composes from data_name. Proves the new data_name_prefer
+        branch does not leak onto compose/comment descriptors — if it did, this
+        would return 'dhcp88' (bare) or 'LAN' (comment) instead of the composed
+        label. The sensor description has no data_name_prefer field, so the
+        getattr default keeps the prefer branch off."""
+        entity = _entity_with_real_desc(
+            "dhcp-server",
+            "dhcp88",
+            {"name": "dhcp88", "comment": "LAN", "status": "enabled"},
+            key="dhcp_server_status",
+            name="DHCP server",
+            data_name="name",
+            data_reference="name",
+            data_name_compose=True,
+        )
+        assert entity.custom_name == "dhcp88 DHCP server"
+
     def test_custom_name_with_uid_different_reference_and_name(self):
         """When data_reference != data_name, includes data_name in output."""
         coord = make_mock_coordinator()
@@ -230,6 +271,87 @@ class TestMikrotikEntityCustomName:
             uid="ether1",
         )
         assert entity.custom_name == "ether1"
+
+
+# ---------------------------------------------------------------------------
+# Netwatch name precedence (ENH-260608 / #70 / ADR-018)
+# ---------------------------------------------------------------------------
+
+# Real netwatch descriptor field set (mirrors binary_sensor_types.py).
+NETWATCH_DESC_KW = dict(
+    key="netwatch",
+    name="Netwatch",
+    data_name="name",
+    data_uid="host",
+    data_reference="host",
+    data_name_prefer=True,
+)
+
+
+class TestNetwatchCustomName:
+    """Netwatch resolves name (non-empty) -> comment -> static 'Netwatch'.
+
+    Built from the REAL MikrotikBinarySensorEntityDescription so a renamed
+    field (data_name_prefer, data_name, ...) fails the test. See ADR-018.
+    """
+
+    @pytest.mark.parametrize(
+        "row, expected",
+        [
+            # name present beats a (possibly shared) comment — decisive ordering
+            (
+                {"host": "1.1.1.1", "name": "[NAT64] 1.1.1.1", "comment": "NAT64"},
+                "[NAT64] 1.1.1.1",
+            ),
+            # name present, comment key absent — name short-circuits before .get('comment')
+            ({"host": "1.1.1.1", "name": "X"}, "X"),
+            # name empty -> comment fallback
+            (
+                {
+                    "host": "1.1.1.1",
+                    "name": "",
+                    "comment": "uplink monitor",
+                },
+                "uplink monitor",
+            ),
+            # name empty + comment empty -> static label
+            ({"host": "1.1.1.1", "name": "", "comment": ""}, "Netwatch"),
+            # name empty + comment key missing -> static label (no KeyError)
+            ({"host": "1.1.1.1", "name": ""}, "Netwatch"),
+            # whitespace-only name is treated as empty -> comment fallback
+            ({"host": "1.1.1.1", "name": "   ", "comment": "edge"}, "edge"),
+            # whitespace-only name, no comment -> static label
+            ({"host": "1.1.1.1", "name": "  "}, "Netwatch"),
+        ],
+    )
+    def test_netwatch_name_precedence(self, row, expected):
+        entity = _binary_entity_with_real_desc("netwatch", row["host"], row, **NETWATCH_DESC_KW)
+        assert entity.custom_name == expected
+
+    def test_netwatch_unique_id_is_host_derived_ipv6(self):
+        """unique_id slugifies the host, not the name; survives an IPv6 literal."""
+        row = {"host": "2001:db8::1", "name": "", "comment": ""}
+        entity = _binary_entity_with_real_desc("netwatch", "2001:db8::1", row, **NETWATCH_DESC_KW)
+        assert entity.unique_id == f"mikrotik-netwatch-{slugify('2001:db8::1')}"
+
+    def test_netwatch_unique_id_independent_of_name(self):
+        """Same host, different name -> identical host-derived unique_id."""
+        row_a = {"host": "1.1.1.1", "name": "A"}
+        row_b = {"host": "1.1.1.1", "name": "B"}
+        ent_a = _binary_entity_with_real_desc("netwatch", "1.1.1.1", row_a, **NETWATCH_DESC_KW)
+        ent_b = _binary_entity_with_real_desc("netwatch", "1.1.1.1", row_b, **NETWATCH_DESC_KW)
+        assert ent_a.unique_id == ent_b.unique_id
+        assert ent_a.unique_id == f"mikrotik-netwatch-{slugify('1.1.1.1')}"
+
+    def test_netwatch_duplicate_name_distinct_hosts(self):
+        """Known residual: same name on different hosts collides on display name
+        but the entities stay distinct via the host-derived unique_id."""
+        row1 = {"host": "1.1.1.1", "name": "gw"}
+        row2 = {"host": "2.2.2.2", "name": "gw"}
+        e1 = _binary_entity_with_real_desc("netwatch", "1.1.1.1", row1, **NETWATCH_DESC_KW)
+        e2 = _binary_entity_with_real_desc("netwatch", "2.2.2.2", row2, **NETWATCH_DESC_KW)
+        assert e1.custom_name == e2.custom_name == "gw"
+        assert e1.unique_id != e2.unique_id
 
 
 # ---------------------------------------------------------------------------
@@ -901,3 +1023,45 @@ def test_no_skip_netwatch_when_enabled():
     data = {"8.8.8.8": {"status": "up"}}
     cfg = make_config_entry({CONF_SENSOR_NETWATCH_TRACKER: True})
     assert _skip_sensor(cfg, desc, data, "8.8.8.8") is False
+
+
+# ---------------------------------------------------------------------------
+# PoE-out energy sensor gating (ADR-017 / ENH-260509)
+# ---------------------------------------------------------------------------
+
+
+def _energy_desc():
+    """Real per-port PoE energy description (only data_attribute is read by skip)."""
+    return MikrotikSensorEntityDescription(
+        key="poe_out_energy",
+        data_attribute="poe-out-energy-delta-wh",
+        func="MikrotikPoEEnergySensor",
+    )
+
+
+def test_skip_poe_energy_sensor_when_option_disabled():
+    """Per-port energy sensor is skipped when CONF_SENSOR_POE is False."""
+    data = {"ether1": {"poe-out-energy-source": "measured"}}
+    cfg = make_config_entry({CONF_SENSOR_POE: False})
+    assert _skip_sensor(cfg, _energy_desc(), data, "ether1") is True
+
+
+def test_skip_poe_energy_sensor_when_no_attributable_source():
+    """No measured or estimated source -> no energy sensor (null-not-guess)."""
+    data = {"ether1": {"poe-out-energy-source": None}}
+    cfg = make_config_entry({CONF_SENSOR_POE: True})
+    assert _skip_sensor(cfg, _energy_desc(), data, "ether1") is True
+
+
+def test_no_skip_poe_energy_sensor_when_measured():
+    """A measured source creates the energy sensor."""
+    data = {"ether1": {"poe-out-energy-source": "measured"}}
+    cfg = make_config_entry({CONF_SENSOR_POE: True})
+    assert _skip_sensor(cfg, _energy_desc(), data, "ether1") is False
+
+
+def test_no_skip_poe_energy_sensor_when_estimated():
+    """An estimated source (nameplate) also creates the energy sensor."""
+    data = {"ether1": {"poe-out-energy-source": "estimated"}}
+    cfg = make_config_entry({CONF_SENSOR_POE: True})
+    assert _skip_sensor(cfg, _energy_desc(), data, "ether1") is False

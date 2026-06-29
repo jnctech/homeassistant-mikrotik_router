@@ -21,6 +21,15 @@ Monitor and control your entire MikroTik network from Home Assistant. This HACS 
 
 ---
 
+## What's New — v2.3.20
+
+Stable release rolling up the v2.3.20 beta cycle (beta.1–beta.3). Both new features were validated live: PoE-out energy on real metering hardware ([#59](https://github.com/jnctech/homeassistant-mikrotik_router/issues/59), thanks @Dillton) and netwatch naming on a multi-entry deployment ([#70](https://github.com/jnctech/homeassistant-mikrotik_router/issues/70), thanks @L2jLiga).
+
+- **PoE energy for the Energy Dashboard.** Each PoE-out port now exposes an energy sensor (kWh, `total_increasing`) plus a device total, ready to add as a consumption source — no template/Riemann helpers needed. Enable the existing **PoE sensors** option. Counters survive Home Assistant restarts. Addresses [#59](https://github.com/jnctech/homeassistant-mikrotik_router/issues/59). See [ADR-017](docs/decisions/ADR-017-poe-energy-accumulation.md).
+- **Estimated energy for routers without PoE metering.** Some boards (e.g. hAP ax3) power a device but don't report PoE wattage. Where the powered device is uniquely identified via MikroTik Neighbor Discovery, the sensor estimates energy from the device's datasheet rating and labels it `power_source: estimated`. This is a coarse upper-bound estimate, not a measurement.
+- **Netwatch entities named by their netwatch `name`.** If you give each netwatch entry a distinct `name`, Home Assistant now shows that name instead of a shared `comment` — so entries that share a comment are no longer indistinguishable in the entity list, dashboards and automation pickers. Entries without a name fall back to the comment, then to "Netwatch". `unique_id`s are unchanged, so existing entity IDs and automations are preserved. Addresses [#70](https://github.com/jnctech/homeassistant-mikrotik_router/issues/70). See [ADR-018](docs/decisions/ADR-018-netwatch-name-precedence.md).
+- **Correct librouteros `login_method` handling** (`ISS-260417`) and a cleanup of HA `device_tracker` + config-flow reload deprecations (clears the HA 2026.12 / 2027.6 removal deadlines and the associated log warnings).
+
 ## What's New — v2.3.19
 
 Stable release rolling up the read-only and quality-scale fixes from the dev cycle since v2.3.18. Validated live against a multi-device RouterOS deployment before tagging.

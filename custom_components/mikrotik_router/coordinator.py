@@ -77,6 +77,19 @@ _LOGGER = logging.getLogger(__name__)
 
 DEFAULT_TIME_ZONE = None
 
+# Nameplate PoE-draw estimates (watts) keyed on the RouterOS `board` string a
+# device advertises via MikroTik Neighbor Discovery (/ip/neighbor). Used ONLY to
+# estimate PoE-out energy for a powered port whose hardware reports no PoE power
+# metering (poe-out-power is None). Each value is the vendor datasheet MAXIMUM
+# (an upper bound — real draw is typically lower), so estimated energy is coarse
+# and is always surfaced with power_source="estimated". Every entry MUST cite its
+# source; do not add a board without a sourced figure. See ADR-017, ENH-260509.
+_POE_DEVICE_NAMEPLATE: dict[str, float] = {
+    # hAP ac² — "Max power consumption without attachments 16 W"
+    # https://mikrotik.com/product/hap_ac2 (verified 2026-06-14)
+    "RBD52G-5HacD2HnD": 16.0,
+}
+
 
 def is_valid_ip(address):
     try:
@@ -288,6 +301,7 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
             "netwatch": {},
             "raw": {},
             "container": {},
+            "neighbor": {},
         }
 
         self.notified_flags = []
@@ -329,6 +343,12 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
 
         self.last_hwinfo_update = datetime(1970, 1, 1, tzinfo=timezone.utc)
         self.rebootcheck = 0
+
+        # Per-port previous PoE-out power sample (W) for trapezoidal energy
+        # accumulation. Transient (cleared on restart / when a port stops
+        # delivering power) — the durable kWh total lives on the RestoreSensor
+        # entity, not here. See ADR-017.
+        self._poe_energy_last_power: dict[str, float] = {}
 
     # ---------------------------
     #   option_track_iface_clients
@@ -658,6 +678,10 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
         if not hwinfo_ran:
             await self._run_if_enabled(self.get_system_resource)
 
+        # Neighbour discovery feeds the PoE energy estimator (interface poll),
+        # so it must run first; only needed when PoE monitoring is enabled.
+        await self._run_if_enabled(self.get_neighbor, requires=self.option_sensor_poe)
+
         for func in [self.get_system_health, self.get_dhcp_client, self.get_interface]:
             await self._run_if_enabled(func)
 
@@ -901,6 +925,111 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
                 iface[f"{direction}-previous"] = current
                 iface[f"{direction}-total"] = current
 
+    def get_neighbor(self) -> None:
+        """Map interface name -> advertised neighbour board(s) via /ip/neighbor.
+
+        MikroTik Neighbor Discovery lets us identify a device on a PoE-out port
+        (by its `board` model) so we can estimate its draw from the nameplate
+        table when the port reports no PoE power. Only populated when PoE
+        monitoring is enabled (the sole consumer is the energy estimator).
+        """
+        response = self.api.query("/ip/neighbor")
+        if response is None:
+            # Query failed (e.g. a transient disconnect). Keep the prior map so a
+            # one-poll blip does not reset every estimate's accumulation baseline.
+            return
+        self.ds["neighbor"] = {}
+        for entry in response:
+            board = entry.get("board")
+            interfaces = entry.get("interface")
+            if not board or not interfaces:
+                continue
+            # `interface` can be a comma-separated list when the neighbour is
+            # reachable via several local interfaces.
+            for name in str(interfaces).split(","):
+                self.ds["neighbor"].setdefault(name.strip(), []).append(board)
+
+    def _resolve_poe_power(self, iface) -> tuple[float | None, str | None, str | None]:
+        """Resolve a port's PoE-out power for energy accumulation.
+
+        Returns ``(watts, source, model)`` where source is "measured" (the
+        hardware reported poe-out-power), "estimated" (no metering, but the
+        powered port has exactly one neighbour with a known nameplate), or
+        ``(None, None, None)`` when no power can be attributed (null-not-guess:
+        an ambiguous multi-neighbour port or an unknown board yields nothing).
+        """
+        measured = iface.get("poe-out-power")
+        if measured is not None:
+            try:
+                return float(measured), "measured", None
+            except (TypeError, ValueError):
+                # A firmware variant reporting a non-numeric token must not crash
+                # the whole poll - null-not-guess and fall through to estimation.
+                return None, None, None
+
+        # Estimate only while the port is actually delivering power. (type ==
+        # "ether" alone does not imply PoE - non-PoE ports keep status "unknown".)
+        if iface.get("poe-out-status") != "powered-on":
+            return None, None, None
+
+        name = iface.get("default-name") or iface.get("name")
+        boards = self.ds.get("neighbor", {}).get(name, [])
+        if len(boards) != 1:
+            return None, None, None
+
+        watts = _POE_DEVICE_NAMEPLATE.get(boards[0])
+        if watts is None:
+            return None, None, None
+        return watts, "estimated", boards[0]
+
+    def _poe_energy_step(self, uid: str, power_now: float | None) -> float:
+        """Trapezoidal energy increment (Wh) for one port over one poll.
+
+        Uses the configured scan interval as dt (matching
+        _calculate_interface_traffic) so a missed/late poll can never integrate
+        a phantom area, and no wall-clock state must survive restarts. The first
+        sample of a port (and any None power) contributes 0 and resets the prev
+        sample, so energy is never integrated across an unpowered gap. The
+        result is clamped >= 0 to keep the downstream total_increasing monotonic.
+        """
+        prev = self._poe_energy_last_power.get(uid)
+        if power_now is None:
+            self._poe_energy_last_power.pop(uid, None)
+            return 0.0
+        if prev is None:
+            self._poe_energy_last_power[uid] = power_now
+            return 0.0
+        self._poe_energy_last_power[uid] = power_now
+        interval = self.option_scan_interval.seconds
+        return max(0.0, (power_now + prev) / 2 * interval / 3600)
+
+    def _accumulate_poe_energy(self) -> None:
+        """Write per-poll PoE energy increments into the interface/resource data.
+
+        Per ether port, resolve a measured-or-estimated power, integrate one
+        trapezoid step, and stash the increment (Wh) plus its source/model. The
+        device total is the sum of per-port increments. The RestoreSensor
+        entities own the durable kWh totals; this only emits per-poll deltas.
+        See ADR-017.
+        """
+        total_delta = 0.0
+        any_source = False
+        for uid, iface in self.ds["interface"].items():
+            if iface.get("type") != "ether":
+                continue
+            power, source, model = self._resolve_poe_power(iface)
+            delta = self._poe_energy_step(uid, power)
+            iface["poe-out-energy-delta-wh"] = delta
+            iface["poe-out-energy-source"] = source
+            iface["poe-out-energy-model"] = model
+            if source is not None:
+                any_source = True
+                total_delta += delta
+        # None (not 0.0) when no port has attributable energy, so the no-uid
+        # total sensor is not created on routers with PoE enabled but no
+        # measured/estimated PoE-out load.
+        self.ds["resource"]["poe-out-energy-delta-wh"] = total_delta if any_source else None
+
     def get_interface(self) -> None:
         """Get all interfaces data from Mikrotik"""
         self.ds["interface"] = parse_api(
@@ -940,6 +1069,9 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
                 {"name": "tx", "default": 0.0},
                 {"name": "rx-total", "default": 0.0},
                 {"name": "tx-total", "default": 0.0},
+                {"name": "poe-out-energy-delta-wh", "default": 0.0},
+                {"name": "poe-out-energy-source", "default": None},
+                {"name": "poe-out-energy-model", "default": None},
             ],
             skip=[
                 {"name": "type", "value": "bridge"},
@@ -979,6 +1111,9 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
 
         # Update virtual interfaces
         self._process_interface_metadata()
+
+        if self.option_sensor_poe:
+            self._accumulate_poe_energy()
 
     def _process_interface_metadata(self) -> None:
         """Post-process interfaces: comments, virtual names, ethernet monitoring, bonding."""
@@ -1555,6 +1690,7 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
             key="host",
             vals=[
                 {"name": "host"},
+                {"name": "name"},
                 {"name": "type"},
                 {"name": "interval"},
                 {"name": "port"},

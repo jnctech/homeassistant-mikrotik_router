@@ -4,6 +4,180 @@ Changes listed in reverse chronological order.
 
 ---
 
+## CR-260629-release-v2.3.20 — stable v2.3.20 (PoE energy + netwatch naming)
+
+**Date:** 2026-06-29
+**Branch:** `chore/release-v2.3.20` → PR to `dev`; then `dev → master` PR + back-merge; GitHub Release `v2.3.20`
+**Status:** Released
+
+### What changed
+- `manifest.json` version `2.3.20-beta.3 → 2.3.20`.
+- `README.md`, `info.md` — consolidated the three beta "What's New" entries into a single **v2.3.20** stable entry rolling up beta.1/2/3.
+- `docs/ISSUES.md` — `ENH-260509-poe-energy` and `ENH-260608-netwatch-naming` → ✅ Done/Released (both reporter gates cleared); `## In-flight` refreshed for the post-v2.3.20 state.
+
+### Why
+Cut the stable that the v2.3.20 beta cycle was validating. Both release gates cleared by reporters: **@Dillton (#59)** confirmed measured PoE energy works as expected (increments, survives restart, selectable in the Energy Dashboard) on metering hardware (2026-06-29); **@L2jLiga (#70)** confirmed netwatch naming and closed the issue (entity-level naming sufficient; no per-host devices wanted). beta.3 was live-validated on the 4-device fleet (full `validate-live-sensors` matrix); stable == beta.3 code + version bump only, so no re-validation needed.
+
+### Rollup (everything on `dev` since v2.3.19)
+- PoE-out energy sensors — measured + nameplate estimate (CR-260614-poe-energy-sensors, ADR-017, #59/#109).
+- Netwatch naming by `name` (CR-260615-netwatch-naming, ADR-018, #70/#114).
+- librouteros `login_method` callable fix (CR-260614-librouteros-login-method, ISS-260417).
+- HA `device_tracker`/config-flow reload deprecations cleanup (CR-260614-ha-deprecations-cleanup).
+- librouteros connect-contract test (CR-260614-connect-contract-test); homelab-leak guardrail (CR-260616-leak-guardrail).
+
+### Release ops
+PR `chore/release-v2.3.20 → dev`; then `dev → master` PR (master is branch-protected), merge, **back-merge `master → dev`** to restore `master ⊆ dev` (branch-sync-guard green); publish GitHub Release `v2.3.20` (not pre-release) → `release.yml` (trigger `release: published`) builds the zip.
+
+---
+
+## CR-260616-leak-guardrail - redact leaked homelab MACs + add private-IP/MAC guard
+
+**Date:** 2026-06-16
+**Branch:** `chore/leak-guardrail` -> PR to `dev`
+**Status:** In Review
+
+### What changed
+- `scripts/check_no_homelab_leaks.py` (new) - fails if RFC1918 private IPv4 or MAC addresses appear in public, integration-facing files (`docs/` except `docs/internal/`, `custom_components/`, `README.md`, `info.md`). Allows documentation IP ranges, the `10.0.0.1` placeholder, example MAC OUIs (`AA:BB:CC`, `00:00:5E`), and an inline `leak-ok` marker. `tests/` is out of scope (example fixtures).
+- `.pre-commit-config.yaml` - local `homelab-leak-check` hook.
+- `.github/workflows/ci.yml` - new `homelab-leak` job (blocks merge on a finding).
+- `docs/decisions/ADR-013-entity-naming-disambiguation.md` - redacted six real client MAC addresses (live-validation evidence) to example `AA:BB:CC:DD:EE:0x` values. Behaviour/decision unchanged.
+
+### Why
+A homelab IP and client MACs leaked into ADR/ISSUES docs from pasted live-validation evidence (the IP/ADR-018 leak was caught and scrubbed in the #70 branch before merge; ADR-013's MACs were already on `dev`). This adds an automated guard so it cannot recur, and cleans the one remaining public occurrence. Note: redaction fixes the files going forward; the MACs remain in prior git history (purge requires a separate history rewrite).
+
+### Verification
+- `python scripts/check_no_homelab_leaks.py` passes on this branch (0 findings); fails (exit 1) with the offending `file:line` when a private IP/MAC is present (verified against the pre-redaction ADR-013).
+- ruff/bandit unaffected (script lives under `scripts/`, outside the scanned trees).
+
+### Release ops
+Lands on `dev`. No version bump (tooling/docs only).
+
+---
+
+## CR-260615-netwatch-naming - name netwatch entities by `name`, not shared `comment` (#70)
+
+**Date:** 2026-06-15
+**Branch:** `feature/netwatch-naming` -> PR to `dev`
+**Status:** In Review
+
+### What changed
+- `entity.py`: extracted the uid-path naming into `_compose_uid_name` (ADR-007; `custom_name` is now a thin dispatcher) and added a first-branch precedence for descriptors with `data_name_prefer=True` -> resolve display name `data_name` (non-empty, whitespace-stripped) -> `comment` -> static `name`, returned **bare** (no suffix). `getattr`-guarded so other platforms are unaffected.
+- `binary_sensor_types.py`: added `data_name_prefer: bool = False` to `MikrotikBinarySensorEntityDescription`; added `"name"` to `DEVICE_ATTRIBUTES_NETWATCH`; netwatch descriptor `data_name="host"` -> `"name"`, `+data_name_prefer=True`, dropped `data_name_comment=True`. `data_uid`/`data_reference` stay `"host"`.
+- `coordinator.py` `get_netwatch`: parse `name` (`{"name": "name"}` in `vals`; `from_entry` defaults `""` for older ROS).
+- Tests: real-typed `_binary_entity_with_real_desc` + parametrized netwatch precedence, IPv6 unique_id, duplicate-name residual, dhcp/switch scope guards (prefer stays off), coordinator name-parse cases.
+- Docs: `ADR-018-netwatch-name-precedence`; `manifest.json` `2.3.20-beta.2` -> `2.3.20-beta.3`; README/info.md What's New; `ENH-260608` -> In Review; filed `ENH-260615-netwatch-host-key-collision`.
+
+### Why
+[#70](https://github.com/jnctech/homeassistant-mikrotik_router/issues/70): users sharing one `comment` across many netwatch entries saw indistinguishable entities. Showing the distinct netwatch `name` (with comment/static fallback) disambiguates them. Bare (no suffix) because `has_entity_name` already prepends the `<inst> Netwatch` device name — a suffix would read "Netwatch ... Netwatch". A new flag (not the ADR-013 `data_name_compose` reorder) was required because the 5 `data_name_comment` switches need comment-first ordering. `unique_id` stays host-derived -> no migration. See ADR-018.
+
+### Verification
+- ruff lint + format clean (container `ruff==0.9.0`).
+- Full suite **669 passed, 5 skipped** (WSL python:3.13); total coverage **88%** (>=80% gate). `binary_sensor_types.py` 100%, `entity.py` 95%.
+- Cognitive complexity (`complexipy`, SonarSource definition): `custom_name` **4**, `_compose_uid_name` **12** — both <=15. The whitespace-strip `and` tipped the in-place form to 16, so the helper was extracted per ADR-007.
+- Live: full `validate-live-sensors` matrix on a RouterOS 7.22 fleet (beta.3 side-load) — name-shown and name-less->comment both confirmed; all sensor classes cross-checked against router ground-truth, 0 integration entities unavailable, no regressions.
+
+### Release ops
+Lands on `dev`; pre-release tag `v2.3.20-beta.3` off `dev` -> `release.yml`. No `dev->master`.
+
+---
+
+## CR-260614-release-v2.3.20-beta.2 - pre-release rolling up PoE energy + librouteros + deprecation fixes
+
+**Date:** 2026-06-14
+**Branch:** `chore/release-v2.3.20-beta.2` -> PR to `dev`
+**Status:** Pre-release - tag `v2.3.20-beta.2` cut from `dev` for maintainer testing (folds the post-beta.1 dev changes); precedes stable `v2.3.20`.
+
+### What changed
+- `manifest.json` `2.3.20-beta.1 -> 2.3.20-beta.2`; README / info.md What's New updated.
+- Rolls up everything landed on `dev` since beta.1: PoE-out energy (CR-260614-poe-energy-sensors), librouteros `login_method` fix (CR-260614-librouteros-login-method), HA deprecations cleanup (CR-260614-ha-deprecations-cleanup), connect-contract test (CR-260614-connect-contract-test).
+
+### Why
+A current pre-release for the maintainer to validate the full `dev` state on the live fleet before stable `v2.3.20` (and so @Dillton can test against the latest).
+
+### Release ops
+Lands on `dev`; cut **pre-release** tag `v2.3.20-beta.2` off `dev` -> `release.yml` (trigger `release: published`) builds the zip. No `dev->master`.
+
+---
+
+## CR-260614-connect-contract-test - pin librouteros.connect() call contract
+
+**Date:** 2026-06-14
+**Branch:** `test/connect-contract-assertions` -> PR to `dev`
+**Status:** In Review
+
+### What changed
+- `tests/test_mikrotikapi.py` - `TestConnectKwargs` pins the exact kwargs passed to `librouteros.connect()` (positional creds; `{encoding, login_method, port}` + `ssl_wrapper` under SSL; the pre-3.0 `login_methods` name must never be passed). Complements `TestLoginMethod`.
+- `docs/ISSUES.md` - test-hardening follow-ups filed: deprecation-as-failure setup test (under ENH-260608-test-suite-hardening) + `ENH-260614-ha-canary-ci`.
+
+### Why
+Retrospective on the bugs swept from upstream (ScannerEntity #495, config-flow double-reload ISS-260614, librouteros `login_methods` ISS-260417): all three slipped because they are warnings / silent fallbacks at mocked seams against a single pinned HA. This pins the one external-lib call contract that silently drops bad kwargs; the structural catches (real-setup deprecation test, HA-latest canary lane) are filed for the test-hardening track.
+
+### Verification
+656 passed, 5 skipped (py3.14 Docker; +2 contract tests); ruff clean.
+
+---
+
+## CR-260614-ha-deprecations-cleanup - clear HA device_tracker + config-flow reload deprecations
+
+**Date:** 2026-06-14
+**Branch:** `chore/ha-deprecations-cleanup` -> PR to `dev`
+**Status:** In Review
+
+### What changed
+- `device_tracker.py` - import `ScannerEntity` and `SourceType` from `homeassistant.components.device_tracker` instead of the deprecated `.config_entry` / `.const` aliases (HA 2026.6 deprecation; alias removed in HA Core 2027.6). Upstream [tomaae#495](https://github.com/tomaae/homeassistant-mikrotik_router/issues/495).
+- `config_flow.py` - reauth uses `async_update_and_abort()` instead of `async_update_reload_and_abort()`; the existing config-entry update listener performs the single reload, ending the deprecated double-reload (HA 2026.6 -> error 2026.12). `ISS-260614`.
+- `tests/test_config_flow.py` - comment refresh (reauth now reloads via the listener).
+
+### Why
+Two HA deprecations logged on 2026.6+: the `ScannerEntity` alias (removed 2027.6) and the update-listener + config-flow-reload double-reload (error 2026.12). Both are deadline-driven and clear real log noise for every user; bundled into one cleanup.
+
+### Verification
+654 passed, 5 skipped (py3.14 Docker); ruff clean. Reauth flow test stays green (abort reason + data update preserved by `async_update_and_abort`).
+
+---
+
+## CR-260614-librouteros-login-method - pass librouteros login_method callable (auth correctness)
+
+**Date:** 2026-06-14
+**Branch:** `fix/librouteros-login-method` -> PR to `dev`
+**Status:** In Review
+
+### What changed
+- `mikrotikapi.py` - `connect()` now passes librouteros' `login_method` (the >=3.0 singular kwarg) as a CALLABLE mapped from the config string (`_LOGIN_METHODS = {"plain": login.plain, "token": login.token}`), instead of the pre-3.0 plural `login_methods` string kwarg which librouteros silently drops.
+- `tests/test_mikrotikapi.py` - `TestLoginMethod` asserts plain/token map to the callables and the old kwarg is gone.
+
+### Why
+Part of `ISS-260417` (reframed by the G0 panel 2026-06-14): the `login_methods`->`login_method` rename landed in librouteros 3.0.0, so the old kwarg has been silently dropped across the whole pinned `>=3.4.1,<4.0` range - `plain` only worked by librouteros' default fallback, and a `token` user would silently get plain. (Login method is not yet exposed in the config flow, so only `plain` is exercised live today; this makes the selection actually honoured if/when token is wired up.) The `<4.0` pin is unchanged - lifting it is tracked separately (`ENH-260512-librouteros-test-matrix`).
+
+### Verification
+654 passed, 5 skipped (py3.14 Docker); ruff clean. Live `plain` auth is exercised by the running fleet on every poll.
+
+---
+
+## CR-260614-poe-energy-sensors — native PoE-out energy sensors (measured + nameplate estimate)
+
+**Date:** 2026-06-14
+**Branch:** `feature/poe-energy-sensors` -> PR to `dev`
+**Status:** In Review — ships beta-gated as **v2.3.20-beta.1** for @Dillton to validate on metering hardware.
+
+### What changed
+- `coordinator.py` — per-poll trapezoidal PoE-out energy accumulation (`_poe_energy_step`, `_accumulate_poe_energy`, `_resolve_poe_power`) writing a Wh increment into `ds["interface"][uid]` / `ds["resource"]`; new `get_neighbor()` (`/ip/neighbor` -> interface->board map) + `_POE_DEVICE_NAMEPLATE` table for estimating non-metering hardware; transient `_poe_energy_last_power` state; energy keys in `get_interface` ensure_vals; accumulation + neighbour fetch gated on `option_sensor_poe`.
+- `sensor.py` — `MikrotikPoEEnergySensor` / `MikrotikPoEEnergyTotalSensor` (`RestoreSensor`) own the restart-persistent kWh total; `power_source` (measured|estimated) + `estimated_from_model` attributes.
+- `sensor_types.py` — per-port `poe_out_energy` + device-total `poe_out_energy_total` descriptors (ENERGY / TOTAL_INCREASING / kWh, non-diagnostic).
+- `entity.py` — `_skip_poe_sensor` gates the energy sensor on `CONF_SENSOR_POE` + an attributable source.
+- `manifest.json` — `2.3.19 -> 2.3.20-beta.1`. ADR-017; tests (coordinator + entity + sensor, real-typed).
+
+### Why
+Resolves `ENH-260509-poe-energy` (#59). RouterOS exposes only instantaneous PoE power; this integrates it to Energy-Dashboard-compatible kWh. Metering hardware gets a measured total; non-metering hardware (e.g. the maintainer's ax3->ac2, verified live 2026-06-14 to report no PoE power) gets a clearly-labelled nameplate estimate via neighbour discovery. Maintainer HW can't validate accuracy -> beta-gated.
+
+### Verification
+Full suite **651 passed, 5 skipped** (py3.14 in Docker). ruff clean; coordinator-reviewer PASS; silent-failure-hunter findings applied (non-numeric-power guard, neighbour-map retain-on-failure, corrupted-restore warning); code-simplifier reviewed (one finding rejected — would introduce a one-poll-lag in recorded state). Live cross-check on the ax3 (estimated path) is a beta task; measured-path accuracy is @Dillton.
+
+### Release ops
+Lands on `dev`; cut **pre-release** tag `v2.3.20-beta.1` off `dev` (not dev->master) -> `release.yml` builds the zip.
+
+---
+
 ## CR-260614-release-v2.3.19 — stable v2.3.19 + branch-sync gate
 
 **Date:** 2026-06-14

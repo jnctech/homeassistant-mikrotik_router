@@ -10,6 +10,13 @@ Monitor and control your MikroTik router from Home Assistant.
 
 ![Mikrotik Logo](https://raw.githubusercontent.com/tomaae/homeassistant-mikrotik_router/master/docs/assets/images/ui/header.png)
 
+### What's new in v2.3.20
+Stable release rolling up the v2.3.20 beta cycle. Both new features were validated live — PoE-out energy on real metering hardware (#59, thanks @Dillton) and netwatch naming on a multi-entry deployment (#70, thanks @L2jLiga).
+- **PoE energy for the Energy Dashboard** — per-port energy sensors (kWh, `total_increasing`) + a device total, restart-persistent. Enable the existing PoE sensors option. Addresses #59.
+- **Estimated energy on non-metering hardware** — where a PoE-out port powers a device that has no wattage reading, energy is estimated from the device's datasheet rating (via Neighbor Discovery) and labelled `power_source: estimated` — a coarse upper bound, not a measurement.
+- **Netwatch entities named by their netwatch `name`** — if you set a distinct `name` on each netwatch entry, that name is now shown in Home Assistant instead of a shared `comment`, so entries that share a comment are no longer indistinguishable. Entries with no name keep showing their comment (or "Netwatch" if neither is set). Your entity IDs and automations are unchanged. Addresses #70.
+- **Correct librouteros `login_method` handling** (`ISS-260417`) + HA deprecation cleanup (device_tracker `ScannerEntity`, config-flow reload).
+
 ### What's new in v2.3.19
 Stable release rolling up the read-only and quality-scale fixes since v2.3.18. Validated live against a multi-device RouterOS deployment before tagging.
 - **Read-only users now get wireless / CAPsMAN / PPP data** — on RouterOS 7.x, an HA user without write/policy/reboot rights previously saw zero wireless clients. The firmware version is now read from `/system/resource`, so capability detection works without granting write access. Thanks to @ahharvey for the fix and wifi-qcom testing. Addresses #82.

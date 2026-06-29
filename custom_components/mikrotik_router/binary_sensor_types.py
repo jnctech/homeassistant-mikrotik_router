@@ -44,6 +44,7 @@ DEVICE_ATTRIBUTES_UPS = [
 
 DEVICE_ATTRIBUTES_NETWATCH = [
     "host",
+    "name",
     "type",
     "interval",
     "port",
@@ -66,6 +67,12 @@ class MikrotikBinarySensorEntityDescription(BinarySensorEntityDescription):
     data_attribute: str = "available"
     data_name: str | None = None
     data_name_comment: bool = False
+    # When True, custom_name prefers a non-empty data_name over the comment,
+    # then falls back to comment, then the static name. Used by netwatch so
+    # entries sharing a comment are disambiguated by their distinct name.
+    # Other platforms' descriptions lack the field, so custom_name reads it
+    # defensively. See ADR-018.
+    data_name_prefer: bool = False
     data_uid: str | None = None
     data_reference: str | None = None
     data_attributes_list: List = field(default_factory=lambda: [])
@@ -132,8 +139,8 @@ SENSOR_TYPES: tuple[BinarySensorEntityDescription, ...] = (
         ha_connection_value="Netwatch",
         data_path="netwatch",
         data_attribute="status",
-        data_name="host",
-        data_name_comment=True,
+        data_name="name",
+        data_name_prefer=True,
         data_uid="host",
         data_reference="host",
         data_attributes_list=DEVICE_ATTRIBUTES_NETWATCH,

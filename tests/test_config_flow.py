@@ -147,7 +147,7 @@ async def test_reauth_flow_updates_credentials(hass):
     assert result["step_id"] == "reauth_confirm"
 
     # Patch both import sites: config_flow uses MikrotikAPI for the credential
-    # check, and async_update_reload_and_abort reloads the entry, so coordinator
+    # check, and the update listener reloads the entry on the data change, so coordinator
     # async_setup_entry instantiates it too. Without the coordinator patch the
     # real librouteros.connect() reaches the socket layer (HASocketBlockedError);
     # the reload task is scheduled and only runs before teardown on some Python

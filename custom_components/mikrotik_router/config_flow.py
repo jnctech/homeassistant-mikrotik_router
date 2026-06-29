@@ -163,7 +163,7 @@ class MikrotikControllerConfigFlow(ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             error = await self.hass.async_add_executor_job(self._validate_connection, {**reauth_entry.data, **user_input})
             if not error:
-                return self.async_update_reload_and_abort(reauth_entry, data_updates=user_input)
+                return self.async_update_and_abort(reauth_entry, data_updates=user_input)
             errors["base"] = error
         return self.async_show_form(
             step_id="reauth_confirm",

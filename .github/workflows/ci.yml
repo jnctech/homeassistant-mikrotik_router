@@ -34,6 +34,25 @@ jobs:
       - name: Run ruff (format check)
         run: ruff format --check custom_components/mikrotik_router tests
 
+  homelab-leak:
+    name: Homelab leak guard
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6
+        with:
+          python-version: "3.13"
+
+      - name: Scan public files for private IPs / MACs
+        # Guards docs/ (excl. internal), custom_components/, README, info.md.
+        # See scripts/check_no_homelab_leaks.py. Originated after a homelab IP/MAC
+        # leaked into ADR docs from live-validation evidence.
+        run: python scripts/check_no_homelab_leaks.py
+
   tests:
     name: Python Tests (${{ matrix.python-version }})
     runs-on: ubuntu-latest

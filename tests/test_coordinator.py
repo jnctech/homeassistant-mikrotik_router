@@ -2782,6 +2782,45 @@ def test_netwatch_basic_parsing():
     assert nw["enabled"] is True
 
 
+def test_netwatch_parses_name():
+    """get_netwatch surfaces the netwatch name field, alongside its siblings (#70)."""
+    coordinator = make_coordinator(
+        api_responses={
+            "/tool/netwatch": [
+                {
+                    "host": "1.1.1.1",
+                    "name": "WAN uplink",
+                    "type": "icmp",
+                    "comment": "edge",
+                    "disabled": False,
+                },
+            ],
+        }
+    )
+    coordinator.get_netwatch()
+    nw = coordinator.ds["netwatch"]["1.1.1.1"]
+    assert nw["name"] == "WAN uplink"
+    # the new vals entry must not disturb sibling parsing
+    assert nw["comment"] == "edge"
+    assert nw["enabled"] is True
+
+
+def test_netwatch_name_defaults_empty_when_absent_or_empty():
+    """Absent or present-empty name both resolve to '' (from_entry default), so
+    custom_name falls back to comment/static rather than raising."""
+    coordinator = make_coordinator(
+        api_responses={
+            "/tool/netwatch": [
+                {"host": "1.1.1.1", "type": "icmp"},  # name absent (older ROS)
+                {"host": "2.2.2.2", "name": "", "type": "icmp"},  # name present-empty
+            ],
+        }
+    )
+    coordinator.get_netwatch()
+    assert coordinator.ds["netwatch"]["1.1.1.1"]["name"] == ""
+    assert coordinator.ds["netwatch"]["2.2.2.2"]["name"] == ""
+
+
 # ---------------------------------------------------------------------------
 # Group AA: get_system_routerboard() — routerboard parsing
 # ---------------------------------------------------------------------------
@@ -5228,3 +5267,145 @@ def test_readonly_capability_cascade_unblocked_end_to_end():
     assert coordinator.support_wireless is True
     assert coordinator._wifimodule == "wifi"
     assert coordinator.support_capsman is False
+
+
+# ---------------------------------------------------------------------------
+# Group: PoE-out energy accumulation (ADR-017 / ENH-260509)
+# ---------------------------------------------------------------------------
+
+
+def _poe_coordinator(interface=None, neighbor=None, scan_interval=30):
+    """Coordinator wired for the PoE energy helpers (real methods, no __init__)."""
+    coordinator = make_coordinator(options={CONF_SCAN_INTERVAL: scan_interval})
+    coordinator._poe_energy_last_power = {}
+    coordinator.ds["interface"] = interface or {}
+    coordinator.ds["neighbor"] = neighbor or {}
+    return coordinator
+
+
+def test_poe_energy_step_first_sample_returns_zero():
+    """The first sample of a port has no previous power, so it integrates 0."""
+    coordinator = _poe_coordinator()
+    assert coordinator._poe_energy_step("ether1", 10.0) == 0.0
+    assert coordinator._poe_energy_last_power["ether1"] == 10.0
+
+
+def test_poe_energy_step_trapezoid():
+    """Second sample integrates the trapezoid over one scan interval."""
+    coordinator = _poe_coordinator(scan_interval=30)
+    coordinator._poe_energy_last_power["ether1"] = 10.0
+    # (10 + 20) / 2 * 30 / 3600 = 15 * 30 / 3600 = 0.125 Wh
+    assert coordinator._poe_energy_step("ether1", 20.0) == pytest.approx(0.125)
+    assert coordinator._poe_energy_last_power["ether1"] == 20.0
+
+
+def test_poe_energy_step_none_clears_state():
+    """A None power (port unplugged/disabled) integrates 0 and forgets the prev sample."""
+    coordinator = _poe_coordinator()
+    coordinator._poe_energy_last_power["ether1"] = 10.0
+    assert coordinator._poe_energy_step("ether1", None) == 0.0
+    assert "ether1" not in coordinator._poe_energy_last_power
+
+
+def test_resolve_poe_power_prefers_measured():
+    """A real poe-out-power reading is used directly (source=measured)."""
+    coordinator = _poe_coordinator()
+    iface = {"poe-out-power": 12.1, "poe-out-status": "powered-on", "default-name": "ether1"}
+    assert coordinator._resolve_poe_power(iface) == (12.1, "measured", None)
+
+
+def test_resolve_poe_power_estimates_from_single_neighbor():
+    """No metering but a powered port with one known neighbour -> nameplate estimate."""
+    coordinator = _poe_coordinator(neighbor={"ether1": ["RBD52G-5HacD2HnD"]})
+    iface = {"poe-out-power": None, "poe-out-status": "powered-on", "default-name": "ether1"}
+    assert coordinator._resolve_poe_power(iface) == (16.0, "estimated", "RBD52G-5HacD2HnD")
+
+
+def test_resolve_poe_power_no_estimate_for_ambiguous_multi_neighbor():
+    """A port with more than one neighbour cannot be attributed (null-not-guess)."""
+    coordinator = _poe_coordinator(neighbor={"ether2": ["RB4011iGS+5HacQ2HnD", "CRS310-8G+2S+"]})
+    iface = {"poe-out-power": None, "poe-out-status": "powered-on", "default-name": "ether2"}
+    assert coordinator._resolve_poe_power(iface) == (None, None, None)
+
+
+def test_resolve_poe_power_no_estimate_for_unknown_board():
+    """A single neighbour whose board is not in the nameplate table yields no estimate."""
+    coordinator = _poe_coordinator(neighbor={"ether1": ["RB-SOME-UNKNOWN-BOARD"]})
+    iface = {"poe-out-power": None, "poe-out-status": "powered-on", "default-name": "ether1"}
+    assert coordinator._resolve_poe_power(iface) == (None, None, None)
+
+
+def test_resolve_poe_power_no_estimate_when_not_powered():
+    """Estimate only while the port is actually delivering power."""
+    coordinator = _poe_coordinator(neighbor={"ether1": ["RBD52G-5HacD2HnD"]})
+    iface = {"poe-out-power": None, "poe-out-status": "waiting-for-load", "default-name": "ether1"}
+    assert coordinator._resolve_poe_power(iface) == (None, None, None)
+
+
+def test_accumulate_poe_energy_device_total_sums_ports():
+    """Device-total delta equals the sum of the per-port increments (no double-count)."""
+    interface = {
+        "ether1": {"type": "ether", "poe-out-power": 10.0, "poe-out-status": "powered-on", "default-name": "ether1"},
+        "ether2": {"type": "ether", "poe-out-power": 20.0, "poe-out-status": "powered-on", "default-name": "ether2"},
+    }
+    coordinator = _poe_coordinator(interface=interface, scan_interval=30)
+    # Seed previous samples so this poll integrates a non-zero trapezoid.
+    coordinator._poe_energy_last_power = {"ether1": 10.0, "ether2": 20.0}
+    coordinator._accumulate_poe_energy()
+    d1 = interface["ether1"]["poe-out-energy-delta-wh"]
+    d2 = interface["ether2"]["poe-out-energy-delta-wh"]
+    assert d1 == pytest.approx(10.0 * 30 / 3600)
+    assert d2 == pytest.approx(20.0 * 30 / 3600)
+    assert coordinator.ds["resource"]["poe-out-energy-delta-wh"] == pytest.approx(d1 + d2)
+    assert interface["ether1"]["poe-out-energy-source"] == "measured"
+
+
+def test_accumulate_poe_energy_total_none_when_no_source():
+    """A PoE-enabled router with no attributable PoE-out load leaves the total uncreated."""
+    interface = {"ether1": {"type": "ether", "default-name": "ether1"}}
+    coordinator = _poe_coordinator(interface=interface)
+    coordinator._accumulate_poe_energy()
+    assert coordinator.ds["resource"]["poe-out-energy-delta-wh"] is None
+    assert interface["ether1"]["poe-out-energy-source"] is None
+
+
+def test_accumulate_poe_energy_skips_non_ether_ports():
+    """Only ether ports are integrated; wlan/bridge are left untouched."""
+    interface = {"wlan1": {"type": "wlan"}}
+    coordinator = _poe_coordinator(interface=interface)
+    coordinator._accumulate_poe_energy()
+    assert "poe-out-energy-delta-wh" not in interface["wlan1"]
+
+
+def test_get_neighbor_builds_interface_board_map():
+    """get_neighbor maps each interface (incl. comma-listed) to advertised board(s)."""
+    coordinator = make_coordinator(
+        api_responses={
+            "/ip/neighbor": [
+                {"interface": "ether1", "board": "RBD52G-5HacD2HnD", "identity": "hap_ac2"},
+                {"interface": "ether2,bridge", "board": "CRS310-8G+2S+", "identity": "csr310"},
+                {"interface": "ether3"},  # missing board -> skipped
+            ]
+        }
+    )
+    coordinator.get_neighbor()
+    assert coordinator.ds["neighbor"] == {
+        "ether1": ["RBD52G-5HacD2HnD"],
+        "ether2": ["CRS310-8G+2S+"],
+        "bridge": ["CRS310-8G+2S+"],
+    }
+
+
+def test_get_neighbor_retains_prior_map_on_query_failure():
+    """A failed/None /ip/neighbor query keeps the previous map (no estimate reset)."""
+    coordinator = make_coordinator(api_responses={"/ip/neighbor": None})
+    coordinator.ds["neighbor"] = {"ether1": ["RBD52G-5HacD2HnD"]}
+    coordinator.get_neighbor()
+    assert coordinator.ds["neighbor"] == {"ether1": ["RBD52G-5HacD2HnD"]}
+
+
+def test_resolve_poe_power_non_numeric_measured_yields_no_value():
+    """A non-numeric poe-out-power reading null-not-guesses instead of crashing."""
+    coordinator = _poe_coordinator()
+    iface = {"poe-out-power": "n/a", "poe-out-status": "powered-on", "default-name": "ether1"}
+    assert coordinator._resolve_poe_power(iface) == (None, None, None)

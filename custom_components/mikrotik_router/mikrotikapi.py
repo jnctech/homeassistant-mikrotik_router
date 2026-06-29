@@ -13,8 +13,15 @@ from .const import (
 )
 
 import librouteros
+from librouteros.login import plain as _login_plain, token as _login_token
 
 _LOGGER = logging.getLogger(__name__)
+
+# librouteros >= 3.0 takes `login_method` as a CALLABLE (the pre-3.0 plural
+# `login_methods` string kwarg was renamed). Passing the old kwarg means it is
+# silently dropped and librouteros falls back to its default (plain) -- so a
+# `token` user previously got plain auth. Map the config string to the callable.
+_LOGIN_METHODS = {"plain": _login_plain, "token": _login_token}
 
 
 class MikrotikAPI:
@@ -97,7 +104,7 @@ class MikrotikAPI:
 
         kwargs = {
             "encoding": self._encoding,
-            "login_methods": self._login_method,
+            "login_method": _LOGIN_METHODS.get(self._login_method, _login_plain),
             "port": self._port,
         }
 
