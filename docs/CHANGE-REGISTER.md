@@ -4,6 +4,32 @@ Changes listed in reverse chronological order.
 
 ---
 
+## CR-260629-release-v2.3.20 — stable v2.3.20 (PoE energy + netwatch naming)
+
+**Date:** 2026-06-29
+**Branch:** `chore/release-v2.3.20` → PR to `dev`; then `dev → master` PR + back-merge; GitHub Release `v2.3.20`
+**Status:** Released
+
+### What changed
+- `manifest.json` version `2.3.20-beta.3 → 2.3.20`.
+- `README.md`, `info.md` — consolidated the three beta "What's New" entries into a single **v2.3.20** stable entry rolling up beta.1/2/3.
+- `docs/ISSUES.md` — `ENH-260509-poe-energy` and `ENH-260608-netwatch-naming` → ✅ Done/Released (both reporter gates cleared); `## In-flight` refreshed for the post-v2.3.20 state.
+
+### Why
+Cut the stable that the v2.3.20 beta cycle was validating. Both release gates cleared by reporters: **@Dillton (#59)** confirmed measured PoE energy works as expected (increments, survives restart, selectable in the Energy Dashboard) on metering hardware (2026-06-29); **@L2jLiga (#70)** confirmed netwatch naming and closed the issue (entity-level naming sufficient; no per-host devices wanted). beta.3 was live-validated on the 4-device fleet (full `validate-live-sensors` matrix); stable == beta.3 code + version bump only, so no re-validation needed.
+
+### Rollup (everything on `dev` since v2.3.19)
+- PoE-out energy sensors — measured + nameplate estimate (CR-260614-poe-energy-sensors, ADR-017, #59/#109).
+- Netwatch naming by `name` (CR-260615-netwatch-naming, ADR-018, #70/#114).
+- librouteros `login_method` callable fix (CR-260614-librouteros-login-method, ISS-260417).
+- HA `device_tracker`/config-flow reload deprecations cleanup (CR-260614-ha-deprecations-cleanup).
+- librouteros connect-contract test (CR-260614-connect-contract-test); homelab-leak guardrail (CR-260616-leak-guardrail).
+
+### Release ops
+PR `chore/release-v2.3.20 → dev`; then `dev → master` PR (master is branch-protected), merge, **back-merge `master → dev`** to restore `master ⊆ dev` (branch-sync-guard green); publish GitHub Release `v2.3.20` (not pre-release) → `release.yml` (trigger `release: published`) builds the zip.
+
+---
+
 ## CR-260616-leak-guardrail - redact leaked homelab MACs + add private-IP/MAC guard
 
 **Date:** 2026-06-16
