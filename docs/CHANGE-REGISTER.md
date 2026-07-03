@@ -4,6 +4,28 @@ Changes listed in reverse chronological order.
 
 ---
 
+## CR-260703-contributing-adr-numbering — CONTRIBUTING guide + ADR-index reconciliation
+
+**Date:** 2026-07-03
+**Branch:** `docs/contributing-adr-numbering` → PR to `dev`
+**Status:** In Review
+
+### What changed
+- `CONTRIBUTING.md` (new, repo root) — contributor guide codifying the conventions we enforced on the last two contributor PRs (#81 read-only fw-version, #116 LTE): null-not-guess, clear-stale-data-on-early-return (`get_ups` pattern), DEBUG log on absent-data returns, capability-gating, PII redaction (`TO_REDACT` + disabled-by-default), spec'd/real-typed tests (no yes-man `MagicMock`), ADR numbering, and hardware live-validation. Targets `dev`, leaves docs/registers to the maintainer.
+- `docs/decisions/README.md` — **backfilled the ADR index** with the shipped-but-unlisted **ADR-017** (PoE energy) and **ADR-018** (netwatch); added a **Numbering** section publishing the next-unused number (`020`) and the reserved/claimed list (015/016 reserved; 019 claimed by PR #116).
+
+### Why
+The public ADR index stopped at ADR-014 while 015/016 were reserved (invisibly) and 017/018 had already shipped — so a contributor (@zvldz, #116) reasonably picked ADR-015, which then had to be renumbered to 019 at review. The reconciled index + published reserved/claimed list makes numbers self-service and prevents recurrence; the standing rule is to add the index row when an ADR merges. CONTRIBUTING turns the recurring review points into up-front guidance so future PRs arrive closer to standard.
+
+### Verification
+- Docs-only; no code, no version bump. `homelab-leak` guard clean (no private IPs/MACs).
+- ADR-index rows verified against files on disk (017/018 present, Accepted) and against the reserved/claimed set in `docs/ISSUES.md`.
+
+### Release ops
+Lands on `dev`. No version bump (docs/process only).
+
+---
+
 ## CR-260629-release-v2.3.20 — stable v2.3.20 (PoE energy + netwatch naming)
 
 **Date:** 2026-06-29

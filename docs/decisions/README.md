@@ -20,6 +20,31 @@ Lightweight records of key design decisions for mikrotik_router HACS integration
 | [ADR-012](ADR-012-config-entry-runtime-data.md) | Store runtime data on `ConfigEntry.runtime_data` (typed) | Accepted |
 | [ADR-013](ADR-013-entity-naming-disambiguation.md) | Entity-naming disambiguation for colliding clients + DHCP servers | Accepted |
 | [ADR-014](ADR-014-entity-golden-tests.md) | Entity-golden test framework (syrupy snapshots over a mocked API boundary) | Accepted |
+| [ADR-017](ADR-017-poe-energy-accumulation.md) | PoE-out energy accumulation (measured + nameplate estimate) | Accepted |
+| [ADR-018](ADR-018-netwatch-name-precedence.md) | Netwatch entity naming by `name` (name→comment→static precedence) | Accepted |
+
+## Numbering — assign before you write
+
+ADR numbers are **sequential and never reused**. Before starting an ADR, pick the
+**next unused** number from the table below, and check the reserved/claimed list so
+you don't collide with a number that is spoken-for but not yet on `dev`. Contributors:
+the maintainer confirms the number and adds the index row **at merge** — if in doubt,
+name your file `ADR-NEXT-<slug>.md` and we'll assign it.
+
+**Next unused ADR number: `020`.**
+
+Reserved / claimed (not yet merged, so absent from the table above — do **not** reuse):
+
+| ADR | Reserved for | State |
+|-----|--------------|-------|
+| 015 | librouteros 4.x migration / salvage (`ISS-260417`) | Reserved (unwritten) |
+| 016 | Coordinator decomposition (deferred) | Reserved (unwritten) |
+| 019 | LTE modem sensors — PR [#116](https://github.com/jnctech/homeassistant-mikrotik_router/pull/116) (@zvldz) | Claimed, pending merge |
+
+> **Why this section exists:** the index above previously stopped at ADR-014 while
+> 015/016 were reserved and 017/018 had already shipped — invisible to anyone picking
+> a number. A contributor reasonably grabbed 015 (→ renumbered to 019 at review). Keep
+> this list current and **add the index row when an ADR merges** so the gap can't reopen.
 
 ## Template
 
