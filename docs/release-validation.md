@@ -106,6 +106,21 @@ APs on **both** the legacy `wireless` and the new `wifi` packages. Run at least 
 with a **read-only** Home Assistant user — wireless/CAPsMAN/PPP capability detection
 behaves differently without write access.
 
+### Hardware the maintainer can't validate — beta-first gate
+
+Some features depend on hardware **absent from the maintainer's fleet** (e.g. LTE
+modems, SFP-temperature boards, PoE-metering PSUs). Layer 2 can't exercise them here,
+so they **ship as a pre-release (`-beta.N`) first** and reach stable only after the
+beta is validated on real hardware — by the contributor who owns the device, a user,
+or the maintainer once hardware is available. An unvalidated hardware-gated feature is
+**not releasable as stable**.
+
+- Cut the beta off `dev` (pre-release; no `dev → master` — see [Quality Gates](quality-gates.md#branch-model)).
+- Record the hardware, RouterOS version, and observed result in the Validation log below.
+- Promote to stable only once that gate is cleared.
+
+Precedents: PoE-out energy (beta-gated on @Dillton's metering hardware, [#59](https://github.com/jnctech/homeassistant-mikrotik_router/issues/59)); LTE modem sensors (beta-gated on @zvldz's Chateau S53UG, [#116](https://github.com/jnctech/homeassistant-mikrotik_router/pull/116)).
+
 ---
 
 ## Release checklist
@@ -113,6 +128,8 @@ behaves differently without write access.
 - [ ] Automated suite green in CI on **both** Python 3.13 and 3.14.
 - [ ] Non-trivial changes passed the [Review Gates](quality-gates.md#review-gates) —
       multi-agent audit panels (design/diagnosis) and the specialized pre-PR review passes.
+- [ ] Any hardware-gated feature the maintainer can't validate on-fleet has cleared its
+      **beta-first gate** (validated on real hardware — see above) before stable.
 - [ ] Live cross-check of every sensor class against router truth on representative
       hardware (router + switch + AP; legacy + new Wi-Fi; read-only + full-access user).
 - [ ] No entity stuck `unknown`/`unavailable` without an explained cause.
