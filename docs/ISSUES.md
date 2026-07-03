@@ -10,8 +10,9 @@
 >
 > **NEXT SESSION (lead):**
 > 1. **LTE field-validation gate (`ENH-260614-lte-modem-info`)** — v2.3.21-beta.1 **stays beta** until **@zvldz or an LTE user** confirms the LTE sensors on real hardware (maintainer fleet has none). On confirmation: **promote to stable** (`dev→master` PR + immediate back-merge, `master ⊆ dev` guard green; GitHub release, not pre-release) and **close ENH-260614**. Ping @zvldz on #116 when he can run the beta.
-> 2. **librouteros cap-lift** — `ENH-260512-librouteros-test-matrix`: 3.4.1 / latest-3.x / expected-fail-4.x CI matrix, then lift `manifest` to `>=4.0,<5` (the floor-bump is the **v2.4.0** trigger).
-> 3. **Stale-debt sweep** — write the deferred `ISS-260512-librouteros-concurrency-adr` (Open, doc-only); reconcile stale statuses.
+> 2. **WireGuard peer sensors (`ENH-260703-wireguard-sensors`)** — **operator-requested: plan next session.** Surface per-peer state from `/interface/wireguard/peers` (last-handshake→connected/stale, endpoint, per-peer rx/tx); today only interface-level tx/rx exists. Scope keying (`public-key`), capability gate, ADR-020, redaction — see the ENH entry.
+> 3. **librouteros cap-lift** — `ENH-260512-librouteros-test-matrix`: 3.4.1 / latest-3.x / expected-fail-4.x CI matrix, then lift `manifest` to `>=4.0,<5` (the floor-bump is the **v2.4.0** trigger).
+> 4. **Stale-debt sweep** — write the deferred `ISS-260512-librouteros-concurrency-adr` (Open, doc-only); reconcile stale statuses.
 >
 > **Held / cross-repo (not this repo):** **oob onboarding** — `STANDARDS-mikrotik` declaration written to `~/oob/registry/standards-intake/STANDARDS-mikrotik-2026-07-03.md` but **commit+push BLOCKED** by the auto-mode classifier (unverified push target); **preserved on disk**, inbox message still in `~/oob/mailbox/to-mikrotik/` → commit+`git mv`-to-`read/` in a future **authorized** session. `config/.claude/domains/network.yaml` still stale (`wireguard1`→`wg-home`, lines 285/386) — next config session.
 >
@@ -43,6 +44,26 @@
 ---
 
 ## Active
+
+### ENH-260703-wireguard-sensors — WireGuard peer/handshake status sensors
+**Type:** Enhancement (new sensors)
+**Priority:** Medium
+**Created:** 2026-07-03
+**Status:** 🔵 Filed — **plan next session** (operator-requested 2026-07-03)
+
+Today the integration surfaces WireGuard only at the **interface** level (per-iface tx/rx + a connection binary_sensor — e.g. `wg-home`, `wg-us` on the RB4011). It does **not** surface **per-peer** state. RouterOS exposes that at `/interface/wireguard/peers` — per peer: `public-key`, `endpoint-address`/`endpoint-port`, `current-endpoint-address`/`-port`, **`last-handshake`**, `rx`/`tx`, `allowed-address`, `disabled`.
+
+**Scope to plan (next session):**
+- Which peer fields to expose (likely: last-handshake → a **connected/stale binary_sensor** or TIMESTAMP; current-endpoint; rx/tx per peer) and their `device_class`/`state_class`.
+- **Entity identity / keying** — peers keyed by `public-key` (stable) vs name/comment; `unique_id` design + whether it needs a migration. Public keys are identifier-ish → consider hidden-by-default + `TO_REDACT` (same pattern as LTE IMEI/IMSI/ICCID, ADR-019).
+- **Capability gate** — `support_wireguard` via `bool(query("/interface/wireguard"))`; conditional creation so non-WG routers get nothing (same pattern as `support_lte`).
+- **"Connected" heuristic** — WG is connectionless; derive from `last-handshake` age (e.g. < ~3 min = up). Decide the threshold + whether it's a binary_sensor or an attribute.
+- **ADR?** — likely yes (entity identity / new data source) → next unused **ADR-020** (per `docs/decisions/README.md § Numbering`).
+- Check upstream/forks for prior art; verify field names on a live RB4011 (`/interface/wireguard/peers print detail`) before descriptors.
+
+Note: this is separate from the `wireguard1`→`wg-home` rename orphans (config-side, not a bug).
+
+---
 
 ### ISS-260608-fw-version-silent-fallthrough — fw-version-gated paths silently no-op at version 0
 **Type:** Bug
