@@ -22,6 +22,7 @@ Lightweight records of key design decisions for mikrotik_router HACS integration
 | [ADR-014](ADR-014-entity-golden-tests.md) | Entity-golden test framework (syrupy snapshots over a mocked API boundary) | Accepted |
 | [ADR-017](ADR-017-poe-energy-accumulation.md) | PoE-out energy accumulation (measured + nameplate estimate) | Accepted |
 | [ADR-018](ADR-018-netwatch-name-precedence.md) | Netwatch entity naming by `name` (name→comment→static precedence) | Accepted |
+| [ADR-019](ADR-019-lte-modem-sensors.md) | LTE modem sensors (B10) — signal/operator/connection/firmware, conditional on LTE hardware | Accepted |
 
 ## Numbering — assign before you write
 
@@ -39,7 +40,6 @@ Reserved / claimed (not yet merged, so absent from the table above — do **not*
 |-----|--------------|-------|
 | 015 | librouteros 4.x migration / salvage (`ISS-260417`) | Reserved (unwritten) |
 | 016 | Coordinator decomposition (deferred) | Reserved (unwritten) |
-| 019 | LTE modem sensors — PR [#116](https://github.com/jnctech/homeassistant-mikrotik_router/pull/116) (@zvldz) | Claimed, pending merge |
 
 > **Why this section exists:** the index above previously stopped at ADR-014 while
 > 015/016 were reserved and 017/018 had already shipped — invisible to anyone picking

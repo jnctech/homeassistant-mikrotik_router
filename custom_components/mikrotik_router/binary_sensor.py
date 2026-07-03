@@ -49,15 +49,20 @@ class MikrotikBinarySensor(MikrotikEntity, BinarySensorEntity):
     """Define an Mikrotik Controller Binary Sensor."""
 
     @property
-    def is_on(self) -> bool:
+    def is_on(self) -> bool | None:
         """Return true if device is on."""
-        return self._data[self.entity_description.data_attribute]
+        # .get() (not subscript): when the source clears mid-session — e.g. a
+        # coordinator getter resets ds[path] to {} on an empty/early return
+        # (get_ups, get_lte_signal) — the attribute is absent. Return None so the
+        # entity reads `unknown` (null-not-guess) instead of raising KeyError,
+        # which HA would swallow while retaining the last (stale) value.
+        return self._data.get(self.entity_description.data_attribute)
 
     @property
     def icon(self) -> str:
         """Return the icon."""
         if self.entity_description.icon_enabled:
-            if self._data[self.entity_description.data_attribute]:
+            if self._data.get(self.entity_description.data_attribute):
                 return self.entity_description.icon_enabled
             else:
                 return self.entity_description.icon_disabled
@@ -75,9 +80,9 @@ class MikrotikPPPSecretBinarySensor(MikrotikBinarySensor):
         return self._config_entry.options.get(CONF_SENSOR_PPP, DEFAULT_SENSOR_PPP)
 
     @property
-    def is_on(self) -> bool:
+    def is_on(self) -> bool | None:
         """Return true if device is on."""
-        return self._data[self.entity_description.data_attribute] if self.option_sensor_ppp else False
+        return self._data.get(self.entity_description.data_attribute) if self.option_sensor_ppp else False
 
 
 # ---------------------------
@@ -94,12 +99,12 @@ class MikrotikPortBinarySensor(MikrotikInterfaceEntityMixin, MikrotikBinarySenso
     @property
     def icon(self) -> str:
         """Return the icon."""
-        if self._data[self.entity_description.data_attribute]:
+        if self._data.get(self.entity_description.data_attribute):
             icon = self.entity_description.icon_enabled
         else:
             icon = self.entity_description.icon_disabled
 
-        if not self._data["enabled"]:
+        if not self._data.get("enabled"):
             icon = "mdi:lan-disconnect"
 
         return icon

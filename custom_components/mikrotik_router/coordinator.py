@@ -281,6 +281,8 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
             "ppp_secret": {},
             "ppp_active": {},
             "fw-update": {},
+            "lte": {},
+            "lte_firmware": {},
             "script": {},
             "queue": {},
             "dns": {},
@@ -333,6 +335,7 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
         self.support_ups = False
         self.support_gps = False
         self.support_container = False
+        self.support_lte = False
         self._wifimodule = "wireless"
 
         self.major_fw_version = 0
@@ -554,6 +557,11 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
             if pkg in packages and packages[pkg]["enabled"]:
                 setattr(self, attr, True)
 
+        # LTE has no /system/package entry (built-in); detect by interface presence.
+        # Safe on non-LTE routers: /interface/lte returns an empty list (not an error)
+        # when no LTE interface exists, so support_lte is simply False.
+        self.support_lte = bool(self.api.query("/interface/lte"))
+
     def _detect_capabilities_v6(self, packages: dict) -> None:
         """Detect wireless/PPP capabilities for RouterOS v6."""
         if "ppp" in packages:
@@ -643,6 +651,7 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
             await self._run_if_enabled(func)
 
         await self._run_if_enabled(self.get_script, requires=self.option_sensor_scripts)
+        await self._run_if_enabled(self.get_lte_firmware, requires=self.support_lte)
 
         for func in [self.get_dhcp_network, self.get_dns]:
             await self._run_if_enabled(func)
@@ -689,6 +698,7 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
             await self.async_get_host_hass()
 
         await self._run_if_enabled(self.get_capsman_hosts, requires=self.support_capsman)
+        await self._run_if_enabled(self.get_lte_signal, requires=self.support_lte)
         await self._run_if_enabled(self.get_wireless, requires=self.support_wireless)
         await self._run_if_enabled(self.get_wireless_hosts, requires=self.support_wireless)
 
@@ -1935,6 +1945,115 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
                     full_version,
                     e,
                 )
+
+    # ---------------------------
+    #   get_lte_signal
+    # ---------------------------
+    def get_lte_signal(self) -> None:
+        """Read LTE modem signal/network info via /interface/lte/monitor."""
+        lte = self.api.query("/interface/lte")
+        if not lte:
+            self.ds["lte"] = {}
+            return
+
+        lte_id = lte[0].get(".id")
+        if not lte_id:
+            self.ds["lte"] = {}
+            return
+
+        result = self.api.query("/interface/lte", "monitor", {".id": lte_id, "once": True})
+        if not result:
+            _LOGGER.debug("Mikrotik %s LTE monitor returned no data", self.host)
+            self.ds["lte"] = {}
+            return
+
+        previous_session_start = self.ds["lte"].get("session-uptime")
+        self.ds["lte"] = parse_api(
+            data=self.ds["lte"],
+            source=result,
+            vals=[
+                {"name": "rssi", "default": "unknown"},
+                {"name": "rsrp", "default": "unknown"},
+                {"name": "rsrq", "default": "unknown"},
+                {"name": "sinr", "default": "unknown"},
+                {"name": "cqi", "default": "unknown"},
+                {"name": "mcs", "default": "unknown"},
+                {"name": "ri", "default": "unknown"},
+                {"name": "dl-modulation", "default": "unknown"},
+                {"name": "current-operator", "default": "unknown"},
+                {"name": "data-class", "default": "unknown"},
+                {"name": "primary-band", "default": "unknown"},
+                {"name": "current-cellid", "default": "unknown"},
+                {"name": "enb-id", "default": "unknown"},
+                {"name": "phy-cellid", "default": "unknown"},
+                {"name": "sector-id", "default": "unknown"},
+                {"name": "status", "default": "unknown"},
+                {"name": "model", "default": "unknown"},
+                {"name": "revision", "default": "unknown"},
+                {"name": "imei", "default": "unknown"},
+                {"name": "imsi", "default": "unknown"},
+                {"name": "iccid", "default": "unknown"},
+            ],
+        )
+
+        # monitor returns numeric fields as int or str; coerce to int, or None when
+        # absent / non-numeric (e.g. "unknown" during cell reselect) so the
+        # signal_strength / measurement sensors stay valid instead of erroring.
+        # RouterOS reports these as integers (whole dBm/dB and index values).
+        lte = self.ds["lte"]
+        for field in ("rssi", "rsrp", "rsrq", "sinr", "cqi", "mcs", "ri"):
+            try:
+                lte[field] = int(lte.get(field))
+            except (TypeError, ValueError):
+                lte[field] = None
+        lte["connected"] = lte.get("status") == "running"
+
+        # session-uptime ("2h8m9s") -> session-start timestamp, same model as
+        # system uptime (device_class TIMESTAMP). Drift-guard avoids per-poll jitter.
+        # When session-uptime is absent or the modem isn't connected, leave it None
+        # so the sensor reads "unknown" instead of fabricating "connected just now".
+        raw_session_uptime = result[0].get("session-uptime")
+        if not raw_session_uptime or not lte["connected"]:
+            lte["session-uptime"] = None
+        else:
+            session_seconds = _parse_uptime_to_seconds(raw_session_uptime)
+            now = dt_now().replace(microsecond=0)
+            session_start = datetime.timestamp(now - timedelta(seconds=session_seconds))
+            if not previous_session_start or abs(session_start - datetime.timestamp(previous_session_start)) > 10:
+                lte["session-uptime"] = utc_from_timestamp(session_start)
+            else:
+                lte["session-uptime"] = previous_session_start
+
+    # ---------------------------
+    #   get_lte_firmware
+    # ---------------------------
+    def get_lte_firmware(self) -> None:
+        """Check LTE modem firmware (read-only firmware-upgrade, no upgrade param)."""
+        lte = self.api.query("/interface/lte")
+        if not lte:
+            self.ds["lte_firmware"] = {}
+            return
+
+        lte_id = lte[0].get(".id")
+        if not lte_id:
+            self.ds["lte_firmware"] = {}
+            return
+
+        result = self.api.query("/interface/lte", "firmware-upgrade", {".id": lte_id})
+        if not result:
+            _LOGGER.debug("Mikrotik %s LTE firmware-upgrade returned no data", self.host)
+            self.ds["lte_firmware"] = {}
+            return
+
+        info = next((row for row in result if "latest" in row), result[-1])
+        installed = info.get("installed", "unknown")
+        latest = info.get("latest", installed)
+        self.ds["lte_firmware"] = {
+            "installed": installed,
+            "latest": latest,
+            "status": info.get("status", ""),
+            "available": bool(latest and installed and latest != installed),
+        }
 
     # ---------------------------
     #   get_ups

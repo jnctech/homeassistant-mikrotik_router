@@ -29,6 +29,30 @@ Lands on `dev`. No version bump (docs/process only).
 
 ---
 
+## CR-260703-lte-hardening — LTE modem sensors merged + unknown-not-stale hardening
+
+**Date:** 2026-07-03
+**Branch:** `chore/lte-hardening` → PR to `dev` (follows the #116 merge)
+**Status:** In Review
+
+### What changed
+- **Merged contributor PR [#116](https://github.com/jnctech/homeassistant-mikrotik_router/pull/116) (@zvldz)** — LTE modem sensors (signal/operator/connection/firmware; conditional on `support_lte`). Merge commit, authorship preserved; CI green on 3.13/3.14. ADR-019 Proposed → **Accepted**.
+- **Base-class read fix (integration-wide):** `MikrotikSensor.native_value` and `MikrotikBinarySensor.is_on` now use `self._data.get(attr)` instead of a bare subscript, and the binary_sensor `icon` reads are `.get()`-safe. When a coordinator getter clears its data path to `{}` on an empty/early return (`get_ups`, `get_lte_signal`), the attribute is absent — the old subscript raised `KeyError` (which HA swallows, retaining the last **stale** value); `.get()` returns `None` so the entity reads `unknown` (null-not-guess).
+- **Tests:** LTE entity-layer coverage (signal descriptor pins, IMEI/IMSI/ICCID disabled-by-default + diagnostic, session-uptime TIMESTAMP, connection binary_sensor) + the `native_value`/`is_on` → `None`-on-cleared-data regression guards (`tests/test_sensor.py`, `tests/test_binary_sensor.py`).
+- **ISSUES.md:** `ENH-260614-lte-modem-info` → Merged to `dev`; hardening + beta pending.
+
+### Why
+Closes the entity-side of the stale-data concern @zvldz raised on #116: clearing `ds["lte"]` to `{}` was necessary but not sufficient — the entity read had to degrade too, or the sensor kept showing the last RSSI/operator/connection as if current. The bug is pre-existing and shared by `system_ups`, so the fix is at the base class, not LTE-specific.
+
+### Verification
+- `ruff check` + `ruff format --check` clean on changed files (local). Full `pytest` matrix (3.13/3.14) runs in CI on the PR (Docker unavailable locally this session).
+- Behaviour asserted by the new tests: present data reads through unchanged; absent/cleared data → `None` (`unknown`), never `KeyError`→stale.
+
+### Release ops
+Lands on `dev`. **Beta-first:** cut `v2.3.21-beta.1` off `dev` for live validation on LTE hardware (maintainer fleet has none — see the beta-gate in `docs/release-validation.md`), then promote to stable and close `ENH-260614`. No version bump in this PR.
+
+---
+
 ## CR-260629-release-v2.3.20 — stable v2.3.20 (PoE energy + netwatch naming)
 
 **Date:** 2026-06-29
