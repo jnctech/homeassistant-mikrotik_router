@@ -1,7 +1,7 @@
 # ADR-019: LTE modem sensors (B10)
 
 **Date:** 2026-06-04
-**Status:** Proposed
+**Status:** Accepted — merged to `dev` via PR [#116](https://github.com/jnctech/homeassistant-mikrotik_router/pull/116) (@zvldz); ships beta-first (`v2.3.21-beta.1`).
 
 ## Context
 

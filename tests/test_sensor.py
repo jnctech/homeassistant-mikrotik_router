@@ -23,6 +23,9 @@ from homeassistant.components.sensor import SensorDeviceClass, SensorStateClass
 from homeassistant.const import (
     CONF_HOST,
     CONF_NAME,
+    EntityCategory,
+    SIGNAL_STRENGTH_DECIBELS,
+    SIGNAL_STRENGTH_DECIBELS_MILLIWATT,
     UnitOfElectricCurrent,
     UnitOfEnergy,
 )
@@ -122,6 +125,24 @@ def test_native_value_returns_data_attribute(data_path, data, attribute, expecte
     desc = _description(data_path=data_path, data_attribute=attribute)
     sensor = _build_sensor({data_path: data}, desc)
     assert sensor.native_value == expected
+
+
+def test_native_value_none_when_source_cleared():
+    """When a coordinator getter clears its data path to {} (empty/early return,
+    e.g. get_ups / get_lte_signal on a modem that stops reporting), native_value
+    reads `None` -> HA `unknown`, NOT a KeyError that HA swallows while retaining
+    the last (stale) value. Regression guard for the null-not-guess fix."""
+    desc = _description(data_path="lte", data_attribute="rssi")
+    sensor = _build_sensor({"lte": {}}, desc)
+    assert sensor.native_value is None
+
+
+def test_native_value_none_when_attribute_absent():
+    """A present data dict missing the specific attribute also degrades to None,
+    not KeyError (same .get() path)."""
+    desc = _description(data_path="lte", data_attribute="rssi")
+    sensor = _build_sensor({"lte": {"current-operator": "TestNet"}}, desc)
+    assert sensor.native_value is None
 
 
 # ---------------------------------------------------------------------------
@@ -384,6 +405,61 @@ def test_poe_energy_total_reads_resource_delta():
     sensor = _build_energy_sensor(data, desc, cls=MikrotikPoEEnergyTotalSensor)
     sensor._handle_coordinator_update()
     assert sensor.native_value == pytest.approx(0.25)
+
+
+# ---------------------------------------------------------------------------
+# LTE modem sensors (ADR-019 / ENH-260614) — entity-layer coverage
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "key, unit",
+    [
+        ("lte_rssi", SIGNAL_STRENGTH_DECIBELS_MILLIWATT),
+        ("lte_rsrp", SIGNAL_STRENGTH_DECIBELS_MILLIWATT),
+        ("lte_rsrq", SIGNAL_STRENGTH_DECIBELS),
+        ("lte_sinr", SIGNAL_STRENGTH_DECIBELS),
+    ],
+)
+def test_lte_signal_descriptor_pins(key, unit):
+    """LTE signal sensors keep signal_strength device_class + the correct dB/dBm
+    unit + measurement state_class so they graph and get long-term statistics."""
+    desc = next(s for s in SENSOR_TYPES if s.key == key)
+    assert desc.device_class == SensorDeviceClass.SIGNAL_STRENGTH
+    assert desc.native_unit_of_measurement == unit
+    assert desc.state_class == SensorStateClass.MEASUREMENT
+    assert desc.data_path == "lte"
+
+
+@pytest.mark.parametrize("key", ["lte_imei", "lte_imsi", "lte_iccid"])
+def test_lte_identifier_sensors_disabled_by_default(key):
+    """IMEI/IMSI/ICCID are PII-ish: collected, but not enabled by default and
+    kept diagnostic (they are also in TO_REDACT for diagnostics)."""
+    desc = next(s for s in SENSOR_TYPES if s.key == key)
+    assert desc.entity_registry_enabled_default is False
+    assert desc.entity_category == EntityCategory.DIAGNOSTIC
+
+
+def test_lte_session_uptime_is_timestamp():
+    """Session uptime is modelled as a TIMESTAMP (session-start instant)."""
+    desc = next(s for s in SENSOR_TYPES if s.key == "lte_session_uptime")
+    assert desc.device_class == SensorDeviceClass.TIMESTAMP
+
+
+def test_lte_signal_native_value_reads_when_present():
+    """Normal case: the singular LTE signal sensor reads its metric from ds['lte']."""
+    desc = _description(data_path="lte", data_attribute="rssi")
+    sensor = _build_sensor({"lte": {"rssi": -77}}, desc)
+    assert sensor.native_value == -77
+
+
+def test_lte_signal_native_value_unknown_when_modem_drops():
+    """Modem stops reporting -> get_lte_signal clears ds['lte'] to {} -> the
+    singular signal sensor reads `unknown` (None), not the last RSSI (stale).
+    This is the entity-side of @zvldz's stale-data flag on PR #116."""
+    desc = _description(data_path="lte", data_attribute="rssi")
+    sensor = _build_sensor({"lte": {}}, desc)
+    assert sensor.native_value is None
 
 
 async def test_poe_energy_restore_with_unparseable_value_starts_zero(monkeypatch):

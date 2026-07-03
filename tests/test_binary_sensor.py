@@ -1,5 +1,7 @@
 """Tests for Mikrotik Router binary sensor entities."""
 
+from homeassistant.components.binary_sensor import BinarySensorDeviceClass
+
 from custom_components.mikrotik_router.binary_sensor import (
     MikrotikBinarySensor,
     MikrotikPPPSecretBinarySensor,
@@ -7,6 +9,7 @@ from custom_components.mikrotik_router.binary_sensor import (
 )
 from custom_components.mikrotik_router.const import CONF_SENSOR_PPP
 from custom_components.mikrotik_router.binary_sensor_types import (
+    SENSOR_TYPES,
     MikrotikBinarySensorEntityDescription,
 )
 
@@ -206,3 +209,54 @@ class TestPortBinarySensorIcon:
             uid="ether1",
         )
         assert entity.icon == "mdi:lan-pending"
+
+
+# ---------------------------------------------------------------------------
+# LTE connection binary_sensor (ADR-019 / ENH-260614)
+# ---------------------------------------------------------------------------
+
+
+class TestLTEConnectionBinarySensor:
+    def test_descriptor_pins(self):
+        """The LTE connection sensor is a singular CONNECTIVITY binary_sensor
+        reading `connected` out of ds['lte']."""
+        desc = next(s for s in SENSOR_TYPES if s.key == "lte_connection")
+        assert desc.device_class == BinarySensorDeviceClass.CONNECTIVITY
+        assert desc.data_path == "lte"
+        assert desc.data_attribute == "connected"
+
+    def test_is_on_true_when_connected(self):
+        coord = make_mock_coordinator()
+        coord.data["lte"] = {"connected": True}
+        entity = _make_binary_sensor(
+            coordinator=coord,
+            desc_overrides={"data_path": "lte", "data_attribute": "connected"},
+        )
+        assert entity.is_on is True
+
+    def test_is_on_none_when_modem_drops(self):
+        """Modem stops reporting -> get_lte_signal clears ds['lte'] to {} -> the
+        connection reads `unknown` (None), not a stale `on`. Entity-side of the
+        stale-data flag raised on PR #116."""
+        coord = make_mock_coordinator()
+        coord.data["lte"] = {}
+        entity = _make_binary_sensor(
+            coordinator=coord,
+            desc_overrides={"data_path": "lte", "data_attribute": "connected"},
+        )
+        assert entity.is_on is None
+
+    def test_icon_does_not_raise_when_modem_drops(self):
+        """The icon read must also be `.get()`-safe on cleared data (no KeyError)."""
+        coord = make_mock_coordinator()
+        coord.data["lte"] = {}
+        entity = _make_binary_sensor(
+            coordinator=coord,
+            desc_overrides={
+                "data_path": "lte",
+                "data_attribute": "connected",
+                "icon_enabled": "mdi:signal",
+                "icon_disabled": "mdi:signal-off",
+            },
+        )
+        assert entity.icon == "mdi:signal-off"
