@@ -21,6 +21,13 @@ Monitor and control your entire MikroTik network from Home Assistant. This HACS 
 
 ---
 
+## What's New — v2.3.21-beta.1
+
+Beta rolling up **LTE modem support** plus an integration-wide entity-reliability fix. **Beta-gated:** LTE is validated on contributor hardware (a MikroTik Chateau) — please report back if you run it. The reliability fix was live-validated on a multi-device deployment with no regressions.
+
+- **LTE modem sensors.** Routers with an `/interface/lte` interface now expose signal quality (RSSI, RSRP, RSRQ, SINR, CQI), operator / cell / band info, a connection status, session uptime, and modem firmware. Conditional on LTE hardware — routers without an LTE interface get no new entities. IMEI / IMSI / ICCID are collected but **disabled by default** and redacted from diagnostics. Thanks to **@zvldz** for the implementation and live validation on a MikroTik Chateau (S53UG / Quectel EG18-EA). Implements the long-requested [tomaae#249](https://github.com/tomaae/homeassistant-mikrotik_router/issues/249). See [ADR-019](docs/decisions/ADR-019-lte-modem-sensors.md).
+- **Sensors degrade to `unknown` instead of showing a stale value.** When a data source stops reporting mid-session (e.g. a UPS or LTE modem drops out), the affected sensor / binary_sensor now reads `unknown` rather than silently retaining its last value. Integration-wide reliability fix.
+
 ## What's New — v2.3.20
 
 Stable release rolling up the v2.3.20 beta cycle (beta.1–beta.3). Both new features were validated live: PoE-out energy on real metering hardware ([#59](https://github.com/jnctech/homeassistant-mikrotik_router/issues/59), thanks @Dillton) and netwatch naming on a multi-entry deployment ([#70](https://github.com/jnctech/homeassistant-mikrotik_router/issues/70), thanks @L2jLiga).

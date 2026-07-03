@@ -4,6 +4,28 @@ Changes listed in reverse chronological order.
 
 ---
 
+## CR-260703-release-v2.3.21-beta.1 — LTE modem sensors + unknown-not-stale (beta)
+
+**Date:** 2026-07-03
+**Branch:** `chore/release-v2.3.21-beta.1` → PR to `dev`; then GitHub **pre-release** tag `v2.3.21-beta.1` off `dev` (no `dev → master` for a beta)
+**Status:** Released (pre-release)
+
+### What changed
+- `manifest.json` version `2.3.20 → 2.3.21-beta.1`.
+- `README.md`, `info.md` — new **What's New — v2.3.21-beta.1** entry (LTE modem sensors, credited to **@zvldz**; the integration-wide `unknown`-not-stale reliability fix).
+
+### Why
+Cut the beta gating **LTE modem sensors** (#116, @zvldz) — beta-first because LTE hardware is absent from the maintainer fleet (see the beta-gate in `docs/release-validation.md`) — bundled with the `unknown`-not-stale base-class fix (#120). Contents already on `dev`: ADR-019 (Accepted), CR-260703-lte-hardening, CR-260703-contributing-adr-numbering.
+
+### Verification
+- Pre-deploy baseline vs post-deploy live validation on the 4-device fleet: **no regressions** — identical unavailable/unknown sets, clean HA log, LTE conditional-creation produced zero phantom entities on non-LTE hardware. Detailed report in the internal `config` repo.
+- CI green on `dev` (3.13 / 3.14) for #116 and #120.
+
+### Release ops
+Branch → PR to `dev` → merge; publish GitHub **pre-release** `v2.3.21-beta.1` off `dev` → `release.yml` builds the HACS zip. No `dev → master`, no back-merge (beta). LTE stays beta until validated on real hardware (contributor/user), then promote to stable and close `ENH-260614`.
+
+---
+
 ## CR-260703-contributing-adr-numbering — CONTRIBUTING guide + ADR-index reconciliation + release/test standards
 
 **Date:** 2026-07-03

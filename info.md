@@ -10,6 +10,11 @@ Monitor and control your MikroTik router from Home Assistant.
 
 ![Mikrotik Logo](https://raw.githubusercontent.com/tomaae/homeassistant-mikrotik_router/master/docs/assets/images/ui/header.png)
 
+### What's new in v2.3.21-beta.1
+Beta: **LTE modem sensors** + an integration-wide entity-reliability fix. LTE is beta-gated on contributor hardware; the fix was live-validated with no regressions.
+- **LTE modem sensors** — signal (RSSI/RSRP/RSRQ/SINR/CQI), operator, connection, session uptime, and modem firmware for routers with an `/interface/lte`. Conditional on LTE hardware. IMEI/IMSI/ICCID collected but disabled by default + redacted. Thanks @zvldz for the implementation + live validation on a MikroTik Chateau. Implements tomaae #249. See ADR-019.
+- **`unknown` instead of stale** — when a source stops reporting mid-session, the sensor reads `unknown` rather than keeping its last value. Integration-wide.
+
 ### What's new in v2.3.20
 Stable release rolling up the v2.3.20 beta cycle. Both new features were validated live — PoE-out energy on real metering hardware (#59, thanks @Dillton) and netwatch naming on a multi-entry deployment (#70, thanks @L2jLiga).
 - **PoE energy for the Energy Dashboard** — per-port energy sensors (kWh, `total_increasing`) + a device total, restart-persistent. Enable the existing PoE sensors option. Addresses #59.
