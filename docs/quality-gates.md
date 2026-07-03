@@ -78,6 +78,24 @@ Other passes used when relevant: comment-accuracy, type-design, and PR test-cove
 analysis. For live behaviour validation each release, see
 [Release Validation](release-validation.md).
 
+### Test standards & ownership
+
+- **What "tested" means here:** new tests are **spec'd / real-typed** — build the real
+  coordinator (`make_coordinator`) and the real `Mikrotik*EntityDescription`, and assert
+  **behaviour** (state / unit / `device_class` / attributes), including the absent /
+  disappeared / non-numeric paths. Do **not** lean on unspecced `MagicMock` "yes-man"
+  objects that pass regardless of typos or renames. Entity output is pinned by the
+  **entity-golden** framework ([ADR-014](decisions/ADR-014-entity-golden-tests.md));
+  new-code coverage ≥80% (SonarCloud).
+- **Contributor tests are welcome but not a merge gate.** This is a HACS *custom
+  integration*, not HA Core — most integrations in the ecosystem ship with no tests, and
+  outside contributors are **not** required to meet the full bar above. A working,
+  hardware-validated feature PR is enough to accept (see [CONTRIBUTING](../CONTRIBUTING.md)).
+- **The maintainer owns tests-to-standard.** Bringing coverage up to the standard above —
+  the entity layer and edge/absent-data paths in particular — is **maintainer work**, done
+  before the stable release and typically as a **hardening PR after merging the
+  contributor's feature** (precedent: @ahharvey's read-only fix [#81](https://github.com/jnctech/homeassistant-mikrotik_router/pull/81) → maintainer hardening #98). This keeps the contribution unblocked, preserves authorship, and still lands our bar before stable.
+
 ## Local Development (Devcontainer)
 
 1. Open the repo in VS Code
