@@ -4,6 +4,25 @@ Changes listed in reverse chronological order.
 
 ---
 
+## CR-260712-leak-gate-governance — extend the homelab-leak gate to catch internal-coordination tokens
+
+**Date:** 2026-07-12
+**Branch:** `fix/leak-gate-governance-tokens` → [PR #122](https://github.com/jnctech/homeassistant-mikrotik_router/pull/122) to `dev`
+**Status:** In Review
+
+### What changed
+- `scripts/check_no_homelab_leaks.py` — added `GOVERNANCE_RE` + `offending_governance()` so the guard flags internal-coordination tokens (private-repo paths, mailbox routing, relay/check/standards artifacts, governance sign-off terms), not just private IPs/MACs. High-precision by design (structured paths / artifact prefixes, never bare words) so legit content — "out-of-band management", the repo's own `CONTRIBUTING.md`, RouterOS "watchdog" — does not false-positive. Docstring updated.
+- `tests/test_check_no_homelab_leaks.py` (new) — pure-stdlib unit tests (no HA/Docker): IP/MAC helpers, every governance pattern (should-flag), and legit-content non-match guards.
+
+### Why
+Follow-up to CR-260712-redact-inflight-leak / ISS-260712: the IP/MAC-only gate let a batch of coordination tokens ship into the public In-flight block silently. This closes ISS-260712 action (b) so it can't recur. Extends both the pre-commit `homelab-leak-check` hook and the CI `homelab-leak` job (shared entry point — no workflow change).
+
+### Verification
+- `python scripts/check_no_homelab_leaks.py` → PASS on the redacted tree (exit 0).
+- Detection logic verified locally by direct import (pytest not in the local env; CI runs the suite). `scripts/` and `tests/` remain out of the gate's scan scope, so the docstring examples and test fixtures don't self-trip.
+
+---
+
 ## CR-260712-redact-inflight-leak — redact homelab IP + estate internals from public `docs/ISSUES.md`
 
 **Date:** 2026-07-12
