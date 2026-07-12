@@ -2,9 +2,9 @@
 
 ## In-flight
 
-> **Updated 2026-07-03 (LTE beta-ship session).** **Cut pre-release [v2.3.21-beta.1](https://github.com/jnctech/homeassistant-mikrotik_router/releases/tag/v2.3.21-beta.1)** off `dev` (`release.yml` built the HACS zip; no `dev→master` — beta). Merged the full LTE chain: **#116** LTE modem sensors (@zvldz, merge-commit, authorship preserved, credited on PR + release notes) · **#120** maintainer hardening (base-class `native_value`/`is_on`→`.get()` **unknown-not-stale** fix + LTE entity tests) · **#119** standards docs (CONTRIBUTING, ADR-index reconciliation, beta-first + test-ownership) · **#121** beta release. **ADR-019 Accepted.** CRs: `CR-260703-lte-hardening`, `CR-260703-contributing-adr-numbering`, `CR-260703-release-v2.3.21-beta.1`.
+> **Updated 2026-07-12 (redaction: homelab IP + estate internals pulled to `docs/internal/`; see ISS-260712).** **Cut pre-release [v2.3.21-beta.1](https://github.com/jnctech/homeassistant-mikrotik_router/releases/tag/v2.3.21-beta.1)** off `dev` (`release.yml` built the HACS zip; no `dev→master` — beta). Merged the full LTE chain: **#116** LTE modem sensors (@zvldz, merge-commit, authorship preserved, credited on PR + release notes) · **#120** maintainer hardening (base-class `native_value`/`is_on`→`.get()` **unknown-not-stale** fix + LTE entity tests) · **#119** standards docs (CONTRIBUTING, ADR-index reconciliation, beta-first + test-ownership) · **#121** beta release. **ADR-019 Accepted.** CRs: `CR-260703-lte-hardening`, `CR-260703-contributing-adr-numbering`, `CR-260703-release-v2.3.21-beta.1`.
 >
-> **Live-validated PASS.** Baseline (2.3.20) vs post-deploy vs final **HACS-installed beta** compare: **identical** unavailable/unknown sets (7 sensor unavail = documented orphans, 3 `dhcp_address` unknown by-design, 2 binary unavail), **clean HA log**, **0 phantom LTE entities** (conditional-creation correct on non-LTE fleet). Operator HACS-updated to the beta (manifest now reads `2.3.21-beta.1`). Report: `config/docs/internal/2026-07-03-mikrotik-sensor-validation-v2.3.21-beta.1.md` (gitignored). The `.get()` change is read-only (can't create entities); any count churn is additive.
+> **Live-validated PASS.** Baseline (2.3.20) vs post-deploy vs final **HACS-installed beta** compare: **identical** unavailable/unknown sets (7 sensor unavail = documented orphans, 3 `dhcp_address` unknown by-design, 2 binary unavail), **clean HA log**, **0 phantom LTE entities** (conditional-creation correct on non-LTE fleet). Operator HACS-updated to the beta (manifest now reads `2.3.21-beta.1`). Validation report retained in gitignored `docs/internal/`. The `.get()` change is read-only (can't create entities); any count churn is additive.
 >
 > **Live-validation note (don't re-flag):** RB4011 WireGuard server interface renamed `wireguard1`→`wg-home` (config CR-260616) — `wireguard1_*` entities orphaned→`unavailable`, fresh `wg_home_*` live. Working as designed. Bare `sensor.mikrotik_tx/rx` + `[TEST] #70 netwatch` are pre-existing orphans.
 >
@@ -14,19 +14,19 @@
 > 3. **librouteros cap-lift** — `ENH-260512-librouteros-test-matrix`: 3.4.1 / latest-3.x / expected-fail-4.x CI matrix, then lift `manifest` to `>=4.0,<5` (the floor-bump is the **v2.4.0** trigger).
 > 4. **Stale-debt sweep** — write the deferred `ISS-260512-librouteros-concurrency-adr` (Open, doc-only); reconcile stale statuses.
 >
-> **Cross-repo (not this repo) — done this session:** **oob** `STANDARDS-mikrotik` step-5b declaration committed + pushed (operator-authorized, following `~/oob/CONTRIBUTING.md`; `cb2edc7`), inbox message `git mv`'d to `mailbox/read/`. **homeassistant-config advised** via mailbox relay (`9902bf2`) of the HA-side WireGuard rename: repoint the dashboard card `wireguard1_*`→`wg_home_*`, delete orphaned `wireguard1_*` entities, grep HA config for `wireguard1`. **Cross-repo push rule:** oob pushes are operator-approved **when following `CONTRIBUTING.md`** (by-path, secret-scan, `git mv` on action, never `-A`). `config/.claude/domains/network.yaml` still stale (`wireguard1`→`wg-home`, lines 285/386) — next config session.
+> **Cross-repo coordination (no integration-code impact):** downstream Home Assistant dashboard/config consumers were advised out-of-band of the `wireguard1`→`wg_home` sensor rename (repoint cards, delete orphaned `wireguard1_*` entities). Coordination and session detail live in gitignored `docs/internal/`.
 >
-> **Tooling (this session):** sessions on **PowerShell**; `settings.json` `defaultShell=powershell` set; **use the PowerShell tool, not Bash**, for local cmds (Bash tool only for ssh/POSIX-remote) — see memory `feedback_use_powershell_not_bash`. `ha-query` MCP **worked** this session (not wedged). **Docker Desktop was DOWN** — ran pytest via **CI** (push to PR triggers the matrix; feature-branch pushes don't) and deployed via **SSH tar-pipe** (Bash tool, binary-safe) to `root@192.168.88.43:/config/custom_components/`. `manifest.json` is CRLF (Edit the version line). Session-end In-flight refresh is a direct `dev` docs commit (repo precedent `df2df36`).
+> **Tooling:** pytest runs via **CI** (push to a PR triggers the matrix; feature-branch pushes don't). `manifest.json` is CRLF — Edit the version line, don't python-rewrite. Session/tooling specifics (shell, deploy target, test runner) live in gitignored `docs/internal/`, never in this tracked file.
 >
 > **Open threads (durable):**
-> - **`ENH-260615-netwatch-host-key-collision`** — Filed/deferred (same-host probe collapse; needs `.id` re-key + unique_id migration). **`ISS-260616-test-fixture-subnet`** — Filed/Low (test_coordinator fixtures use the real `192.168.88.x` subnet; guard excludes tests).
+> - **`ENH-260615-netwatch-host-key-collision`** — Filed/deferred (same-host probe collapse; needs `.id` re-key + unique_id migration). **`ISS-260616-test-fixture-subnet`** — Filed/Low (test_coordinator fixtures use the maintainer's real management subnet; guard excludes tests).
 > - **Upstream-ported enhancements:** `ENH-260614-sfp-temperature` ([tomaae#499], Low — hardware-gated) · `ENH-260614-lte-modem-info` ([tomaae#249], Medium — needs LTE hardware/contributor).
 > - **Test-catch hardening:** deprecation-as-failure `setup_integration` test (folded into `ENH-260608` goldens) + `ENH-260614-ha-canary-ci` (non-blocking HA-latest lane).
 > - **Goldens BUILD (ADR-014 / `ENH-260608-test-suite-hardening`)** — `setup_integration` fixture → per-path `MockMikrotikAPI` fixtures → per-platform exemplars → drop `sonar-project.properties` exclusions → portable `config/docs/templates/hacs-testing/`.
 > - **#76** capsman AP-vs-bridge name (@fuecy), **`ISS-260608-cleanup-over-logging`** (#92).
 > - **Gold/Platinum conformance** — `reconfiguration-flow` + `strict-typing`. **Coordinator decomposition — DEFERRED** (would be ADR-016).
 >
-> **Standards:** all PRs target `dev`; `master` release-only via PR + immediate back-merge (guard enforces `master ⊆ dev`). Betas are pre-releases off `dev` (no `dev→master`). Refresh this `## In-flight` at session-end; don't delete merged PR branches immediately. Live validation each release per `docs/release-validation.md`. **Tooling gotchas:** the **WSL2-native Docker** runner works well (stage the worktree to ext4 `~/mikrotik-nw`, reuse `.venv`; see `docs/internal/test-runner-docker-vm01.md` — the bare-WSL "dead venv" note is the `/mnt/c` 9p path, not the ext4 one). **HA side-load:** put any backup **outside** `/config/custom_components/` — a `*.bak` dir there with a `manifest.json` collides on domain and breaks the integration (hit this session). `manifest.json` is CRLF (`sed`/Edit the version line, don't python-rewrite). New CI gate: `homelab-leak` (no private IPs/MACs in public docs).
+> **Standards:** all PRs target `dev`; `master` release-only via PR + immediate back-merge (guard enforces `master ⊆ dev`). Betas are pre-releases off `dev` (no `dev→master`). Refresh this `## In-flight` at session-end; don't delete merged PR branches immediately. Live validation each release per `docs/release-validation.md`. **HA side-load gotcha:** put any backup **outside** `/config/custom_components/` — a `*.bak` dir there with a `manifest.json` collides on domain and breaks the integration. New CI gate: `homelab-leak` (no private IPs/MACs in public docs). Test-runner host specifics live in gitignored `docs/internal/`. **Session/tooling and any homelab-specific detail stays in `docs/internal/` — never in this tracked file.**
 
 ## Current Priorities
 
@@ -146,13 +146,31 @@ This is distinct from #70 (display-name collapse, fixed in ADR-018) — naming c
 
 ---
 
+### ISS-260712-inflight-leak-bypass — homelab IP + estate internals leaked to public `dev` via In-flight refresh
+**Type:** Bug (privacy hygiene / process)
+**Priority:** High
+**Created:** 2026-07-12
+**Status:** 🟡 HEAD redacted; gate-extension + history-scrub decision open
+
+Commit `a8a21ee` pushed a private homelab IP (`192.168.88.43`) and estate/governance internals into the tracked, **public** `docs/ISSUES.md` `## In-flight` block. The repo's own `scripts/check_no_homelab_leaks.py` **failed (exit 1)** on the IP, yet the content shipped.
+
+**Root cause (four-part):**
+1. **Direct-to-`dev` push, no PR gate** — the "In-flight refresh as a direct `dev` docs commit" precedent (`df2df36`) skips PR review, so no pre-merge gate runs.
+2. **Pre-commit bypassed locally** — the `homelab-leak-check` hook wasn't run (`--no-verify` or not installed in that environment).
+3. **Post-push CI can't block** — `ci.yml` runs `homelab-leak` on `push` to `dev`, so it went RED on `a8a21ee`, but a red CI on an already-pushed direct commit blocks nothing.
+4. **Gate scope is IP/MAC only** — the governance-token leak passed silently; `check_no_homelab_leaks.py` has no governance-token check.
+
+**Actions:** (a) HEAD redacted, session/homelab detail moved to gitignored `docs/internal/in-flight-detail-2026-07-12.md` ✅; (b) extend the leak gate to flag governance tokens (`oob`, `mailbox/to-`, `watchdog`, `ratify`, cross-repo `CONTRIBUTING.md` refs) — open; (c) **operator decision:** scrub the IP from public git history (rewrite = steward/force-push op) or accept the RFC1918 residue — open; (d) consider branch protection on `dev` requiring the leak gate to pass. Reported by oob (`OOB-CHECK-estate-alignment-and-context-banner-2026-07-12`).
+
+---
+
 ### ISS-260616-test-fixture-subnet — test fixtures use the maintainer's real management subnet
 **Type:** Chore (privacy hygiene)
 **Priority:** Low
 **Created:** 2026-06-16
 **Status:** 🔵 Filed
 
-`tests/test_coordinator.py` fixtures use the real `192.168.88.x` management subnet (the `_host` helper default and several DHCP/host fixtures). Pre-existing; low sensitivity (a /24 number). The CR-260616 leak guard deliberately **excludes `tests/`** (example data), so this is not auto-caught. Genericize to a documentation/`192.168.1.x` form when convenient; verify no assertion pins the exact value first. (The public-doc leaks — ADR-018 IP/infra and ADR-013 MACs — were already scrubbed; see CR-260616.)
+`tests/test_coordinator.py` fixtures use the maintainer's real management subnet (the `_host` helper default and several DHCP/host fixtures). Pre-existing; low sensitivity (a /24 number). The CR-260616 leak guard deliberately **excludes `tests/`** (example data), so this is not auto-caught. Genericize to a documentation/`192.168.1.x` form when convenient; verify no assertion pins the exact value first. (The public-doc leaks — ADR-018 IP/infra and ADR-013 MACs — were already scrubbed; see CR-260616.)
 
 ---
 

@@ -4,6 +4,29 @@ Changes listed in reverse chronological order.
 
 ---
 
+## CR-260712-redact-inflight-leak — redact homelab IP + estate internals from public `docs/ISSUES.md`
+
+**Date:** 2026-07-12
+**Branch:** (redaction on `dev`, see Release ops) — PR for the gate-extension follow-up
+**Status:** HEAD redacted; gate-extension + history-scrub decision open (ISS-260712)
+
+### What changed
+- `docs/ISSUES.md` — redacted the `## In-flight` block: removed the private homelab IP (`192.168.88.43`), the oob/estate governance internals (cross-repo push rule, `~/oob/CONTRIBUTING.md`, `mailbox/read/`, `config/.claude/domains/network.yaml`), and per-session tooling meta (shell, deploy target, test-runner host). Genericized the `192.168.88.x` subnet mention in the ISS-260616 body.
+- `docs/internal/in-flight-detail-2026-07-12.md` (new, **gitignored**) — preserves the removed session/tooling/estate detail so context isn't lost.
+- `docs/ISSUES.md` — filed **ISS-260712-inflight-leak-bypass** documenting the four-part root cause.
+
+### Why
+`jnctech/homeassistant-mikrotik_router` is PUBLIC. Commit `a8a21ee` leaked a private homelab IP and estate/governance internals into the tracked In-flight block; the repo's own `homelab-leak` gate **failed** on the IP but the content shipped (direct-to-`dev` push bypassed the PR gate; pre-commit skipped; post-push CI red can't block). Flagged by oob (`OOB-CHECK-...-2026-07-12`).
+
+### Verification
+- `python scripts/check_no_homelab_leaks.py` → **PASS** (exit 0) after redaction.
+- Residual sweep: no private IPs remain in tracked `docs/` (outside gitignored `docs/internal/`); governance-token hits are the repo's own public `CONTRIBUTING.md` (legitimate).
+
+### Release ops
+Redaction lands on `dev` (urgency — leak is live on the public remote). Gate-extension (governance-token check in `check_no_homelab_leaks.py`) is a code change → branch + PR to `dev`. History scrub of the IP from the public remote is an operator/steward decision (force-push), flagged in ISS-260712.
+
+---
+
 ## CR-260703-release-v2.3.21-beta.1 — LTE modem sensors + unknown-not-stale (beta)
 
 **Date:** 2026-07-03
