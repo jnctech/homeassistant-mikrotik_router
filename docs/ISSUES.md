@@ -146,21 +146,21 @@ This is distinct from #70 (display-name collapse, fixed in ADR-018) — naming c
 
 ---
 
-### ISS-260712-inflight-leak-bypass — homelab IP + estate internals leaked to public `dev` via In-flight refresh
+### ISS-260712-inflight-leak-bypass — homelab IP + internal-coordination notes leaked to public `dev` via In-flight refresh
 **Type:** Bug (privacy hygiene / process)
 **Priority:** High
 **Created:** 2026-07-12
 **Status:** 🟡 HEAD redacted; gate-extension + history-scrub decision open
 
-Commit `a8a21ee` pushed a private homelab IP (`192.168.88.43`) and estate/governance internals into the tracked, **public** `docs/ISSUES.md` `## In-flight` block. The repo's own `scripts/check_no_homelab_leaks.py` **failed (exit 1)** on the IP, yet the content shipped.
+Commit `a8a21ee` pushed a private homelab IP (RFC1918; value recorded only in gitignored `docs/internal/`) and internal-coordination notes (private-repo paths and workflow routing) into the tracked, **public** `docs/ISSUES.md` `## In-flight` block. The repo's own `scripts/check_no_homelab_leaks.py` **failed (exit 1)** on the IP, yet the content shipped.
 
 **Root cause (four-part):**
 1. **Direct-to-`dev` push, no PR gate** — the "In-flight refresh as a direct `dev` docs commit" precedent (`df2df36`) skips PR review, so no pre-merge gate runs.
 2. **Pre-commit bypassed locally** — the `homelab-leak-check` hook wasn't run (`--no-verify` or not installed in that environment).
 3. **Post-push CI can't block** — `ci.yml` runs `homelab-leak` on `push` to `dev`, so it went RED on `a8a21ee`, but a red CI on an already-pushed direct commit blocks nothing.
-4. **Gate scope is IP/MAC only** — the governance-token leak passed silently; `check_no_homelab_leaks.py` has no governance-token check.
+4. **Gate scope is IP/MAC only** — the coordination-note leak passed silently; `check_no_homelab_leaks.py` has no check for internal-coordination tokens.
 
-**Actions:** (a) HEAD redacted, session/homelab detail moved to gitignored `docs/internal/in-flight-detail-2026-07-12.md` ✅; (b) extend the leak gate to flag governance tokens (`oob`, `mailbox/to-`, `watchdog`, `ratify`, cross-repo `CONTRIBUTING.md` refs) — open; (c) **operator decision:** scrub the IP from public git history (rewrite = steward/force-push op) or accept the RFC1918 residue — open; (d) consider branch protection on `dev` requiring the leak gate to pass. Reported by oob (`OOB-CHECK-estate-alignment-and-context-banner-2026-07-12`).
+**Actions:** (a) HEAD redacted, session/homelab detail moved to gitignored `docs/internal/`; ✅ (b) extend the leak gate to flag internal-coordination tokens (private-repo paths, workflow-routing paths, cross-repo contribution refs) — open; (c) **operator decision:** scrub the IP from public git history (rewrite = steward/force-push op) or accept the RFC1918 residue — open; (d) consider branch protection on `dev` requiring the leak gate to pass. Reported via an internal estate-alignment check.
 
 ---
 
