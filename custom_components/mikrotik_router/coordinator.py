@@ -680,6 +680,15 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
     # ---------------------------
     async def _async_update_data(self):
         """Update Mikrotik data"""
+        # Attempt reconnect every poll when disconnected. Without this,
+        # _run_if_enabled skips all API work and reconnect only happens
+        # on the ~4h hwinfo path (via get_access -> query -> connection_check).
+        # connection_check rate-limits attempts via _connection_retry_sec (~58s).
+        if not self.api.connected():
+            await self.hass.async_add_executor_job(self.api.connection_check)
+            if not self.api.connected():
+                self._raise_disconnected()
+
         hwinfo_ran = await self._async_update_hwinfo()
 
         # get_system_resource already ran inside _async_update_hwinfo;
