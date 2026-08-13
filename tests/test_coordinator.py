@@ -3516,6 +3516,81 @@ async def test_client_traffic_v0_unknown_skips_and_logs(caplog):
 
 
 # ---------------------------------------------------------------------------
+# Group AG1b: reconnect on poll when disconnected
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_async_update_data_attempts_reconnect_when_disconnected():
+    """When the API is down, each poll must call connection_check before giving up.
+
+    Without this, _run_if_enabled skips all work and reconnect only happens on the
+    ~4h hwinfo path, leaving entities unavailable after a transient outage.
+    """
+    from homeassistant.helpers.update_coordinator import UpdateFailed
+
+    coordinator = make_coordinator()
+    coordinator.api = MagicMock()
+    coordinator.api.connected.return_value = False
+    coordinator.api.connection_check = MagicMock(return_value=False)
+    coordinator.api.error = "cannot_connect"
+    coordinator.hass = MagicMock()
+    coordinator.hass.async_add_executor_job = AsyncMock(side_effect=lambda fn, *a, **k: fn(*a, **k))
+
+    with pytest.raises(UpdateFailed, match="Mikrotik Disconnected"):
+        await coordinator._async_update_data()
+
+    coordinator.hass.async_add_executor_job.assert_awaited_once_with(coordinator.api.connection_check)
+
+
+@pytest.mark.asyncio
+async def test_async_update_data_continues_after_successful_reconnect():
+    """A successful connection_check lets the normal update path run."""
+    coordinator = make_coordinator()
+    coordinator.api = MagicMock()
+    # Track link state from connection_check rather than a fixed connected() list.
+    connected = {"value": False}
+
+    def connection_check():
+        connected["value"] = True
+        return True
+
+    coordinator.api.connected.side_effect = lambda: connected["value"]
+    coordinator.api.connection_check = MagicMock(side_effect=connection_check)
+    # Real connect() sets _reconnected; that triggers a full hwinfo refresh.
+    coordinator.api.has_reconnected = MagicMock(return_value=True)
+    coordinator.api.error = ""
+    coordinator.hass = MagicMock()
+    coordinator.hass.async_add_executor_job = AsyncMock(side_effect=lambda fn, *a, **k: fn(*a, **k) if callable(fn) else None)
+    coordinator.last_hwinfo_update = datetime.now(timezone.utc)
+    # Skip heavy work: keep getters cheap.
+    # has_reconnected=True lets _async_update_hwinfo run, which calls the real
+    # get_access; make_coordinator() has no .host, so stub it out.
+    coordinator._run_if_enabled = AsyncMock()
+    coordinator.get_access = MagicMock()
+    coordinator.async_get_host_hass = AsyncMock()
+    coordinator.async_process_host = AsyncMock()
+    coordinator._async_update_client_traffic = AsyncMock()
+    coordinator._check_new_uids = MagicMock(return_value=[])
+    for flag in (
+        "support_capsman",
+        "support_wireless",
+        "support_lte",
+        "support_ppp",
+        "support_ups",
+        "support_gps",
+        "support_container",
+    ):
+        setattr(coordinator, flag, False)
+    coordinator.ds["host_hass"] = {"seed": True}
+
+    result = await coordinator._async_update_data()
+
+    coordinator.hass.async_add_executor_job.assert_any_await(coordinator.api.connection_check)
+    assert result is coordinator.ds
+
+
+# ---------------------------------------------------------------------------
 # Group AG2: get_ups() — UPS path handling
 # ---------------------------------------------------------------------------
 
