@@ -12,10 +12,11 @@
 >
 > **NEXT SESSION (lead):**
 > 0. **Merge PR #122** (leak-gate governance-token extension) once CI green; then close ISS-260712(b). Surface ISS-260712(c) history-scrub + (d) `dev` branch-protection decisions to the operator.
-> 1. **LTE field-validation gate (`ENH-260614-lte-modem-info`)** — v2.3.21-beta.1 **stays beta** until **@zvldz or an LTE user** confirms the LTE sensors on real hardware (maintainer fleet has none). On confirmation: **promote to stable** (`dev→master` PR + immediate back-merge, `master ⊆ dev` guard green; GitHub release, not pre-release) and **close ENH-260614**. Ping @zvldz on #116 when he can run the beta.
-> 2. **WireGuard peer sensors (`ENH-260703-wireguard-sensors`)** — **operator-requested: plan next session.** Surface per-peer state from `/interface/wireguard/peers` (last-handshake→connected/stale, endpoint, per-peer rx/tx); today only interface-level tx/rx exists. Scope keying (`public-key`), capability gate, ADR-020, redaction — see the ENH entry.
-> 3. **librouteros cap-lift** — `ENH-260512-librouteros-test-matrix`: 3.4.1 / latest-3.x / expected-fail-4.x CI matrix, then lift `manifest` to `>=4.0,<5` (the floor-bump is the **v2.4.0** trigger).
-> 4. **Stale-debt sweep** — write the deferred `ISS-260512-librouteros-concurrency-adr` (Open, doc-only); reconcile stale statuses.
+> 1. **PR #123 reconnect-on-poll (`ISS-260813-no-reconnect-until-hwinfo`)** — @sappsys's fix for the coordinator never retrying the API after a transient disconnect. Root cause confirmed and reproduced; code change sound. **Waiting on the contributor** for two test defects (read-only `option_sensor_*` assignment → suite red; `ruff format`); offered to push the fixes to their branch if they'd rather. **Approve the fork CI run** so their next push gets checks. Then merge-commit (not squash), and land the maintainer follow-up: happy-path + `wrong_login` → `ConfigEntryAuthFailed` coverage, ADR-007 `_async_ensure_connected()` extraction. Rolls into the open v2.3.21 beta. CR-260813-reconnect-on-poll.
+> 2. **LTE field-validation gate (`ENH-260614-lte-modem-info`)** — v2.3.21-beta.1 **stays beta** until **@zvldz or an LTE user** confirms the LTE sensors on real hardware (maintainer fleet has none). On confirmation: **promote to stable** (`dev→master` PR + immediate back-merge, `master ⊆ dev` guard green; GitHub release, not pre-release) and **close ENH-260614**. Ping @zvldz on #116 when he can run the beta.
+> 3. **WireGuard peer sensors (`ENH-260703-wireguard-sensors`)** — **operator-requested: plan next session.** Surface per-peer state from `/interface/wireguard/peers` (last-handshake→connected/stale, endpoint, per-peer rx/tx); today only interface-level tx/rx exists. Scope keying (`public-key`), capability gate, ADR-020, redaction — see the ENH entry.
+> 4. **librouteros cap-lift** — `ENH-260512-librouteros-test-matrix`: 3.4.1 / latest-3.x / expected-fail-4.x CI matrix, then lift `manifest` to `>=4.0,<5` (the floor-bump is the **v2.4.0** trigger).
+> 5. **Stale-debt sweep** — write the deferred `ISS-260512-librouteros-concurrency-adr` (Open, doc-only); reconcile stale statuses.
 >
 > **Cross-repo coordination (no integration-code impact):** downstream Home Assistant dashboard/config consumers were advised out-of-band of the `wireguard1`→`wg_home` sensor rename (repoint cards, delete orphaned `wireguard1_*` entities). Coordination and session detail live in gitignored `docs/internal/`.
 >
@@ -47,6 +48,30 @@
 ---
 
 ## Active
+
+### ISS-260813-no-reconnect-until-hwinfo — coordinator never retries the API after a transient disconnect
+**Type:** Bug (availability / recovery)
+**Priority:** High
+**Created:** 2026-08-13
+**Status:** 🟡 Fix in review — [#123](https://github.com/jnctech/homeassistant-mikrotik_router/pull/123) (@sappsys), CR-260813-reconnect-on-poll
+
+**Symptom:**
+After a transient RouterOS API outage (e.g. an upstream gateway reboot), entities stay `unavailable` even once the network is healthy again. Recovery needs a manual config-entry reload — the integration does not self-heal.
+
+**Root cause:**
+`MikrotikCoordinator._async_update_data()` is the only path that reaches the API without a `connection_check()` guard. Every entry point in `mikrotikapi.py` opens with one — `query` (:176), `set_value` (:231), `arp_ping` (:324), and four others — but the poll never gets that far. `_run_if_enabled()` gates on `api.connected()` and skips every fetch while disconnected, and `_async_update_hwinfo()` early-returns inside its 4h window, so the `get_access` → `query` → `connection_check` path that would reconnect is never taken. The poll then raises `UpdateFailed` having made no reconnect attempt. Worst case the integration stays down for ~4h from the last successful hwinfo refresh (after which `last_hwinfo_update` stops advancing, so every subsequent poll retries).
+
+`_connection_retry_sec` (58s) is not the blocker: `api.disconnect()` zeroes `_connection_epoch`, so an attempt would be permitted immediately if one were made.
+
+**Reproduced (2026-08-13):** driving the real `_async_update_data()` on `dev` with a disconnected API and `last_hwinfo_update` set to now raises `UpdateFailed("Mikrotik Disconnected")` with zero `connection_check` calls and zero executor jobs dispatched.
+
+**Contrast:** `MikrotikTrackerCoordinator` holds a separate `MikrotikAPI` instance whose `arp_ping` carries the guard, so it reconnects normally during the same outage. The two coordinators differ in recoverability, which is what makes this a missing guard rather than a missing feature.
+
+**Relationship to other issues:** this is the *recovery* half of `ISS-260507-ups-empty-path` and the [#64](https://github.com/jnctech/homeassistant-mikrotik_router/issues/64) PoE-toggle disconnect. It fixes neither cause, but it stops both from being permanent until a reload.
+
+**Fix (in review):** [#123](https://github.com/jnctech/homeassistant-mikrotik_router/pull/123) calls `connection_check()` in the executor at the top of each poll when disconnected, raising via `_raise_disconnected()` if it fails. Contributor patch verified locally: no regressions (694 passed, 5 skipped), complexity 9 → 11 (gate ≤15), blocking call correctly in the executor (ADR-004). Two test defects returned to the contributor (read-only `option_sensor_*` property assignment; `ruff format`). Maintainer follow-up to add connected-happy-path and `wrong_login` → `ConfigEntryAuthFailed` coverage, plus an ADR-007 helper extraction. No ADR — behavioural fix, not a data-format/entity-identity/API-contract change.
+
+---
 
 ### ENH-260703-wireguard-sensors — WireGuard peer/handshake status sensors
 **Type:** Enhancement (new sensors)
