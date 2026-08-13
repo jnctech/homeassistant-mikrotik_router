@@ -4,6 +4,33 @@ Changes listed in reverse chronological order.
 
 ---
 
+## CR-260813-reconnect-hardening — extract the reconnect gate and cover the credential branch
+
+**Date:** 2026-08-13
+**Branch:** `fix/reconnect-hardening` → PR to `dev`
+**Status:** In Review
+
+### What changed
+- `custom_components/mikrotik_router/coordinator.py` — extracted the reconnect gate @sappsys added in #123 into `_async_ensure_connected()`, called as the first statement of `_async_update_data()`. Pure extraction per ADR-007: same call sequence, same raise behaviour, no functional change.
+- `tests/test_coordinator.py` — new "Group AG1c" (5 tests): the helper's no-op path when already connected, its success path, `wrong_login` → `ConfigEntryAuthFailed` both directly and end-to-end through `_async_update_data()`, and `_raise_disconnected()`'s transient branch.
+
+### Why
+Follow-up to CR-260813-reconnect-on-poll, the maintainer half of the #116 → #120 pattern. Two things were outstanding.
+
+**Complexity.** The gate was inline in `_async_update_data()`, which is already the longest method on the coordinator. ADR-007 constrains future work to the same extract-and-test pattern, so the gate belongs in its own helper rather than adding branches to a 75-line function.
+
+**Coverage.** `_raise_disconnected()` has always mapped `wrong_login` to `ConfigEntryAuthFailed` (`coordinator.py:674`) so HA opens a reauth flow instead of retrying credentials that can never work — but **no test in the suite touched that branch**, before or after #123. The new gate made it newly reachable on every poll, which is exactly when an uncovered auth path is worth pinning down. Note this corrects the follow-up scope recorded in ISS-260813, which framed the auth mapping as missing; it was not, the gap was tests only.
+
+### Verification
+- `ruff check` and `ruff format --check` clean on both changed files, run against the CI-pinned `ruff==0.9.0` rather than a newer local build (ISS-260522-ruff-format-drift / ADR-010).
+- `_async_update_data()` branch-carrying AST nodes drop 13 → 11 with the gate extracted; the helper itself carries 2.
+- Full suite runs in CI (Docker was unavailable locally, so the pytest run is the CI matrix on 3.13/3.14, not a local run).
+
+### Release ops
+Lands on `dev`; rolls into the open `v2.3.21` beta cycle, same cycle as #123. No version bump, no ADR required — ADR-007 already governs the extraction pattern and this follows it rather than amending it.
+
+---
+
 ## CR-260813-reconnect-on-poll — reconnect the API on each poll after a transient disconnect (#123)
 
 **Date:** 2026-08-13
