@@ -21,6 +21,12 @@ Monitor and control your entire MikroTik network from Home Assistant. This HACS 
 
 ---
 
+## What's New — v2.3.21-beta.2
+
+Adds a recovery fix to the open v2.3.21 beta cycle. Everything from beta.1 below still applies.
+
+- **The integration now recovers on its own after a transient API outage.** Previously, if the RouterOS API dropped — an upstream gateway reboot, a path outage, a PoE toggle — entities could stay `unavailable` until you manually reloaded the config entry. Worst case that was up to ~4 hours, because the only code path that reconnected was the 4-hourly hardware-info refresh. Each poll now attempts a reconnect, so recovery is automatic. Invalid credentials still correctly raise a reauth prompt rather than retrying forever. Thanks to **@sappsys** for finding and fixing this ([#123](https://github.com/jnctech/homeassistant-mikrotik_router/pull/123)).
+
 ## What's New — v2.3.21-beta.1
 
 Beta rolling up **LTE modem support** plus an integration-wide entity-reliability fix. **Beta-gated:** LTE is validated on contributor hardware (a MikroTik Chateau) — please report back if you run it. The reliability fix was live-validated on a multi-device deployment with no regressions.

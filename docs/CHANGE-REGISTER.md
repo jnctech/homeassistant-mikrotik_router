@@ -4,6 +4,34 @@ Changes listed in reverse chronological order.
 
 ---
 
+## CR-260814-release-v2321-beta2 — cut v2.3.21-beta.2
+
+**Date:** 2026-08-14
+**Branch:** `chore/release-v2.3.21-beta.2` → PR to `dev`
+**Status:** In Review
+
+### What changed
+- `custom_components/mikrotik_router/manifest.json` — version `2.3.21-beta.1` → `2.3.21-beta.2`. Edited in place to preserve the file's CRLF line endings (18 CRLFs before and after).
+- `README.md` / `info.md` — new "What's New" section for beta.2, crediting @sappsys for [#123](https://github.com/jnctech/homeassistant-mikrotik_router/pull/123).
+
+### Why
+Rolls the reconnect-on-poll recovery fix into the open `v2.3.21` beta cycle. The user-visible change is that a transient RouterOS API outage no longer strands entities as `unavailable` until a manual config-entry reload — worst case previously ~4h, bounded by the hardware-info refresh interval.
+
+Only the recovery fix is called out in the release notes. `CR-260813-reconnect-hardening` (helper extraction + credential-branch coverage) and `CR-260712-leak-gate-governance` (CI/pre-commit tooling) also ride in this cut but are not user-visible, so they stay out of "What's New".
+
+### Why still beta
+`ENH-260614-lte-modem-info` gates promotion: v2.3.21 stays beta until @zvldz or another LTE user confirms the LTE sensors on real hardware, since the maintainer fleet has none. The reconnect fix does not change that gate.
+
+### Verification
+- Full suite on merged `dev` (`a815128`): **707 passed, 5 skipped** — run in Docker on the docker host, not just CI.
+- Live baseline captured before side-load: **507 integration entities**, 4 `unavailable` / 15 `unknown`, all accounted for as correct-by-design (12 stateless script buttons; 3 `dhcp_address` on PPPoE/stopped clients; `sensor.mikrotik_rx` / `sensor.mikrotik_tx` / `device_tracker.mikrotik` are known pre-existing orphans).
+- Side-loaded to the live HA host and verified `manifest.json` reports `2.3.21-beta.2`; post-restart entity diff and `/validate-live-sensors` results recorded against that baseline.
+
+### Release ops
+Tag `v2.3.21-beta.2` on `dev` after merge; GitHub release marked **pre-release**. No `dev → master` promotion — that waits on the LTE gate. Live-validation detail stays in gitignored `docs/internal/`.
+
+---
+
 ## CR-260813-reconnect-hardening — extract the reconnect gate and cover the credential branch
 
 **Date:** 2026-08-13
