@@ -3591,6 +3591,107 @@ async def test_async_update_data_continues_after_successful_reconnect():
 
 
 # ---------------------------------------------------------------------------
+# Group AG1c: _async_ensure_connected() — the extracted reconnect gate
+#
+# AG1b covers the gate's effect through _async_update_data. These cover the
+# helper directly, plus the credential branch: _raise_disconnected() routes
+# wrong_login to ConfigEntryAuthFailed so HA opens a reauth flow instead of
+# retrying bad credentials forever. Nothing previously reached that branch.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_ensure_connected_is_noop_when_already_connected():
+    """A healthy link must not cost an executor round-trip on every poll."""
+    coordinator = make_coordinator()
+    coordinator.api = MagicMock()
+    coordinator.api.connected.return_value = True
+    coordinator.hass = MagicMock()
+    coordinator.hass.async_add_executor_job = AsyncMock()
+
+    await coordinator._async_ensure_connected()
+
+    coordinator.hass.async_add_executor_job.assert_not_awaited()
+    coordinator.api.connection_check.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_ensure_connected_returns_when_reconnect_succeeds():
+    """A successful reconnect returns quietly and does not raise."""
+    coordinator = make_coordinator()
+    coordinator.api = MagicMock()
+    connected = {"value": False}
+
+    def connection_check():
+        connected["value"] = True
+        return True
+
+    coordinator.api.connected.side_effect = lambda: connected["value"]
+    coordinator.api.connection_check = MagicMock(side_effect=connection_check)
+    coordinator.hass = MagicMock()
+    coordinator.hass.async_add_executor_job = AsyncMock(side_effect=lambda fn, *a, **k: fn(*a, **k))
+
+    await coordinator._async_ensure_connected()
+
+    coordinator.hass.async_add_executor_job.assert_awaited_once_with(coordinator.api.connection_check)
+
+
+@pytest.mark.asyncio
+async def test_ensure_connected_raises_auth_failed_on_wrong_login():
+    """Bad credentials must surface as ConfigEntryAuthFailed, not UpdateFailed.
+
+    UpdateFailed would leave HA retrying a login that can never succeed;
+    ConfigEntryAuthFailed starts the reauth flow so the user is prompted.
+    """
+    from homeassistant.exceptions import ConfigEntryAuthFailed
+
+    coordinator = make_coordinator()
+    coordinator.api = MagicMock()
+    coordinator.api.connected.return_value = False
+    coordinator.api.connection_check = MagicMock(return_value=False)
+    coordinator.api.error = "wrong_login"
+    coordinator.hass = MagicMock()
+    coordinator.hass.async_add_executor_job = AsyncMock(side_effect=lambda fn, *a, **k: fn(*a, **k))
+
+    with pytest.raises(ConfigEntryAuthFailed, match="Invalid Mikrotik username or password"):
+        await coordinator._async_ensure_connected()
+
+
+@pytest.mark.asyncio
+async def test_async_update_data_raises_auth_failed_on_wrong_login():
+    """The credential branch must survive end-to-end through the poll.
+
+    Guards the wiring, not just the helper: a future refactor that swallowed
+    ConfigEntryAuthFailed into UpdateFailed inside _async_update_data would
+    silently disable reauth, and AG1b alone would not catch it.
+    """
+    from homeassistant.exceptions import ConfigEntryAuthFailed
+
+    coordinator = make_coordinator()
+    coordinator.api = MagicMock()
+    coordinator.api.connected.return_value = False
+    coordinator.api.connection_check = MagicMock(return_value=False)
+    coordinator.api.error = "wrong_login"
+    coordinator.hass = MagicMock()
+    coordinator.hass.async_add_executor_job = AsyncMock(side_effect=lambda fn, *a, **k: fn(*a, **k))
+
+    with pytest.raises(ConfigEntryAuthFailed):
+        await coordinator._async_update_data()
+
+
+def test_raise_disconnected_uses_update_failed_for_transient_errors():
+    """Any error other than wrong_login stays a retryable UpdateFailed."""
+    from homeassistant.helpers.update_coordinator import UpdateFailed
+
+    coordinator = make_coordinator()
+    coordinator.api = MagicMock()
+    coordinator.api.error = "cannot_connect"
+
+    with pytest.raises(UpdateFailed, match="Mikrotik Disconnected"):
+        coordinator._raise_disconnected()
+
+
+# ---------------------------------------------------------------------------
 # Group AG2: get_ups() — UPS path handling
 # ---------------------------------------------------------------------------
 
