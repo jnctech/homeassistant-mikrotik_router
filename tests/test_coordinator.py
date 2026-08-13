@@ -3563,8 +3563,11 @@ async def test_async_update_data_continues_after_successful_reconnect():
     coordinator.hass = MagicMock()
     coordinator.hass.async_add_executor_job = AsyncMock(side_effect=lambda fn, *a, **k: fn(*a, **k) if callable(fn) else None)
     coordinator.last_hwinfo_update = datetime.now(timezone.utc)
-    # Skip heavy work: pretend hwinfo should be skipped and keep getters cheap.
+    # Skip heavy work: keep getters cheap.
+    # has_reconnected=True lets _async_update_hwinfo run, which calls the real
+    # get_access; make_coordinator() has no .host, so stub it out.
     coordinator._run_if_enabled = AsyncMock()
+    coordinator.get_access = MagicMock()
     coordinator.async_get_host_hass = AsyncMock()
     coordinator.async_process_host = AsyncMock()
     coordinator._async_update_client_traffic = AsyncMock()
