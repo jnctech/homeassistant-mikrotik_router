@@ -33,7 +33,7 @@ Landed on `dev` as `0427a41`; rolls into the open `v2.3.21` beta cycle (no versi
 ## CR-260712-leak-gate-governance — extend the homelab-leak gate to catch internal-coordination tokens
 
 **Date:** 2026-07-12
-**Branch:** `fix/leak-gate-governance-tokens` → [PR #122](https://github.com/jnctech/homeassistant-mikrotik_router/pull/122) to `dev`
+**Branch:** `fix/leak-gate-governance-tokens` → [PR #125](https://github.com/jnctech/homeassistant-mikrotik_router/pull/125) to `dev` (supersedes [#122](https://github.com/jnctech/homeassistant-mikrotik_router/pull/122), stale-closed unmerged 2026-08-04)
 **Status:** In Review
 
 ### What changed
