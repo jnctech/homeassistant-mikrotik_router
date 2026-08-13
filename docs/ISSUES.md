@@ -12,7 +12,7 @@
 >
 > **NEXT SESSION (lead):**
 > 0. **Merge PR #122** (leak-gate governance-token extension) once CI green; then close ISS-260712(b). Surface ISS-260712(c) history-scrub + (d) `dev` branch-protection decisions to the operator.
-> 1. **PR #123 reconnect-on-poll (`ISS-260813-no-reconnect-until-hwinfo`)** — @sappsys's fix for the coordinator never retrying the API after a transient disconnect. Root cause confirmed and reproduced; code change sound. **Waiting on the contributor** for two test defects (read-only `option_sensor_*` assignment → suite red; `ruff format`); offered to push the fixes to their branch if they'd rather. **Approve the fork CI run** so their next push gets checks. Then merge-commit (not squash), and land the maintainer follow-up: happy-path + `wrong_login` → `ConfigEntryAuthFailed` coverage, ADR-007 `_async_ensure_connected()` extraction. Rolls into the open v2.3.21 beta. CR-260813-reconnect-on-poll.
+> 1. **PR #123 reconnect-on-poll (`ISS-260813-no-reconnect-until-hwinfo`)** — ✅ **Merged 2026-08-13** as `0427a41` (merge commit, @sappsys's three commits and their authorship preserved). Contributor cleared both test defects; full CI green on `c7cc8eae`. **Remaining:** the maintainer hardening PR — coverage for the `wrong_login` → `ConfigEntryAuthFailed` branch *through the new reconnect gate*, plus the ADR-007 `_async_ensure_connected()` extraction. Note the auth mapping itself is **not** a defect: `_raise_disconnected()` already routes `wrong_login` to `ConfigEntryAuthFailed`, so this is a coverage gap only. Rolls into the open v2.3.21 beta. CR-260813-reconnect-on-poll.
 > 2. **LTE field-validation gate (`ENH-260614-lte-modem-info`)** — v2.3.21-beta.1 **stays beta** until **@zvldz or an LTE user** confirms the LTE sensors on real hardware (maintainer fleet has none). On confirmation: **promote to stable** (`dev→master` PR + immediate back-merge, `master ⊆ dev` guard green; GitHub release, not pre-release) and **close ENH-260614**. Ping @zvldz on #116 when he can run the beta.
 > 3. **WireGuard peer sensors (`ENH-260703-wireguard-sensors`)** — **operator-requested: plan next session.** Surface per-peer state from `/interface/wireguard/peers` (last-handshake→connected/stale, endpoint, per-peer rx/tx); today only interface-level tx/rx exists. Scope keying (`public-key`), capability gate, ADR-020, redaction — see the ENH entry.
 > 4. **librouteros cap-lift** — `ENH-260512-librouteros-test-matrix`: 3.4.1 / latest-3.x / expected-fail-4.x CI matrix, then lift `manifest` to `>=4.0,<5` (the floor-bump is the **v2.4.0** trigger).
@@ -53,7 +53,7 @@
 **Type:** Bug (availability / recovery)
 **Priority:** High
 **Created:** 2026-08-13
-**Status:** 🟡 Fix in review — [#123](https://github.com/jnctech/homeassistant-mikrotik_router/pull/123) (@sappsys), CR-260813-reconnect-on-poll
+**Status:** 🟢 Resolved 2026-08-13 — [#123](https://github.com/jnctech/homeassistant-mikrotik_router/pull/123) (@sappsys) merged to `dev` as `0427a41` (merge commit, authorship preserved), CR-260813-reconnect-on-poll. Ships in the open `v2.3.21` beta cycle. Maintainer hardening tracked separately (auth-branch coverage + ADR-007 `_async_ensure_connected()` extraction).
 
 **Symptom:**
 After a transient RouterOS API outage (e.g. an upstream gateway reboot), entities stay `unavailable` even once the network is healthy again. Recovery needs a manual config-entry reload — the integration does not self-heal.

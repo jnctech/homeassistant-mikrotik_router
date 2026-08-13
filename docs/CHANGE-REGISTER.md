@@ -8,7 +8,7 @@ Changes listed in reverse chronological order.
 
 **Date:** 2026-08-13
 **Branch:** `fix/reconnect-on-poll` (contributor fork, @sappsys) → PR [#123](https://github.com/jnctech/homeassistant-mikrotik_router/pull/123) to `dev`
-**Status:** In Review
+**Status:** Merged 2026-08-13 — `0427a41` on `dev`
 
 ### What changed
 - `custom_components/mikrotik_router/coordinator.py` — `_async_update_data()` now calls `api.connection_check()` via `async_add_executor_job` when `api.connected()` is False, and raises through `_raise_disconnected()` if the reconnect fails. Recovery no longer depends on the ~4h hwinfo refresh coming due.
@@ -21,11 +21,12 @@ Framed correctly this restores a guard rather than adding a mechanism: every oth
 
 ### Verification
 - Reproduced on clean `dev`: the real `_async_update_data()` with a disconnected API and `last_hwinfo_update` set to now raises `UpdateFailed` with **zero** `connection_check` calls; the patch flips it to one call per poll.
-- Full suite with the patch: **694 passed, 5 skipped, 1 failed** — no regressions; the single failure is the contributor's own new test (read-only `option_sensor_*` property assignment), returned to them along with a `ruff format` miss.
+- Full suite during review: **694 passed, 5 skipped, 1 failed** — no regressions; the single failure was the contributor's own new test (read-only `option_sensor_*` property assignment), returned to them along with a `ruff format` miss. Cleared by @sappsys in `12a48ba` and `c7cc8ea`.
+- Merge gate: full CI green on `c7cc8ea` — Python Tests 3.13 and 3.14 both pass, plus hassfest, format check, leak guard, Bandit, Gitleaks, manifest-drift and HACS-zip checks.
 - `ruff check` clean on `coordinator.py`; `_async_update_data` complexity 9 → 11, inside the ≤15 gate. Blocking call wrapped per ADR-004. `librouteros.connect` defaults to a 10s socket timeout and the 58s `_connection_retry_sec` throttle is untouched, so per-poll executor cost stays bounded.
 
 ### Release ops
-Lands on `dev`; rolls into the open `v2.3.21` beta cycle (no version bump on the fix PR itself). **Merge commit, not squash** — preserves @sappsys's authorship per `CONTRIBUTING.md`; credited here and in the `README.md` / `info.md` "What's New" at stable. Maintainer hardening follows as a separate PR (happy-path + `wrong_login` → `ConfigEntryAuthFailed` coverage, ADR-007 helper extraction), same pattern as #116 → #120. No ADR required.
+Landed on `dev` as `0427a41`; rolls into the open `v2.3.21` beta cycle (no version bump on the fix PR itself). Merged with a **merge commit, not a squash** — all three of @sappsys's commits and their authorship are preserved on `dev` per `CONTRIBUTING.md`; credited here and in the `README.md` / `info.md` "What's New" at stable. Maintainer hardening follows as a separate PR (auth-branch coverage through the new gate, ADR-007 helper extraction), same pattern as #116 → #120. No ADR required.
 
 ---
 
