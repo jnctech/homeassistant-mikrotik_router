@@ -1,11 +1,16 @@
 #!/usr/bin/env python3
-"""Fail if private IPs or MAC addresses leak into public, integration-facing files.
+"""Fail if private IPs, MACs, or internal-coordination tokens leak into public files.
 
 This is a public fork. `docs/` (except `docs/internal/`), `custom_components/`,
 `README.md`, and `info.md` are visible to every user and must not carry real
-homelab specifics. This guard scans those tracked files for RFC1918 private IPv4
-addresses and MAC addresses — on this repo, a real one usually means a homelab
-value got pasted into an ADR / ISSUES / CHANGE-REGISTER entry from live evidence.
+homelab specifics. This guard scans those tracked files for:
+  1. RFC1918 private IPv4 addresses and MAC addresses — usually a homelab value
+     pasted into an ADR / ISSUES / CHANGE-REGISTER entry from live evidence.
+  2. Internal-coordination tokens — paths and artifact names from the maintainer's
+     private multi-repo agent-coordination estate (private-repo paths, mailbox
+     routing, relay/check/standards artifacts, ratification terms). These have no
+     place in an integration-facing doc; on 2026-07-12 a batch leaked into the
+     public In-flight block and passed the IP/MAC-only gate silently (ISS-260712).
 
 Allowed (won't fail):
   - Documentation IP ranges: 192.0.2.0/24, 198.51.100.0/24, 203.0.113.0/24
@@ -13,8 +18,14 @@ Allowed (won't fail):
   - Example MAC OUIs: AA:BB:CC, 00:00:5E (RFC 7042 doc range), DE:AD:BE
   - Any line containing the marker `leak-ok`
 
-`tests/` is intentionally out of scope (fixtures use example data). Use a
-documentation range or a `leak-ok` marker for an intentional public reference.
+The governance patterns are deliberately high-precision (structured paths /
+artifact prefixes, not bare words) so legitimate integration content — e.g.
+"out-of-band management", the repo's own `CONTRIBUTING.md`, RouterOS "watchdog"
+— does not trip them. Add a term here only if it is unambiguously estate-internal.
+
+`tests/` is intentionally out of scope (fixtures use example data), as is
+`scripts/` (this file documents the tokens by example). Use a documentation range
+or a `leak-ok` marker for an intentional public reference.
 
 Exit code 1 (with the offending file:line) on any finding; 0 otherwise.
 """
@@ -39,6 +50,25 @@ ALLOW_MAC_OUI = ("aa:bb:cc", "00:00:5e", "de:ad:be")
 
 IP_RE = re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")
 MAC_RE = re.compile(r"\b(?:[0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}\b")
+
+# Internal-coordination ("estate") tokens. High-precision by design: structured
+# paths and artifact prefixes, never bare words, so legit integration content
+# (out-of-band management, this repo's own CONTRIBUTING.md, RouterOS watchdog)
+# does not false-positive. See the module docstring and ISS-260712.
+GOVERNANCE_RE = re.compile(
+    r"""
+      ~/oob\b                                       # private estate repo path
+    | \bjnctech/oob\b                               # private estate repo slug
+    | \boob/(?:registry|standards|verification|mailbox|reports|gates|runs|status|prompts|architecture)\b
+    | \bmailbox/(?:to-|from-|read)\b                # estate mailbox routing
+    | \bRELAY-from-\S+-to-\S+                        # estate relay artifacts
+    | \bOOB-CHECK\b                                 # estate check artifacts
+    | \bWATCHDOG-(?:PROMPT|AUDIT|VERIFY)\b          # estate watchdog artifacts
+    | \bSTANDARDS-(?:mikrotik|tandem|config)\b      # standards-intake declarations
+    | \bratif(?:y|ied|ication|ies)\b                # ratification governance term
+    """,
+    re.IGNORECASE | re.VERBOSE,
+)
 
 
 def tracked_files() -> list[str]:
@@ -67,6 +97,11 @@ def offending_mac(token: str) -> bool:
     return not token.lower().startswith(ALLOW_MAC_OUI)
 
 
+def offending_governance(line: str) -> list[str]:
+    """Return the estate/coordination tokens found on a line (empty if none)."""
+    return [m.group(0) for m in GOVERNANCE_RE.finditer(line)]
+
+
 def main() -> int:
     findings: list[tuple[str, int, str]] = []
     for path in tracked_files():
@@ -84,19 +119,28 @@ def main() -> int:
             for tok in MAC_RE.findall(line):
                 if offending_mac(tok):
                     findings.append((path, lineno, tok))
+            for tok in offending_governance(line):
+                findings.append((path, lineno, tok))
 
     if findings:
-        print("Homelab-leak check FAILED - private IPs / MACs in public files:\n")
+        print(
+            "Homelab-leak check FAILED - private IPs / MACs / coordination tokens "
+            "in public files:\n"
+        )
         for path, lineno, tok in findings:
             print(f"  {path}:{lineno}: {tok}")
         print(
-            "\nReplace with a documentation range (198.51.100.x), an example MAC "
-            "(AA:BB:CC:DD:EE:NN), or a placeholder. Add a 'leak-ok' marker on the "
-            "line only if the value is genuinely public."
+            "\nReplace an IP/MAC with a documentation range (198.51.100.x) or example "
+            "MAC (AA:BB:CC:DD:EE:NN). Move internal-coordination detail to gitignored "
+            "docs/internal/ and describe it generically here. Add a 'leak-ok' marker "
+            "on the line only if the value is genuinely public."
         )
         return 1
 
-    print("Homelab-leak check passed: no private IPs / MACs in public files.")
+    print(
+        "Homelab-leak check passed: no private IPs / MACs / coordination tokens "
+        "in public files."
+    )
     return 0
 
 
