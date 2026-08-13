@@ -4,6 +4,31 @@ Changes listed in reverse chronological order.
 
 ---
 
+## CR-260813-reconnect-on-poll — reconnect the API on each poll after a transient disconnect (#123)
+
+**Date:** 2026-08-13
+**Branch:** `fix/reconnect-on-poll` (contributor fork, @sappsys) → PR [#123](https://github.com/jnctech/homeassistant-mikrotik_router/pull/123) to `dev`
+**Status:** In Review
+
+### What changed
+- `custom_components/mikrotik_router/coordinator.py` — `_async_update_data()` now calls `api.connection_check()` via `async_add_executor_job` when `api.connected()` is False, and raises through `_raise_disconnected()` if the reconnect fails. Recovery no longer depends on the ~4h hwinfo refresh coming due.
+- `tests/test_coordinator.py` — new "Group AG1b" covering the disconnected-poll and successful-reconnect paths.
+
+### Why
+`ISS-260813-no-reconnect-until-hwinfo`: once disconnected, the coordinator's poll made no reconnect attempt at all. `_run_if_enabled()` gates on `api.connected()`, so every fetch was skipped, and `_async_update_hwinfo()` early-returned inside its 4h window — leaving the `get_access` → `query` → `connection_check` chain, the only reconnect path on that code path, untaken. Entities stayed `unavailable` until a manual config-entry reload.
+
+Framed correctly this restores a guard rather than adding a mechanism: every other API entry point in `mikrotikapi.py` already opens with `connection_check()`, and `MikrotikTrackerCoordinator`'s separate API instance self-heals during the same outage precisely because `arp_ping` carries it. It also converts two known disconnect causes — `ISS-260507-ups-empty-path` and the #64 PoE-toggle disconnect — from permanent-until-reload into self-recovering.
+
+### Verification
+- Reproduced on clean `dev`: the real `_async_update_data()` with a disconnected API and `last_hwinfo_update` set to now raises `UpdateFailed` with **zero** `connection_check` calls; the patch flips it to one call per poll.
+- Full suite with the patch: **694 passed, 5 skipped, 1 failed** — no regressions; the single failure is the contributor's own new test (read-only `option_sensor_*` property assignment), returned to them along with a `ruff format` miss.
+- `ruff check` clean on `coordinator.py`; `_async_update_data` complexity 9 → 11, inside the ≤15 gate. Blocking call wrapped per ADR-004. `librouteros.connect` defaults to a 10s socket timeout and the 58s `_connection_retry_sec` throttle is untouched, so per-poll executor cost stays bounded.
+
+### Release ops
+Lands on `dev`; rolls into the open `v2.3.21` beta cycle (no version bump on the fix PR itself). **Merge commit, not squash** — preserves @sappsys's authorship per `CONTRIBUTING.md`; credited here and in the `README.md` / `info.md` "What's New" at stable. Maintainer hardening follows as a separate PR (happy-path + `wrong_login` → `ConfigEntryAuthFailed` coverage, ADR-007 helper extraction), same pattern as #116 → #120. No ADR required.
+
+---
+
 ## CR-260712-redact-inflight-leak — redact homelab IP + estate internals from public `docs/ISSUES.md`
 
 **Date:** 2026-07-12
