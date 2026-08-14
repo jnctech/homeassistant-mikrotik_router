@@ -4,22 +4,27 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from homeassistant.const import CONF_NAME
+from homeassistant.helpers.device_registry import CONNECTION_NETWORK_MAC
 from homeassistant.util import slugify
 
 from custom_components.mikrotik_router.entity import (
     copy_attrs,
     _skip_sensor,
+    _real_network_mac,
+    _interface_device_ident,
     MikrotikEntity,
     MikrotikInterfaceEntityMixin,
 )
 from custom_components.mikrotik_router.coordinator import MikrotikCoordinator
 from custom_components.mikrotik_router.sensor_types import (
     MikrotikSensorEntityDescription,
+    SENSOR_TYPES,
 )
 from custom_components.mikrotik_router.binary_sensor_types import (
     MikrotikBinarySensorEntityDescription,
 )
 from custom_components.mikrotik_router.const import (
+    DOMAIN,
     CONF_SENSOR_PORT_TRAFFIC,
     CONF_SENSOR_PORT_TRACKER,
     CONF_SENSOR_NETWATCH_TRACKER,
@@ -439,6 +444,82 @@ class TestMikrotikEntityDeviceInfo:
         )
         info = entity.device_info
         assert "via_device" in info
+
+
+def _iface_traffic_desc():
+    """Real interface traffic description (ha_connection = MAC via port-mac-address)."""
+    return next(d for d in SENSOR_TYPES if d.key == "traffic_tx")
+
+
+def test_real_network_mac_rejects_dummy_and_serial_tokens():
+    """Only a 12-hex hardware MAC counts; lo / empty / serial-prefixed tokens do not."""
+    assert _real_network_mac("AA:BB:CC:DD:EE:01") is True
+    assert _real_network_mac("AA:BB:CC:DD:EE:01-vlan100") is True
+    assert _real_network_mac("00:00:00:00:00:00") is False
+    assert _real_network_mac("00:00:00:00:00:00-lo") is False
+    assert _real_network_mac("-wireguard1") is False
+    assert _real_network_mac("HGR1234567-lo") is False
+    assert _real_network_mac("") is False
+
+
+def test_interface_device_ident_does_not_double_prefix_serial():
+    """Coordinator already prefixes dummy MACs with serial; entity must not do it again."""
+    assert _interface_device_ident("HGR1234567", "HGR1234567-lo") == "HGR1234567-lo"
+    assert _interface_device_ident("HGR1234567", "00:00:00:00:00:00-lo") == "HGR1234567-00:00:00:00:00:00-lo"
+    assert _interface_device_ident("HGR1234567", "-wireguard1") == "HGR1234567-wireguard1"
+
+
+class TestDummyMacInterfaceDeviceInfo:
+    """Virtual ifaces with dummy MACs must not share CONNECTION_NETWORK_MAC across routers."""
+
+    def _entity(self, serial, port_mac, uid="lo", name="RouterA"):
+        desc = _iface_traffic_desc()
+        coord = make_mock_coordinator(name=name)
+        coord.data["routerboard"]["serial-number"] = serial
+        coord.data["interface"] = {
+            uid: {
+                "name": uid,
+                "default-name": uid,
+                "type": "loopback",
+                "port-mac-address": port_mac,
+            }
+        }
+        with patch_coordinator_entity_init():
+            return MikrotikEntity(coord, desc, uid)
+
+    def test_loopback_uses_domain_connection_not_mac(self):
+        entity = self._entity("HGR1234567", "HGR1234567-lo")
+        info = entity.device_info
+        ident = (DOMAIN, "HGR1234567-lo")
+        assert info["connections"] == {ident}
+        assert info["identifiers"] == {ident}
+        assert CONNECTION_NETWORK_MAC not in {c[0] for c in info["connections"]}
+        assert info["via_device"] == (DOMAIN, "HGR1234567")
+
+    def test_two_routers_do_not_share_loopback_identity(self):
+        a = self._entity("HGR1234567", "HGR1234567-lo", name="RouterA").device_info
+        b = self._entity("HGR7654321", "HGR7654321-lo", name="RouterB").device_info
+        assert a["identifiers"] != b["identifiers"]
+        assert a["connections"] != b["connections"]
+        assert a["via_device"] != b["via_device"]
+
+    def test_ethernet_still_uses_network_mac(self):
+        desc = _iface_traffic_desc()
+        coord = make_mock_coordinator()
+        coord.data["interface"] = {
+            "ether1": {
+                "name": "ether1",
+                "default-name": "ether1",
+                "type": "ether",
+                "port-mac-address": "AA:BB:CC:DD:EE:01",
+            }
+        }
+        with patch_coordinator_entity_init():
+            entity = MikrotikEntity(coord, desc, "ether1")
+        info = entity.device_info
+        assert info["connections"] == {(CONNECTION_NETWORK_MAC, "AA:BB:CC:DD:EE:01")}
+        assert "identifiers" not in info
+        assert info["via_device"] == (DOMAIN, "HGR1234567")
 
 
 # ---------------------------------------------------------------------------

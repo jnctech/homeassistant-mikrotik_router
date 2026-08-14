@@ -13,6 +13,7 @@ from homeassistant.helpers import (
     entity_registry as er,
 )
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
+from homeassistant.helpers.device_registry import CONNECTION_NETWORK_MAC
 from homeassistant.helpers.entity import DeviceInfo, Entity
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import slugify
@@ -275,6 +276,23 @@ _MikrotikCoordinatorT = TypeVar(
 )
 
 
+def _real_network_mac(value: str) -> bool:
+    """True when value is a unique hardware MAC (not lo / empty / serial-prefixed)."""
+    mac_part = (value or "").split("-", 1)[0]
+    compact = mac_part.replace(":", "").lower()
+    if compact in ("", "000000000000"):
+        return False
+    return len(compact) == 12 and all(c in "0123456789abcdef" for c in compact)
+
+
+def _interface_device_ident(serial: str, conn_val: str) -> str:
+    """Stable per-router identity for a dummy-MAC virtual interface."""
+    if conn_val.startswith(f"{serial}-"):
+        return conn_val
+    suffix = conn_val.lstrip("-")
+    return f"{serial}-{suffix}"
+
+
 # ---------------------------
 #   MikrotikEntity
 # ---------------------------
@@ -418,14 +436,29 @@ class MikrotikEntity(CoordinatorEntity[_MikrotikCoordinatorT], Entity):
                 ),
             )
         else:
+            serial = self.coordinator.data["routerboard"]["serial-number"]
+            conn_val = f"{dev_connection_value}"
+            if dev_connection == CONNECTION_NETWORK_MAC and not _real_network_mac(conn_val):
+                ident = _interface_device_ident(serial, conn_val)
+                return DeviceInfo(
+                    connections={(DOMAIN, ident)},
+                    identifiers={(DOMAIN, ident)},
+                    name=f"{self._inst} {dev_group}",
+                    model=f"{self.coordinator.data['resource']['board-name']}",
+                    manufacturer=f"{self.coordinator.data['resource']['platform']}",
+                    via_device=(
+                        DOMAIN,
+                        f"{serial}",
+                    ),
+                )
             return DeviceInfo(
-                connections={(dev_connection, f"{dev_connection_value}")},
+                connections={(dev_connection, conn_val)},
                 name=f"{self._inst} {dev_group}",
                 model=f"{self.coordinator.data['resource']['board-name']}",
                 manufacturer=f"{self.coordinator.data['resource']['platform']}",
                 via_device=(
                     DOMAIN,
-                    f"{self.coordinator.data['routerboard']['serial-number']}",
+                    f"{serial}",
                 ),
             )
 
