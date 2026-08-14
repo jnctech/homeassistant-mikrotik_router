@@ -128,6 +128,19 @@ def as_local(dattim: datetime) -> datetime:
     return dattim.astimezone(DEFAULT_TIME_ZONE)
 
 
+def _port_mac_for_virtual_iface(mac: str | None, ifname: str, serial: str) -> str:
+    """Build a per-router port-mac token for virtual interfaces.
+
+    Ethernet already has a unique hardware MAC. Virtual ifaces (lo, tunnels)
+    often share an all-zero or empty MAC, which HA's device registry
+    would merge across config entries if used as CONNECTION_NETWORK_MAC.
+    """
+    compact = str(mac or "").replace(":", "").lower()
+    if compact in ("", "000000000000"):
+        return f"{serial}-{ifname}"
+    return f"{mac}-{ifname}"
+
+
 @dataclass
 class MikrotikData:
     """Data for the mikrotik integration."""
@@ -1163,7 +1176,8 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
 
             if vals["default-name"] == "":
                 iface["default-name"] = vals["name"]
-                iface["port-mac-address"] = f"{vals['port-mac-address']}-{vals['name']}"
+                serial = self.ds.get("routerboard", {}).get("serial-number") or getattr(self, "name", None) or "unknown"
+                iface["port-mac-address"] = _port_mac_for_virtual_iface(vals.get("port-mac-address"), vals["name"], serial)
 
             if iface["type"] == "ether":
                 self._monitor_ethernet_port(vals)
