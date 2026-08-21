@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from homeassistant.helpers.update_coordinator import UpdateFailed
 
 from custom_components.mikrotik_router.apiparser import (
     parse_api,
@@ -5409,3 +5410,83 @@ def test_resolve_poe_power_non_numeric_measured_yields_no_value():
     coordinator = _poe_coordinator()
     iface = {"poe-out-power": "n/a", "poe-out-status": "powered-on", "default-name": "ether1"}
     assert coordinator._resolve_poe_power(iface) == (None, None, None)
+
+# ---------------------------------------------------------------------------
+# Group: coordinator reconnect after temporary API loss
+# ---------------------------------------------------------------------------
+
+
+def _prepare_update_cycle(coordinator, api):
+    """Stub unrelated polling work so reconnect tests stay focused."""
+    coordinator.hass = MagicMock()
+    coordinator.hass.async_add_executor_job = AsyncMock(
+        side_effect=lambda func, *args: func(*args)
+    )
+    coordinator.api = api
+    coordinator._async_update_hwinfo = AsyncMock(return_value=True)
+    coordinator._run_if_enabled = AsyncMock()
+    coordinator.async_get_host_hass = AsyncMock()
+    coordinator.async_process_host = AsyncMock()
+    coordinator._async_update_client_traffic = AsyncMock()
+    coordinator._check_new_uids = MagicMock()
+    coordinator.support_capsman = False
+    coordinator.support_wireless = False
+    coordinator.support_ppp = False
+    coordinator.support_ups = False
+    coordinator.support_gps = False
+    coordinator.support_container = False
+
+
+@pytest.mark.asyncio
+async def test_update_attempts_reconnect_when_disconnected():
+    """A disconnected coordinator must run the API reconnect path."""
+    coordinator = make_coordinator()
+    api = MagicMock()
+    api.connected.return_value = False
+    api.connection_check.return_value = False
+    api.error = ""
+    _prepare_update_cycle(coordinator, api)
+
+    with pytest.raises(UpdateFailed, match="Mikrotik Disconnected"):
+        await coordinator._async_update_data()
+
+    api.connection_check.assert_called_once_with()
+    coordinator._async_update_hwinfo.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_update_skips_reconnect_when_already_connected():
+    """Normal polling must not run connection_check when the API is healthy."""
+    coordinator = make_coordinator()
+    api = MagicMock()
+    api.connected.return_value = True
+    api.error = ""
+    _prepare_update_cycle(coordinator, api)
+
+    result = await coordinator._async_update_data()
+
+    api.connection_check.assert_not_called()
+    coordinator._async_update_hwinfo.assert_awaited_once_with()
+    assert result is coordinator.ds
+
+
+@pytest.mark.asyncio
+async def test_update_continues_after_successful_reconnect():
+    """A successful reconnect resumes the normal coordinator update cycle."""
+    coordinator = make_coordinator()
+    api = MagicMock()
+    api.connected.return_value = False
+    api.error = ""
+
+    def reconnect():
+        api.connected.return_value = True
+        return True
+
+    api.connection_check.side_effect = reconnect
+    _prepare_update_cycle(coordinator, api)
+
+    result = await coordinator._async_update_data()
+
+    api.connection_check.assert_called_once_with()
+    coordinator._async_update_hwinfo.assert_awaited_once_with()
+    assert result is coordinator.ds
