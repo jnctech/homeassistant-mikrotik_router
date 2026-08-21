@@ -671,6 +671,16 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
     # ---------------------------
     async def _async_update_data(self):
         """Update Mikrotik data"""
+        
+        # Regular polling calls are skipped while disconnected, so explicitly
+        # run the API reconnect logic before starting this update cycle.
+        if not self.api.connected():
+            connected = await self.hass.async_add_executor_job(
+                self.api.connection_check
+            )
+            if not connected:
+                self._raise_disconnected()
+
         hwinfo_ran = await self._async_update_hwinfo()
 
         # get_system_resource already ran inside _async_update_hwinfo;
