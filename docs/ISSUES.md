@@ -2,23 +2,20 @@
 
 ## In-flight
 
-> **Updated 2026-07-12 (leak-redaction session).** **Public-leak fix (ISS-260712):** a private homelab IP + internal-coordination notes had shipped to public `dev` via the In-flight refresh precedent; redacted at HEAD (`f8e3a72`→`c90b053`, leak gate passes), detail moved to gitignored `docs/internal/`, root-caused (direct-to-`dev` push bypasses the PR gate; pre-commit skipped; post-push CI red can't block; gate was IP/MAC-only). **Leak gate extended** to also flag internal-coordination tokens — **[PR #122](https://github.com/jnctech/homeassistant-mikrotik_router/pull/122)** (`fix/leak-gate-governance-tokens` → `dev`, tests added), closes ISS-260712(b). **Operator-open:** ISS-260712(c) history-scrub decision (my lean: *don't* scrub — RFC1918/LAN-only, already cached; 2 tip commits after the beta tag, `master` clean), (d) `dev` branch protection requiring the leak gate.
+> **Updated 2026-09-07 (v2.3.21 release session).** **Cut stable [v2.3.21](https://github.com/jnctech/homeassistant-mikrotik_router/releases/tag/v2.3.21)** — the v2.3.21 beta cycle (beta.1 LTE, beta.2 self-recovery) rolled up to stable via a `dev→master` PR + back-merge (`master ⊆ dev` restored, branch-sync-guard green). CR-260907-release-v2321.
 >
-> **Prior session (LTE beta):** **Cut pre-release [v2.3.21-beta.1](https://github.com/jnctech/homeassistant-mikrotik_router/releases/tag/v2.3.21-beta.1)** off `dev` (`release.yml` built the HACS zip; no `dev→master` — beta). Merged the full LTE chain: **#116** LTE modem sensors (@zvldz, merge-commit, authorship preserved, credited on PR + release notes) · **#120** maintainer hardening (base-class `native_value`/`is_on`→`.get()` **unknown-not-stale** fix + LTE entity tests) · **#119** standards docs (CONTRIBUTING, ADR-index reconciliation, beta-first + test-ownership) · **#121** beta release. **ADR-019 Accepted.** CRs: `CR-260703-lte-hardening`, `CR-260703-contributing-adr-numbering`, `CR-260703-release-v2.3.21-beta.1`.
+> **v2.3.21 rolls up:** LTE modem sensors (ADR-019, #116, @zvldz) · self-recovery reconnect-on-poll after a transient API outage (#123/#127, @sappsys) · `unknown`-not-stale base-class fix (#120) · leak-gate governance-token extension (#125) · CONTRIBUTING/ADR-index docs (#119).
 >
-> **Live-validated PASS.** Baseline (2.3.20) vs post-deploy vs final **HACS-installed beta** compare: **identical** unavailable/unknown sets (7 sensor unavail = documented orphans, 3 `dhcp_address` unknown by-design, 2 binary unavail), **clean HA log**, **0 phantom LTE entities** (conditional-creation correct on non-LTE fleet). Operator HACS-updated to the beta (manifest now reads `2.3.21-beta.1`). Validation report retained in gitignored `docs/internal/`. The `.get()` change is read-only (can't create entities); any count churn is additive.
+> **Both external gates cleared:** LTE field-confirmed by **@zvldz** on a MikroTik Chateau (S53UG / EG18-EA) — ~2h, live signal, zero errors → `ENH-260614-lte-modem-info` **Closed**. Reconnect self-recovery shipped in beta.2 and live-validated on the maintainer fleet → `ISS-260813` **Shipped**.
 >
-> **Live-validation note (don't re-flag):** RB4011 WireGuard server interface renamed `wireguard1`→`wg-home` (config CR-260616) — `wireguard1_*` entities orphaned→`unavailable`, fresh `wg_home_*` live. Working as designed. Bare `sensor.mikrotik_tx/rx` + `[TEST] #70 netwatch` are pre-existing orphans.
+> **Release validated.** Fresh `/validate-live-sensors` on the deployed beta.2 (2026-09-07): **501 integration entities**, every sensor class cross-checked against router ground-truth within tolerance, **0 phantom LTE entities**; bad-state set benign (documented orphans + by-design `unknown`). Stable == beta.2 code + version bump only. Internal report in gitignored config docs.
 >
 > **NEXT SESSION (lead):**
-> 0. **Merge PR #125** (leak-gate governance-token extension) once CI green; then close ISS-260712(b). #125 supersedes **#122**, which the stale bot auto-closed unmerged on 2026-08-04 — the fix sat unlanded for 9 days and nothing flagged it; #125 carries the `pinned` label so that cannot recur. Surface ISS-260712(c) history-scrub + (d) `dev` branch-protection decisions to the operator.
-> 1. **PR #123 reconnect-on-poll (`ISS-260813-no-reconnect-until-hwinfo`)** — ✅ **Merged 2026-08-13** as `0427a41` (merge commit, @sappsys's three commits and their authorship preserved). Contributor cleared both test defects; full CI green on `c7cc8eae`. Maintainer hardening is **PR #127** (`_async_ensure_connected()` extraction per ADR-007 + Group AG1c covering the credential branch), CI green — merge it to close this thread. Note the auth mapping itself is **not** a defect: `_raise_disconnected()` already routes `wrong_login` to `ConfigEntryAuthFailed`, so it was a coverage gap only. Rolls into the open v2.3.21 beta. CR-260813-reconnect-on-poll, CR-260813-reconnect-hardening.
-> 2. **LTE field-validation gate (`ENH-260614-lte-modem-info`)** — v2.3.21-beta.1 **stays beta** until **@zvldz or an LTE user** confirms the LTE sensors on real hardware (maintainer fleet has none). On confirmation: **promote to stable** (`dev→master` PR + immediate back-merge, `master ⊆ dev` guard green; GitHub release, not pre-release) and **close ENH-260614**. Ping @zvldz on #116 when he can run the beta.
-> 3. **WireGuard peer sensors (`ENH-260703-wireguard-sensors`)** — **operator-requested: plan next session.** Surface per-peer state from `/interface/wireguard/peers` (last-handshake→connected/stale, endpoint, per-peer rx/tx); today only interface-level tx/rx exists. Scope keying (`public-key`), capability gate, ADR-020, redaction — see the ENH entry.
-> 4. **librouteros cap-lift** — `ENH-260512-librouteros-test-matrix`: 3.4.1 / latest-3.x / expected-fail-4.x CI matrix, then lift `manifest` to `>=4.0,<5` (the floor-bump is the **v2.4.0** trigger).
-> 5. **Stale-debt sweep** — write the deferred `ISS-260512-librouteros-concurrency-adr` (Open, doc-only); reconcile stale statuses.
->
-> **Cross-repo coordination (no integration-code impact):** downstream Home Assistant dashboard/config consumers were advised out-of-band of the `wireguard1`→`wg_home` sensor rename (repoint cards, delete orphaned `wireguard1_*` entities). Coordination and session detail live in gitignored `docs/internal/`.
+> 1. **Route monitoring (`ENH-260907-route-monitoring`, FEATURE-POLL B4)** — user-voted. Surface `/ip/route`: active/default-route presence + gateway reachability for multi-WAN failover awareness. Scope + capability gate + ADR before coding.
+> 2. **WireGuard peer sensors (`ENH-260703-wireguard-sensors`, FEATURE-POLL B2)** — operator-requested. Per-peer state from `/interface/wireguard/peers` (last-handshake→connected/stale, endpoint, per-peer rx/tx); today only interface-level tx/rx exists. Scope keying (`public-key`), capability gate, ADR-020, redaction — see the ENH entry.
+> 3. **librouteros cap-lift** — `ENH-260512-librouteros-test-matrix`: 3.4.1 / latest-3.x / expected-fail-4.x CI matrix, then lift `manifest` to `>=4.0,<5` (the floor-bump is the **v2.4.0** trigger).
+> 4. **Gold/Platinum** — `reconfiguration-flow` (Gold) may be decoupled from the deferred coordinator decomposition; `strict-typing` (Platinum) stays gated on it (would-be ADR-016). Author a `quality_scale.yaml` to make the remaining gaps auditable.
+> 5. **Stale-debt sweep** — write the deferred `ISS-260512-librouteros-concurrency-adr` (Open, doc-only); reconcile stale statuses. **Operator-open:** `ISS-260712` history-scrub decision + `dev` branch-protection requiring the leak gate.
 >
 > **Tooling:** pytest runs via **CI** (push to a PR triggers the matrix; feature-branch pushes don't). `manifest.json` is CRLF — Edit the version line, don't python-rewrite. Session/tooling specifics (shell, deploy target, test runner) live in gitignored `docs/internal/`, never in this tracked file.
 >
@@ -49,11 +46,34 @@
 
 ## Active
 
+### ENH-260907-route-monitoring — route / default-gateway monitoring sensors (FEATURE-POLL B4)
+**Type:** Enhancement
+**Priority:** Medium
+**Created:** 2026-09-07
+**Status:** 🔵 Filed — user-voted (FEATURE-POLL B4). Plan before coding.
+
+**Ask:**
+A user voted for route monitoring in the feature poll (B4). Surface RouterOS `/ip/route` state in Home Assistant for multi-WAN / failover awareness ("WAN1 route disappeared, traffic on WAN2").
+
+**Proposed scope (to firm up in an ADR):**
+- Default-route presence and/or active-route count as a sensor.
+- Per-monitored-route reachability / `active` flag as a binary_sensor.
+- Optional attributes: gateway address, distance/metric, interface.
+- **Keying:** route `.id` is unstable across reboots/route churn; key on destination + gateway (or a user-scoped set of monitored routes) to keep `unique_id`s stable.
+- **Capability / poll-cost gate:** the full route table can be large — default to default/monitored routes, opt-in, rather than one entity per route.
+- **Redaction:** gateway IPs are LAN/WAN addresses; follow the public-doc redaction rules.
+
+**Open questions:**
+- Whole table vs. default-route-only vs. user-selected routes (poll cost + entity explosion).
+- Overlap with `B12 PPPoE status` / netwatch for WAN health — position route monitoring as the multi-WAN/failover layer.
+
+Related: `ENH-260703-wireguard-sensors` (same "new `/ip` data source → ADR → capability-gate" pattern); FEATURE-POLL B4.
+
 ### ISS-260813-no-reconnect-until-hwinfo — coordinator never retries the API after a transient disconnect
 **Type:** Bug (availability / recovery)
 **Priority:** High
 **Created:** 2026-08-13
-**Status:** 🟢 Resolved 2026-08-13 — [#123](https://github.com/jnctech/homeassistant-mikrotik_router/pull/123) (@sappsys) merged to `dev` as `0427a41` (merge commit, authorship preserved), CR-260813-reconnect-on-poll. Ships in the open `v2.3.21` beta cycle. Maintainer hardening tracked separately (auth-branch coverage + ADR-007 `_async_ensure_connected()` extraction).
+**Status:** 🟢 Resolved 2026-08-13 — [#123](https://github.com/jnctech/homeassistant-mikrotik_router/pull/123) (@sappsys) merged to `dev` as `0427a41` (merge commit, authorship preserved), CR-260813-reconnect-on-poll. Shipped in stable **v2.3.21** (CR-260907); maintainer hardening #127 (auth-branch coverage + ADR-007 `_async_ensure_connected()` extraction) merged in the same cycle.
 
 **Symptom:**
 After a transient RouterOS API outage (e.g. an upstream gateway reboot), entities stay `unavailable` even once the network is healthy again. Recovery needs a manual config-entry reload — the integration does not self-heal.
@@ -266,7 +286,7 @@ Some boards (e.g. CRS317-1G-16S+) report `sfp-temperature` in `/system/health`, 
 **Type:** Enhancement (new sensors)
 **Priority:** Medium — high upstream demand (26 comments)
 **Created:** 2026-06-14
-**Status:** 🟢 Merged to `dev` — **contributor PR [#116](https://github.com/jnctech/homeassistant-mikrotik_router/pull/116) (@zvldz)** (merge commit, authorship preserved; CI green on 3.13/3.14 after fork-run approval). @zvldz applied all 4 change-request items (session-uptime null, stale-clear, debug logs, ADR-015→019). **Maintainer hardening** on `chore/lte-hardening`: LTE entity-layer tests + a base-class `unknown`-not-stale read fix (`native_value`/`is_on` use `.get()`; integration-wide — `system_ups` shared the same KeyError→stale path). ADR-019 Accepted. **Ships beta-first as `v2.3.21-beta.1`** (LTE hardware absent from the maintainer fleet — see release-validation beta-gate); validate on real hardware before stable, then close. Live validation on @zvldz's Chateau S53UG / Quectel EG18-EA (RouterOS 7.23.1) already done for the feature.
+**Status:** 🔴 Closed — shipped in stable **v2.3.21** (CR-260907). **LTE field-confirmed by @zvldz** on a Chateau S53UG / Quectel EG18-EA (~2h on beta.1: live RSSI/SINR, zero errors, "good for stable"). Originally merged to `dev` — **contributor PR [#116](https://github.com/jnctech/homeassistant-mikrotik_router/pull/116) (@zvldz)** (merge commit, authorship preserved; CI green on 3.13/3.14 after fork-run approval). @zvldz applied all 4 change-request items (session-uptime null, stale-clear, debug logs, ADR-015→019). **Maintainer hardening** on `chore/lte-hardening`: LTE entity-layer tests + a base-class `unknown`-not-stale read fix (`native_value`/`is_on` use `.get()`; integration-wide — `system_ups` shared the same KeyError→stale path). ADR-019 Accepted. **Ships beta-first as `v2.3.21-beta.1`** (LTE hardware absent from the maintainer fleet — see release-validation beta-gate); validate on real hardware before stable, then close. Live validation on @zvldz's Chateau S53UG / Quectel EG18-EA (RouterOS 7.23.1) already done for the feature.
 
 Expose LTE modem cell metrics (RSSI/RSRP/RSRQ/SINR, registration status, operator, band/EARFCN, cell-id) for RouterOS LTE interfaces from `/interface/lte/monitor [find] once`, gated on LTE-interface detection. Neither upstream nor the Csontikka alternative implements this → a genuine differentiator. **Contributor hardware closes the LTE-hardware gate** (maintainer fleet has none).
 

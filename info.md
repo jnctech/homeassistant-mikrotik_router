@@ -10,13 +10,10 @@ Monitor and control your MikroTik router from Home Assistant.
 
 ![Mikrotik Logo](https://raw.githubusercontent.com/tomaae/homeassistant-mikrotik_router/master/docs/assets/images/ui/header.png)
 
-### What's new in v2.3.21-beta.2
-Adds a recovery fix to the open v2.3.21 beta cycle; everything in beta.1 below still applies.
-- **Self-recovery after a transient API outage** — if the RouterOS API dropped (gateway reboot, path outage, PoE toggle), entities could stay `unavailable` until you reloaded the config entry, worst case ~4h. Each poll now attempts a reconnect. Bad credentials still raise a reauth prompt rather than retrying forever. Thanks @sappsys (#123).
-
-### What's new in v2.3.21-beta.1
-Beta: **LTE modem sensors** + an integration-wide entity-reliability fix. LTE is beta-gated on contributor hardware; the fix was live-validated with no regressions.
+### What's new in v2.3.21
+Stable release rolling up the v2.3.21 beta cycle (beta.1–beta.2). Two contributor-driven additions + an integration-wide reliability fix, live-validated on a four-controller deployment; the LTE sensors confirmed on real modem hardware by the contributor.
 - **LTE modem sensors** — signal (RSSI/RSRP/RSRQ/SINR/CQI), operator, connection, session uptime, and modem firmware for routers with an `/interface/lte`. Conditional on LTE hardware. IMEI/IMSI/ICCID collected but disabled by default + redacted. Thanks @zvldz for the implementation + live validation on a MikroTik Chateau. Implements tomaae #249. See ADR-019.
+- **Self-recovery after a transient API outage** — if the RouterOS API dropped (gateway reboot, path outage, PoE toggle), entities could stay `unavailable` until you reloaded the config entry, worst case ~4h. Each poll now attempts a reconnect. Bad credentials still raise a reauth prompt rather than retrying forever. Thanks @sappsys (#123).
 - **`unknown` instead of stale** — when a source stops reporting mid-session, the sensor reads `unknown` rather than keeping its last value. Integration-wide.
 
 ### What's new in v2.3.20
