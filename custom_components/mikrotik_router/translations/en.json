@@ -92,7 +92,8 @@
                     "sensor_netwatch_tracker": "Netwatch tracker sensors",
                     "sensor_poe": "PoE port sensors",
                     "sensor_raw": "Firewall RAW switches",
-                    "sensor_container": "Container sensors and switches"
+                    "sensor_container": "Container sensors and switches",
+                    "sensor_wireguard": "WireGuard peer sensors"
                 },
                 "title": "Mikrotik Router options (2\/2)",
                 "description": "Enable sensors and switches"

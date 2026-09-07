@@ -4,6 +4,43 @@ Changes listed in reverse chronological order.
 
 ---
 
+## CR-260907-wireguard-peers — implement WireGuard peer sensors (B2)
+
+**Date:** 2026-09-07
+**Branch:** `feature/wireguard-peers` → PR to `dev`
+**Status:** In Review
+
+### What changed
+- `custom_components/mikrotik_router/coordinator.py` — new `get_wireguard_peers()` getter (path `/interface/wireguard/peers`) with `_wireguard_label()` and `_resolve_wireguard_handshake()` helpers. New `support_wireguard = bool(query("/interface/wireguard"))` capability flag (mirrors `support_lte`); `option_sensor_wireguard`; `"wireguard_peers"` added to `self.ds` and `_ENTITY_UID_PATHS`; registered in the gated getter list behind `support_wireguard and option_sensor_wireguard`.
+- `custom_components/mikrotik_router/const.py` — `CONF_SENSOR_WIREGUARD` / `DEFAULT_SENSOR_WIREGUARD = False`; `WIREGUARD_STALE_SECONDS = 180`; `public-key`, `endpoint-address`, `current-endpoint-address`, `allowed-address` added to `TO_REDACT`.
+- `custom_components/mikrotik_router/binary_sensor_types.py` — per-peer `connected` binary_sensor, `ha_group="WireGuard"`, keyed by `public-key`, `DEVICE_ATTRIBUTES_WIREGUARD_PEER`.
+- `custom_components/mikrotik_router/sensor_types.py` — `last-handshake` (TIMESTAMP), `rx`/`tx` (data_size, total_increasing), and a hidden-by-default `public-key` sensor.
+- `custom_components/mikrotik_router/entity.py` — `_skip_wireguard_sensor()` gates the peer entities on `CONF_SENSOR_WIREGUARD`.
+- `config_flow.py`, `strings.json`, `translations/en.json` — the opt-in toggle + label.
+- `tests/` — 24 new tests.
+
+### Why
+FEATURE-POLL B2, operator-requested (`ENH-260703-wireguard-sensors`). Surfaces per-peer VPN state: a `connected` signal (remote site up/down, VPN-presence automations), a stable last-handshake timestamp, and per-peer transfer. Implements [ADR-021](decisions/ADR-021-wireguard-peer-sensors.md).
+
+### Design notes
+- **Stable keying.** Peers key on `public-key` — globally unique and stable across reboots (unlike `.id`) and a real field on the raw entry, so `parse_api` keys on it directly (the dict key equals the entity uid; no `.id`-churn freeze).
+- **Age → timestamp.** RouterOS reports `last-handshake` as a relative age (`"53s"`, `"1m28s"`), not a timestamp. `_resolve_wireguard_handshake` computes `now − age` with a 10 s drift guard so the timestamp stays stable across polls (the LTE session-uptime model). A never-handshaked peer (field absent) reads `connected` off, timestamp `None`.
+- **Connected heuristic.** `age < WIREGUARD_STALE_SECONDS` (180 s). Documented caveat: an idle peer without a keepalive can read disconnected though reachable — inherent to WireGuard's connectionless model.
+- **Conditional creation + opt-in.** `support_wireguard` (no entities on a non-WG router) AND `CONF_SENSOR_WIREGUARD` (peers are identifying, so surfacing them is explicit opt-in).
+- **Redaction.** `public-key`, `endpoint-address`, `current-endpoint-address`, `allowed-address` added to `TO_REDACT`; the `public-key` sensor is disabled by default (LTE IMEI precedent). The display label uses only a short key fingerprint as a last resort, never the full key. Because the peer map is keyed by `public-key` and `async_redact_data` redacts values (not dict keys), the diagnostics dump additionally re-keys the `wireguard_peers` map to an anonymous index (`diagnostics._redact_wireguard_peer_keys`) so the full key never survives as a dict key — ADR-021 §5 assumed `TO_REDACT` alone covered this, which it does not.
+
+- **v7-only capability probe.** `support_wireguard` is gated on `major_fw_version >= 7` before querying `/interface/wireguard` — WireGuard is a RouterOS v7 feature, and probing the missing menu on v6 could raise "no such command" and force a reconnect each capabilities refresh (the #64 / ISS-260509 disconnect class).
+
+### Accepted scope limits (reviewed)
+- **Live entity attributes are not redacted** — `current-endpoint-address` / `allowed-address` appear on the entity (and in Recorder / Developer Tools) as the user's own network data, per ADR-021 §2 ("attributes … redacted in diagnostics"); `TO_REDACT` covers only shared diagnostics dumps. Consistent with how `mac-address`/`ip-address` are handled integration-wide.
+- **`peer-label` fingerprint** — when a peer has no name or comment, the label falls back to an 8-character public-key fingerprint (not redacted). A short fingerprint is accepted as non-identifying (ADR-021 §2); the full key is never exposed.
+
+### Verification
+- Suite **736 passed, 5 deselected**; ruff clean; cognitive complexity under 15.
+- Live validation on RB4011 (two peers: server `wg-home` + client `wg-us`), a non-WG device (zero peer entities), and a diagnostics redaction check is a release-time gate (ADR-021 test plan), tracked under `ENH-260703`.
+
+---
+
 ## CR-260907-release-v2321 — cut v2.3.21 stable
 
 **Date:** 2026-09-07

@@ -455,6 +455,20 @@ Track netwatch probe status.
 
 ![Netwatch](https://raw.githubusercontent.com/tomaae/homeassistant-mikrotik_router/master/docs/assets/images/ui/netwatch_tracker.png)
 
+## WireGuard Peer Monitoring *(new)*
+Per-peer WireGuard state from `/interface/wireguard/peers`. Enable **WireGuard peer sensors** in the integration options.
+
+For each peer you get:
+- a **connected** binary_sensor — derived from handshake recency (last handshake younger than 180 seconds), for "is my remote site up?" alerts and VPN-based presence detection;
+- a **last handshake** timestamp sensor — a stable, graphable time (computed from RouterOS's relative handshake age), not a value that churns every poll;
+- **RX / TX** transfer totals per peer.
+
+Peers are named by their peer `name`, else `comment`, else a short key fingerprint. Only routers that actually have WireGuard get these entities (conditional creation — a non-WireGuard router gets nothing), and the option is off by default because peer identifiers are sensitive.
+
+> **Privacy:** the public key, endpoints and allowed-address are redacted from diagnostics downloads, and the public-key sensor is disabled by default. Peers are keyed by their public key, so `unique_id`s are stable across reboots. See [ADR-021](docs/decisions/ADR-021-wireguard-peer-sensors.md).
+>
+> **Note on "connected":** WireGuard is connectionless — a peer only handshakes when there's traffic (or on a configured keepalive). An idle peer with no keepalive can read disconnected even though it's reachable. This is inherent to WireGuard, not a bug.
+
 ## Scripts
 Execute MikroTik Router scripts from Home Assistant via automatically created buttons.
 

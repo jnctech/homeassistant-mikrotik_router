@@ -3580,6 +3580,7 @@ async def test_async_update_data_continues_after_successful_reconnect():
         "support_ups",
         "support_gps",
         "support_container",
+        "support_wireguard",
     ):
         setattr(coordinator, flag, False)
     coordinator.ds["host_hass"] = {"seed": True}
@@ -5725,3 +5726,164 @@ def test_get_lte_signal_disconnected_session_uptime_is_none():
     coordinator.get_lte_signal()
     assert coordinator.ds["lte"]["connected"] is False
     assert coordinator.ds["lte"]["session-uptime"] is None
+
+
+# ---------------------------------------------------------------------------
+# Group AZ2: get_wireguard_peers() — WireGuard peer sensors (ADR-021)
+# ---------------------------------------------------------------------------
+
+from datetime import timedelta  # noqa: E402  (local to the WireGuard group)
+
+_WG_NOW = datetime(2026, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+
+
+def _peer(public_key="KEYAAA", interface="wg-home", handshake="53s", **extra):
+    """Build a raw /interface/wireguard/peers source row."""
+    row = {"public-key": public_key, "interface": interface, "rx": 100, "tx": 50}
+    if handshake is not None:
+        row["last-handshake"] = handshake
+    row.update(extra)
+    return row
+
+
+def test_wireguard_peers_keyed_by_public_key():
+    """Peers are keyed by the stable public-key, not .id (ADR-021)."""
+    coordinator = make_coordinator(api_responses={"/interface/wireguard/peers": [_peer(public_key="ABC123")]})
+    coordinator.get_wireguard_peers()
+    assert set(coordinator.ds["wireguard_peers"].keys()) == {"ABC123"}
+
+
+def test_wireguard_connected_when_handshake_recent():
+    """last-handshake younger than the stale window -> connected on, timestamp set."""
+    coordinator = make_coordinator(api_responses={"/interface/wireguard/peers": [_peer(handshake="53s")]})
+    coordinator.get_wireguard_peers()
+    peer = coordinator.ds["wireguard_peers"]["KEYAAA"]
+    assert peer["connected"] is True
+    assert peer["last-handshake"] is not None
+
+
+def test_wireguard_disconnected_when_handshake_stale():
+    """last-handshake older than 180 s -> connected off (idle peer)."""
+    coordinator = make_coordinator(api_responses={"/interface/wireguard/peers": [_peer(handshake="5m")]})
+    coordinator.get_wireguard_peers()
+    assert coordinator.ds["wireguard_peers"]["KEYAAA"]["connected"] is False
+
+
+def test_wireguard_never_handshaked_peer():
+    """No last-handshake field -> connected off, timestamp None, no fabricated time."""
+    coordinator = make_coordinator(api_responses={"/interface/wireguard/peers": [_peer(handshake=None)]})
+    coordinator.get_wireguard_peers()
+    peer = coordinator.ds["wireguard_peers"]["KEYAAA"]
+    assert peer["connected"] is False
+    assert peer["last-handshake"] is None
+
+
+def test_wireguard_query_none_keeps_prior_state():
+    """A transient disconnect (query None) keeps prior peer state, no crash."""
+    coordinator = make_coordinator()
+    coordinator.ds["wireguard_peers"] = {"KEYAAA": {"public-key": "KEYAAA", "connected": True}}
+    coordinator.api.query = MagicMock(return_value=None)
+    coordinator.get_wireguard_peers()
+    assert coordinator.ds["wireguard_peers"] == {"KEYAAA": {"public-key": "KEYAAA", "connected": True}}
+
+
+def test_wireguard_rebuilt_fresh_drops_removed_peers():
+    """ds is rebuilt each poll: a removed peer disappears rather than lingering."""
+    coordinator = make_coordinator(
+        api_responses={"/interface/wireguard/peers": [_peer(public_key="A"), _peer(public_key="B")]}
+    )
+    coordinator.get_wireguard_peers()
+    assert set(coordinator.ds["wireguard_peers"].keys()) == {"A", "B"}
+    coordinator.api.responses["/interface/wireguard/peers"] = [_peer(public_key="A")]
+    coordinator.get_wireguard_peers()
+    assert set(coordinator.ds["wireguard_peers"].keys()) == {"A"}
+
+
+# --- _resolve_wireguard_handshake: deterministic age->timestamp + drift guard ---
+
+
+def test_resolve_handshake_age_to_timestamp():
+    """now - age, parsed from the '1m28s' duration form."""
+    peer = {"last-handshake-age": "1m28s"}
+    MikrotikCoordinator._resolve_wireguard_handshake(peer, None, _WG_NOW)
+    assert peer["connected"] is True
+    assert peer["last-handshake"] == _WG_NOW - timedelta(seconds=88)
+
+
+def test_resolve_handshake_drift_guard_retains_previous():
+    """A ~consistent age across polls (same actual handshake) keeps the prior
+    timestamp rather than jittering every poll."""
+    previous = _WG_NOW - timedelta(seconds=60)
+    peer = {"last-handshake-age": "1m3s"}  # 63 s -> handshake within 10 s of previous
+    MikrotikCoordinator._resolve_wireguard_handshake(peer, previous, _WG_NOW)
+    assert peer["last-handshake"] is previous
+
+
+def test_resolve_handshake_new_handshake_updates_timestamp():
+    """A fresh handshake (age resets small) jumps the timestamp forward."""
+    previous = _WG_NOW - timedelta(seconds=60)
+    peer = {"last-handshake-age": "5s"}
+    MikrotikCoordinator._resolve_wireguard_handshake(peer, previous, _WG_NOW)
+    assert peer["last-handshake"] == _WG_NOW - timedelta(seconds=5)
+
+
+# --- _wireguard_label: name -> comment -> fingerprint ---
+
+
+def test_wireguard_label_prefers_name():
+    assert MikrotikCoordinator._wireguard_label({"name": "laptop", "comment": "x", "public-key": "K"}) == "laptop"
+
+
+def test_wireguard_label_falls_back_to_comment():
+    assert MikrotikCoordinator._wireguard_label({"name": "", "comment": "remote site", "public-key": "K"}) == "remote site"
+
+
+def test_wireguard_label_fingerprint_last_resort():
+    """No name or comment -> short public-key fingerprint, never the full key."""
+    assert MikrotikCoordinator._wireguard_label({"public-key": "ABCDEFGHIJKL"}) == "peer ABCDEFGH"
+
+
+# --- support_wireguard capability gate (ADR-021 Test Plan: no phantom entities) ---
+
+
+def _wg_caps_coordinator(major_fw, wireguard_response):
+    coordinator = make_coordinator(
+        major_fw_version=major_fw,
+        api_responses={
+            "/system/package": [],
+            "/interface/lte": [],
+            "/interface/wireguard": wireguard_response,
+        },
+    )
+    coordinator.host = "testhost"
+    return coordinator
+
+
+def test_support_wireguard_true_on_v7_with_interface():
+    """A v7 router with a /interface/wireguard menu is detected as WG-capable."""
+    coordinator = _wg_caps_coordinator(7, [{".id": "*1", "name": "wg-home"}])
+    coordinator.get_capabilities()
+    assert coordinator.support_wireguard is True
+
+
+def test_support_wireguard_false_on_v7_without_interface():
+    """A v7 router with no WireGuard interface -> not WG-capable, no phantom peers."""
+    coordinator = _wg_caps_coordinator(7, [])
+    coordinator.get_capabilities()
+    assert coordinator.support_wireguard is False
+
+
+def test_support_wireguard_not_probed_on_v6():
+    """WireGuard is v7+ only; a v6 router is never probed (avoids a 'no such
+    command' disconnect) and is correctly not WG-capable even if a response
+    were present. The `>= 7` guard short-circuits before the query."""
+    coordinator = _wg_caps_coordinator(6, [{".id": "*1", "name": "wg-home"}])
+    coordinator.get_capabilities()
+    assert coordinator.support_wireguard is False
+
+
+def test_wireguard_empty_source_no_phantom_entities():
+    """An empty peer list yields an empty map -> zero peer entities (ADR-021)."""
+    coordinator = make_coordinator(api_responses={"/interface/wireguard/peers": []})
+    coordinator.get_wireguard_peers()
+    assert coordinator.ds["wireguard_peers"] == {}

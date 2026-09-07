@@ -1069,3 +1069,32 @@ async def test_diagnostics_returns_redacted_data():
     assert "options" in result["entry"]
     # Verify data and tracker use different coordinators (catches copy-paste bug)
     assert result["data"] != result["tracker"]
+
+
+def test_diagnostics_redacts_wireguard_public_key_map_keys():
+    """The wireguard_peers map is keyed by public-key; async_redact_data only
+    redacts values, so the diagnostics dump must re-key the map so the full
+    public key does not survive as a dict key (ADR-021)."""
+    from custom_components.mikrotik_router.diagnostics import _redact_wireguard_peer_keys
+
+    redacted = _redact_wireguard_peer_keys(
+        {
+            "wireguard_peers": {
+                "FULLPUBLICKEYAAA=": {"public-key": "**REDACTED**", "rx": 1},
+                "FULLPUBLICKEYBBB=": {"public-key": "**REDACTED**", "rx": 2},
+            }
+        }
+    )
+    keys = set(redacted["wireguard_peers"].keys())
+    assert keys == {"peer_0", "peer_1"}
+    assert "FULLPUBLICKEYAAA=" not in keys
+    # Values (already redacted upstream) are preserved, so no peer is lost.
+    assert {v["rx"] for v in redacted["wireguard_peers"].values()} == {1, 2}
+
+
+def test_diagnostics_wireguard_key_redaction_noop_without_peers():
+    """No wireguard_peers -> data returned unchanged (no crash)."""
+    from custom_components.mikrotik_router.diagnostics import _redact_wireguard_peer_keys
+
+    assert _redact_wireguard_peer_keys({"interface": {}}) == {"interface": {}}
+    assert _redact_wireguard_peer_keys({"wireguard_peers": {}}) == {"wireguard_peers": {}}
