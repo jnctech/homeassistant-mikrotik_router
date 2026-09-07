@@ -24,6 +24,7 @@ Lightweight records of key design decisions for mikrotik_router HACS integration
 | [ADR-018](ADR-018-netwatch-name-precedence.md) | Netwatch entity naming by `name` (name→comment→static precedence) | Accepted |
 | [ADR-019](ADR-019-lte-modem-sensors.md) | LTE modem sensors (B10) — signal/operator/connection/firmware, conditional on LTE hardware | Accepted |
 | [ADR-020](ADR-020-route-monitoring.md) | Route monitoring (B4) — per-routing-table default-route reachability, bounded by design | Accepted |
+| [ADR-021](ADR-021-wireguard-peer-sensors.md) | WireGuard peer sensors (B2) — per-peer handshake/connectivity, capability-gated and redacted | Accepted |
 
 ## Numbering — assign before you write
 
@@ -41,7 +42,6 @@ Reserved / claimed (not yet merged, so absent from the table above — do **not*
 |-----|--------------|-------|
 | 015 | librouteros 4.x migration / salvage (`ISS-260417`) | Reserved (unwritten) |
 | 016 | Coordinator decomposition (deferred) | Reserved (unwritten) |
-| 021 | WireGuard peer sensors (`ENH-260703-wireguard-sensors`, B2) | Reserved (unwritten) |
 
 > **Why this section exists:** the index above previously stopped at ADR-014 while
 > 015/016 were reserved and 017/018 had already shipped — invisible to anyone picking

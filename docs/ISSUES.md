@@ -97,7 +97,7 @@ After a transient RouterOS API outage (e.g. an upstream gateway reboot), entitie
 **Type:** Enhancement (new sensors)
 **Priority:** Medium
 **Created:** 2026-07-03
-**Status:** 🔵 Filed — **plan next session** (operator-requested 2026-07-03)
+**Status:** 🟡 Planned — operator-requested. **[ADR-021](decisions/ADR-021-wireguard-peer-sensors.md) Accepted** (design agreed 2026-09-07); ready to implement. **v1 scope:** per-peer `connected` binary_sensor (last-handshake age < 180s) + `last-handshake` TIMESTAMP + rx/tx; keyed by `public-key` (not `.id`); gated by `support_wireguard` + opt-in `CONF_SENSOR_WIREGUARD`; `public-key`/endpoints/allowed-address added to `TO_REDACT` + public-key hidden-by-default. See ADR-021 for the implementation checklist.
 
 Today the integration surfaces WireGuard only at the **interface** level (per-iface tx/rx + a connection binary_sensor — e.g. `wg-home`, `wg-us` on the RB4011). It does **not** surface **per-peer** state. RouterOS exposes that at `/interface/wireguard/peers` — per peer: `public-key`, `endpoint-address`/`endpoint-port`, `current-endpoint-address`/`-port`, **`last-handshake`**, `rx`/`tx`, `allowed-address`, `disabled`.
 
