@@ -1116,6 +1116,24 @@ SENSOR_TYPES: tuple[MikrotikSensorEntityDescription, ...] = (
         data_reference="name",
         data_attributes_list=DEVICE_ATTRIBUTES_DHCP_SERVER,
     ),
+    MikrotikSensorEntityDescription(
+        key="route_active_defaults",
+        name="Active default routes",
+        icon="mdi:call-split",
+        native_unit_of_measurement="routes",
+        device_class=None,
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        ha_group="Routing",
+        ha_connection=DOMAIN,
+        ha_connection_value="Routing",
+        data_path="route_table",
+        data_attribute="active-default-count",
+        data_name="routing-table",
+        data_name_compose=True,
+        data_uid="routing-table",
+        data_reference="routing-table",
+    ),
 )
 
 SENSOR_SERVICES = []

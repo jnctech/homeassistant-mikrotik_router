@@ -4,6 +4,35 @@ Changes listed in reverse chronological order.
 
 ---
 
+## CR-260907-route-monitoring — implement default-route monitoring (B4)
+
+**Date:** 2026-09-07
+**Branch:** `feature/route-monitoring` → PR to `dev`
+**Status:** In Review
+
+### What changed
+- `custom_components/mikrotik_router/coordinator.py` — new `get_route()` getter (path `/ip/route`) with `_route_label()` helper. Filters the route table to default routes (`0.0.0.0/0`, `::/0`) **client-side** (the API wrapper has no server-side filter), so the coordinator only ever holds the failover-relevant set. Builds one row per default route plus a per-routing-table active-default count. Registered in the gated getter list behind the new `option_sensor_route`; `"route"`/`"route_table"` added to `self.ds` and `_ENTITY_UID_PATHS`.
+- `custom_components/mikrotik_router/const.py` — `CONF_SENSOR_ROUTE` / `DEFAULT_SENSOR_ROUTE = False`. Added `"uniq-id"` and `"route-label"` to `TO_REDACT`.
+- `custom_components/mikrotik_router/binary_sensor_types.py` — per-default-route `binary_sensor` (`data_attribute="active"`), `ha_group="Routing"`, keyed by the composite `uniq-id`, `DEVICE_ATTRIBUTES_ROUTE`.
+- `custom_components/mikrotik_router/sensor_types.py` — `route_active_defaults` count sensor, one per routing-table.
+- `custom_components/mikrotik_router/entity.py` — `_skip_route_sensor()` gates both route paths on `CONF_SENSOR_ROUTE`.
+- `custom_components/mikrotik_router/config_flow.py`, `strings.json`, `translations/en.json` — the opt-in toggle + label.
+- `tests/` — 20 new tests (`get_route` parse/filter/composite-UID/multi-table/ECMP/blackhole/fresh-rebuild; entity naming/unique_id/skip-gating; descriptor pins + is_on/native_value).
+
+### Why
+FEATURE-POLL B4, user-voted (`ENH-260907-route-monitoring`). Surfaces multi-WAN failover awareness as HA entities: a per-default-route `active` binary_sensor (which WAN dropped) and a per-table active-default count (how many are up). Correct under policy routing and ECMP. Implements [ADR-020](decisions/ADR-020-route-monitoring.md).
+
+### Design notes
+- **Stable keying.** The ds dict, the `parse_api` `key=`, and the entity `data_reference` are all the synthetic composite `routing-table`+`dst-address`+`gateway`+`distance` — never the RouterOS `.id` (reassigned on reboot and dynamic-route churn). Because `parse_api` reads `key=` from the raw entry (a `val_proc` field is computed too late to key on), the composite is injected onto each raw entry before parsing, so the ds key equals the entity uid and the binding survives an `.id` reassignment. Keying on `.id` here would silently freeze the entity when a dynamic default route renews — the exact failover event this feature watches (ADR-020 §4).
+- **Fresh rebuild each poll** (`data={}`) rather than merge: the default set is tiny and bounded, and a withdrawn route must drop out of the per-table count immediately rather than linger stale.
+- **Diagnostics redaction.** The synthetic `uniq-id` and `route-label` embed the gateway IP, which key-based `async_redact_data` cannot reach inside a combined string, so both are added to `TO_REDACT`. This also closes the pre-existing `to-addresses` leak in the nat/mangle `uniq-id`.
+
+### Verification
+- Suite **727 passed, 5 deselected** (`pytest -m "not integration"`); ruff clean on all changed files. New `get_route`/`_route_label` region fully covered.
+- Live validation on RB4011 (policy routing: `main` + `wg_us` + blackhole), CRS310 (2 defaults) and a single-table device is a release-time gate (per ADR-020 test plan), tracked under `ENH-260907`.
+
+---
+
 ## CR-260907-release-v2321 — cut v2.3.21 stable
 
 **Date:** 2026-09-07
