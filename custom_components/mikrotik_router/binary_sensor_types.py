@@ -81,6 +81,19 @@ class MikrotikBinarySensorEntityDescription(BinarySensorEntityDescription):
 
 SENSOR_TYPES: tuple[BinarySensorEntityDescription, ...] = (
     MikrotikBinarySensorEntityDescription(
+        key="lte_connection",
+        name="Connection",
+        icon_enabled="mdi:signal",
+        icon_disabled="mdi:signal-off",
+        device_class=BinarySensorDeviceClass.CONNECTIVITY,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        ha_group="LTE",
+        data_path="lte",
+        data_attribute="connected",
+        data_uid="",
+        data_reference="",
+    ),
+    MikrotikBinarySensorEntityDescription(
         key="system_ups",
         name="UPS",
         icon_enabled="",

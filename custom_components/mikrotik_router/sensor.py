@@ -60,7 +60,12 @@ class MikrotikSensor(MikrotikEntity, SensorEntity):
     @property
     def native_value(self) -> StateType | date | datetime | Decimal:
         """Return the value reported by the sensor."""
-        return self._data[self.entity_description.data_attribute]
+        # .get() (not subscript): when the source clears mid-session — e.g. a
+        # coordinator getter resets ds[path] to {} on an empty/early return
+        # (get_ups, get_lte_signal) — the attribute is absent. Return None so the
+        # entity reads `unknown` (null-not-guess) instead of raising KeyError,
+        # which HA would swallow while retaining the last (stale) value.
+        return self._data.get(self.entity_description.data_attribute)
 
     @property
     def native_unit_of_measurement(self) -> str | None:

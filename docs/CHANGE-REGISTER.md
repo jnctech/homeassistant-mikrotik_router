@@ -4,6 +4,227 @@ Changes listed in reverse chronological order.
 
 ---
 
+## CR-260907-release-v2321 — cut v2.3.21 stable
+
+**Date:** 2026-09-07
+**Branch:** `chore/release-v2.3.21` → PR to `dev`, then `dev → master` (Release v2.3.21)
+**Status:** Merged
+
+### What changed
+- `custom_components/mikrotik_router/manifest.json` — version `2.3.21-beta.2` → `2.3.21`. Edited in place to preserve the file's CRLF line endings.
+- `README.md` / `info.md` — consolidated the two beta "What's New" entries (beta.1: LTE sensors + `unknown`-not-stale; beta.2: self-recovery) into a single stable **v2.3.21** entry, crediting **@zvldz** ([#116](https://github.com/jnctech/homeassistant-mikrotik_router/pull/116)) and **@sappsys** ([#123](https://github.com/jnctech/homeassistant-mikrotik_router/pull/123)).
+- `docs/ISSUES.md` — `ENH-260614-lte-modem-info` → Closed (LTE field-confirmed by @zvldz); `ISS-260813-no-reconnect-until-hwinfo` → Shipped in v2.3.21; In-flight refreshed for the post-v2.3.21 state.
+- `docs/FEATURE-POLL.md` — recorded a user vote on **B4 route monitoring**; filed `ENH-260907-route-monitoring`.
+
+### Why
+Promotes the v2.3.21 beta cycle to stable. Both external contributions cleared their gates: LTE sensors field-confirmed by @zvldz on a MikroTik Chateau (S53UG / Quectel EG18-EA); the reconnect self-recovery fix (@sappsys, #123) shipped in beta.2 and validated on the maintainer fleet.
+
+### Verification
+- CI green on the release ref (`dev` `7065247`): CI, Validate, Branch-sync-guard all pass; suite **707 passed, 5 skipped**.
+- Fresh `/validate-live-sensors` on deployed beta.2 (2026-09-07): **501 integration entities**, every sensor class cross-checked against router ground-truth within tolerance, **0 phantom LTE entities**, bad-state set entirely benign (documented orphans + by-design `unknown`). Report retained in internal `config` docs.
+
+### Release ops
+- `chore/release-v2.3.21` → PR to `dev` → merge.
+- `dev → master` PR "Release v2.3.21" → merge (branch-sync-guard requires head=`dev`).
+- GitHub release `v2.3.21` on `master` (full release, not pre-release) → `release.yml` builds `mikrotik_router.zip` + SBOM.
+- Back-merge `master → dev` (real merge commit) to restore `master ⊆ dev`.
+
+---
+
+## CR-260814-release-v2321-beta2 — cut v2.3.21-beta.2
+
+**Date:** 2026-08-14
+**Branch:** `chore/release-v2.3.21-beta.2` → PR to `dev`
+**Status:** In Review
+
+### What changed
+- `custom_components/mikrotik_router/manifest.json` — version `2.3.21-beta.1` → `2.3.21-beta.2`. Edited in place to preserve the file's CRLF line endings (18 CRLFs before and after).
+- `README.md` / `info.md` — new "What's New" section for beta.2, crediting @sappsys for [#123](https://github.com/jnctech/homeassistant-mikrotik_router/pull/123).
+
+### Why
+Rolls the reconnect-on-poll recovery fix into the open `v2.3.21` beta cycle. The user-visible change is that a transient RouterOS API outage no longer strands entities as `unavailable` until a manual config-entry reload — worst case previously ~4h, bounded by the hardware-info refresh interval.
+
+Only the recovery fix is called out in the release notes. `CR-260813-reconnect-hardening` (helper extraction + credential-branch coverage) and `CR-260712-leak-gate-governance` (CI/pre-commit tooling) also ride in this cut but are not user-visible, so they stay out of "What's New".
+
+### Why still beta
+`ENH-260614-lte-modem-info` gates promotion: v2.3.21 stays beta until @zvldz or another LTE user confirms the LTE sensors on real hardware, since the maintainer fleet has none. The reconnect fix does not change that gate.
+
+### Verification
+- Full suite on merged `dev` (`a815128`): **707 passed, 5 skipped** — run in Docker on the docker host, not just CI.
+- Live baseline captured before side-load: **507 integration entities**, 4 `unavailable` / 15 `unknown`, all accounted for as correct-by-design (12 stateless script buttons; 3 `dhcp_address` on PPPoE/stopped clients; `sensor.mikrotik_rx` / `sensor.mikrotik_tx` / `device_tracker.mikrotik` are known pre-existing orphans).
+- Side-loaded to the live HA host and verified `manifest.json` reports `2.3.21-beta.2`; post-restart entity diff and `/validate-live-sensors` results recorded against that baseline.
+
+### Release ops
+Tag `v2.3.21-beta.2` on `dev` after merge; GitHub release marked **pre-release**. No `dev → master` promotion — that waits on the LTE gate. Live-validation detail stays in gitignored `docs/internal/`.
+
+---
+
+## CR-260813-reconnect-hardening — extract the reconnect gate and cover the credential branch
+
+**Date:** 2026-08-13
+**Branch:** `fix/reconnect-hardening` → PR to `dev`
+**Status:** In Review
+
+### What changed
+- `custom_components/mikrotik_router/coordinator.py` — extracted the reconnect gate @sappsys added in #123 into `_async_ensure_connected()`, called as the first statement of `_async_update_data()`. Pure extraction per ADR-007: same call sequence, same raise behaviour, no functional change.
+- `tests/test_coordinator.py` — new "Group AG1c" (5 tests): the helper's no-op path when already connected, its success path, `wrong_login` → `ConfigEntryAuthFailed` both directly and end-to-end through `_async_update_data()`, and `_raise_disconnected()`'s transient branch.
+
+### Why
+Follow-up to CR-260813-reconnect-on-poll, the maintainer half of the #116 → #120 pattern. Two things were outstanding.
+
+**Complexity.** The gate was inline in `_async_update_data()`, which is already the longest method on the coordinator. ADR-007 constrains future work to the same extract-and-test pattern, so the gate belongs in its own helper rather than adding branches to a 75-line function.
+
+**Coverage.** `_raise_disconnected()` has always mapped `wrong_login` to `ConfigEntryAuthFailed` (`coordinator.py:674`) so HA opens a reauth flow instead of retrying credentials that can never work — but **no test in the suite touched that branch**, before or after #123. The new gate made it newly reachable on every poll, which is exactly when an uncovered auth path is worth pinning down. Note this corrects the follow-up scope recorded in ISS-260813, which framed the auth mapping as missing; it was not, the gap was tests only.
+
+### Verification
+- `ruff check` and `ruff format --check` clean on both changed files, run against the CI-pinned `ruff==0.9.0` rather than a newer local build (ISS-260522-ruff-format-drift / ADR-010).
+- `_async_update_data()` branch-carrying AST nodes drop 13 → 11 with the gate extracted; the helper itself carries 2.
+- Full suite runs in CI (Docker was unavailable locally, so the pytest run is the CI matrix on 3.13/3.14, not a local run).
+
+### Release ops
+Lands on `dev`; rolls into the open `v2.3.21` beta cycle, same cycle as #123. No version bump, no ADR required — ADR-007 already governs the extraction pattern and this follows it rather than amending it.
+
+---
+
+## CR-260813-reconnect-on-poll — reconnect the API on each poll after a transient disconnect (#123)
+
+**Date:** 2026-08-13
+**Branch:** `fix/reconnect-on-poll` (contributor fork, @sappsys) → PR [#123](https://github.com/jnctech/homeassistant-mikrotik_router/pull/123) to `dev`
+**Status:** Merged 2026-08-13 — `0427a41` on `dev`
+
+### What changed
+- `custom_components/mikrotik_router/coordinator.py` — `_async_update_data()` now calls `api.connection_check()` via `async_add_executor_job` when `api.connected()` is False, and raises through `_raise_disconnected()` if the reconnect fails. Recovery no longer depends on the ~4h hwinfo refresh coming due.
+- `tests/test_coordinator.py` — new "Group AG1b" covering the disconnected-poll and successful-reconnect paths.
+
+### Why
+`ISS-260813-no-reconnect-until-hwinfo`: once disconnected, the coordinator's poll made no reconnect attempt at all. `_run_if_enabled()` gates on `api.connected()`, so every fetch was skipped, and `_async_update_hwinfo()` early-returned inside its 4h window — leaving the `get_access` → `query` → `connection_check` chain, the only reconnect path on that code path, untaken. Entities stayed `unavailable` until a manual config-entry reload.
+
+Framed correctly this restores a guard rather than adding a mechanism: every other API entry point in `mikrotikapi.py` already opens with `connection_check()`, and `MikrotikTrackerCoordinator`'s separate API instance self-heals during the same outage precisely because `arp_ping` carries it. It also converts two known disconnect causes — `ISS-260507-ups-empty-path` and the #64 PoE-toggle disconnect — from permanent-until-reload into self-recovering.
+
+### Verification
+- Reproduced on clean `dev`: the real `_async_update_data()` with a disconnected API and `last_hwinfo_update` set to now raises `UpdateFailed` with **zero** `connection_check` calls; the patch flips it to one call per poll.
+- Full suite during review: **694 passed, 5 skipped, 1 failed** — no regressions; the single failure was the contributor's own new test (read-only `option_sensor_*` property assignment), returned to them along with a `ruff format` miss. Cleared by @sappsys in `12a48ba` and `c7cc8ea`.
+- Merge gate: full CI green on `c7cc8ea` — Python Tests 3.13 and 3.14 both pass, plus hassfest, format check, leak guard, Bandit, Gitleaks, manifest-drift and HACS-zip checks.
+- `ruff check` clean on `coordinator.py`; `_async_update_data` complexity 9 → 11, inside the ≤15 gate. Blocking call wrapped per ADR-004. `librouteros.connect` defaults to a 10s socket timeout and the 58s `_connection_retry_sec` throttle is untouched, so per-poll executor cost stays bounded.
+
+### Release ops
+Landed on `dev` as `0427a41`; rolls into the open `v2.3.21` beta cycle (no version bump on the fix PR itself). Merged with a **merge commit, not a squash** — all three of @sappsys's commits and their authorship are preserved on `dev` per `CONTRIBUTING.md`; credited here and in the `README.md` / `info.md` "What's New" at stable. Maintainer hardening follows as a separate PR (auth-branch coverage through the new gate, ADR-007 helper extraction), same pattern as #116 → #120. No ADR required.
+
+---
+
+## CR-260712-leak-gate-governance — extend the homelab-leak gate to catch internal-coordination tokens
+
+**Date:** 2026-07-12
+**Branch:** `fix/leak-gate-governance-tokens` → [PR #125](https://github.com/jnctech/homeassistant-mikrotik_router/pull/125) to `dev` (supersedes [#122](https://github.com/jnctech/homeassistant-mikrotik_router/pull/122), stale-closed unmerged 2026-08-04)
+**Status:** In Review
+
+### What changed
+- `scripts/check_no_homelab_leaks.py` — added `GOVERNANCE_RE` + `offending_governance()` so the guard flags internal-coordination tokens (private-repo paths, mailbox routing, relay/check/standards artifacts, governance sign-off terms), not just private IPs/MACs. High-precision by design (structured paths / artifact prefixes, never bare words) so legit content — "out-of-band management", the repo's own `CONTRIBUTING.md`, RouterOS "watchdog" — does not false-positive. Docstring updated.
+- `tests/test_check_no_homelab_leaks.py` (new) — pure-stdlib unit tests (no HA/Docker): IP/MAC helpers, every governance pattern (should-flag), and legit-content non-match guards.
+
+### Why
+Follow-up to CR-260712-redact-inflight-leak / ISS-260712: the IP/MAC-only gate let a batch of coordination tokens ship into the public In-flight block silently. This closes ISS-260712 action (b) so it can't recur. Extends both the pre-commit `homelab-leak-check` hook and the CI `homelab-leak` job (shared entry point — no workflow change).
+
+### Verification
+- `python scripts/check_no_homelab_leaks.py` → PASS on the redacted tree (exit 0).
+- Detection logic verified locally by direct import (pytest not in the local env; CI runs the suite). `scripts/` and `tests/` remain out of the gate's scan scope, so the docstring examples and test fixtures don't self-trip.
+
+---
+
+## CR-260712-redact-inflight-leak — redact homelab IP + estate internals from public `docs/ISSUES.md`
+
+**Date:** 2026-07-12
+**Branch:** (redaction on `dev`, see Release ops) — PR for the gate-extension follow-up
+**Status:** HEAD redacted; gate-extension + history-scrub decision open (ISS-260712)
+
+### What changed
+- `docs/ISSUES.md` — redacted the `## In-flight` block: removed a private homelab IP (RFC1918; the value is recorded only in gitignored `docs/internal/`), internal-coordination notes (private-repo paths, workflow routing, cross-repo contribution refs), and per-session tooling meta (shell, deploy target, test-runner host). Genericized the real-management-subnet mention in the ISS-260616 body.
+- `docs/internal/` (new, **gitignored** detail file) — preserves the removed session/tooling/coordination detail so context isn't lost.
+- `docs/ISSUES.md` — filed **ISS-260712-inflight-leak-bypass** documenting the four-part root cause.
+
+### Why
+This repo is PUBLIC. Commit `a8a21ee` leaked a private homelab IP and internal-coordination notes into the tracked In-flight block; the repo's own `homelab-leak` gate **failed** on the IP but the content shipped (direct-to-`dev` push bypassed the PR gate; pre-commit skipped; post-push CI red can't block). Surfaced by an internal estate-alignment check.
+
+### Verification
+- `python scripts/check_no_homelab_leaks.py` → **PASS** (exit 0) after redaction.
+- Residual sweep: no private IPs remain in tracked `docs/` (outside gitignored `docs/internal/`); governance-token hits are the repo's own public `CONTRIBUTING.md` (legitimate).
+
+### Release ops
+Redaction lands on `dev` (urgency — leak is live on the public remote). Gate-extension (governance-token check in `check_no_homelab_leaks.py`) is a code change → branch + PR to `dev`. History scrub of the IP from the public remote is an operator/steward decision (force-push), flagged in ISS-260712.
+
+---
+
+## CR-260703-release-v2.3.21-beta.1 — LTE modem sensors + unknown-not-stale (beta)
+
+**Date:** 2026-07-03
+**Branch:** `chore/release-v2.3.21-beta.1` → PR to `dev`; then GitHub **pre-release** tag `v2.3.21-beta.1` off `dev` (no `dev → master` for a beta)
+**Status:** Released (pre-release)
+
+### What changed
+- `manifest.json` version `2.3.20 → 2.3.21-beta.1`.
+- `README.md`, `info.md` — new **What's New — v2.3.21-beta.1** entry (LTE modem sensors, credited to **@zvldz**; the integration-wide `unknown`-not-stale reliability fix).
+
+### Why
+Cut the beta gating **LTE modem sensors** (#116, @zvldz) — beta-first because LTE hardware is absent from the maintainer fleet (see the beta-gate in `docs/release-validation.md`) — bundled with the `unknown`-not-stale base-class fix (#120). Contents already on `dev`: ADR-019 (Accepted), CR-260703-lte-hardening, CR-260703-contributing-adr-numbering.
+
+### Verification
+- Pre-deploy baseline vs post-deploy live validation on the 4-device fleet: **no regressions** — identical unavailable/unknown sets, clean HA log, LTE conditional-creation produced zero phantom entities on non-LTE hardware. Detailed report in the internal `config` repo.
+- CI green on `dev` (3.13 / 3.14) for #116 and #120.
+
+### Release ops
+Branch → PR to `dev` → merge; publish GitHub **pre-release** `v2.3.21-beta.1` off `dev` → `release.yml` builds the HACS zip. No `dev → master`, no back-merge (beta). LTE stays beta until validated on real hardware (contributor/user), then promote to stable and close `ENH-260614`.
+
+---
+
+## CR-260703-contributing-adr-numbering — CONTRIBUTING guide + ADR-index reconciliation + release/test standards
+
+**Date:** 2026-07-03
+**Branch:** `docs/contributing-adr-numbering` → PR to `dev`
+**Status:** In Review
+
+### What changed
+- `CONTRIBUTING.md` (new, repo root) — contributor guide codifying the conventions we enforced on the last two contributor PRs (#81 read-only fw-version, #116 LTE): null-not-guess, clear-stale-data-on-early-return (`get_ups` pattern), DEBUG log on absent-data returns, capability-gating, PII redaction (`TO_REDACT` + disabled-by-default), spec'd/real-typed tests (no yes-man `MagicMock`), ADR numbering, and hardware live-validation. Targets `dev`, leaves docs/registers to the maintainer.
+- `docs/decisions/README.md` — **backfilled the ADR index** with the shipped-but-unlisted **ADR-017** (PoE energy) and **ADR-018** (netwatch); added a **Numbering** section publishing the next-unused number (`020`) and the reserved/claimed list (015/016 reserved; 019 claimed by PR #116).
+- `docs/release-validation.md` — documented the **beta-first gate**: hardware-gated features the maintainer can't validate on-fleet (LTE, SFP-temp, PoE-metering) ship as a `-beta.N` pre-release and reach stable only after validation on real hardware. Added a release-checklist item.
+- `docs/quality-gates.md` — documented **test standards & ownership**: spec'd/real-typed + entity-golden bar, contributor tests welcome but not a merge gate (HACS-norm), maintainer owns tests-to-standard (hardening-PR-post-merge, #81→#98 precedent).
+
+### Why
+The public ADR index stopped at ADR-014 while 015/016 were reserved (invisibly) and 017/018 had already shipped — so a contributor (@zvldz, #116) reasonably picked ADR-015, which then had to be renumbered to 019 at review. The reconciled index + published reserved/claimed list makes numbers self-service and prevents recurrence; the standing rule is to add the index row when an ADR merges. CONTRIBUTING turns the recurring review points into up-front guidance so future PRs arrive closer to standard. The beta-first and test-ownership standards codify the release/testing conventions the LTE contributor review (#116) surfaced, so they're written policy rather than per-PR judgement.
+
+### Verification
+- Docs-only; no code, no version bump. `homelab-leak` guard clean (no private IPs/MACs).
+- ADR-index rows verified against files on disk (017/018 present, Accepted) and against the reserved/claimed set in `docs/ISSUES.md`.
+- Beta-first and test-ownership entries cross-checked against the existing release/branch model in `docs/release-validation.md` / `docs/quality-gates.md` and the #81→#98 / #59 / #116 precedents.
+
+### Release ops
+Lands on `dev`. No version bump (docs/process only).
+
+---
+
+## CR-260703-lte-hardening — LTE modem sensors merged + unknown-not-stale hardening
+
+**Date:** 2026-07-03
+**Branch:** `chore/lte-hardening` → PR to `dev` (follows the #116 merge)
+**Status:** In Review
+
+### What changed
+- **Merged contributor PR [#116](https://github.com/jnctech/homeassistant-mikrotik_router/pull/116) (@zvldz)** — LTE modem sensors (signal/operator/connection/firmware; conditional on `support_lte`). Merge commit, authorship preserved; CI green on 3.13/3.14. ADR-019 Proposed → **Accepted**.
+- **Base-class read fix (integration-wide):** `MikrotikSensor.native_value` and `MikrotikBinarySensor.is_on` now use `self._data.get(attr)` instead of a bare subscript, and the binary_sensor `icon` reads are `.get()`-safe. When a coordinator getter clears its data path to `{}` on an empty/early return (`get_ups`, `get_lte_signal`), the attribute is absent — the old subscript raised `KeyError` (which HA swallows, retaining the last **stale** value); `.get()` returns `None` so the entity reads `unknown` (null-not-guess).
+- **Tests:** LTE entity-layer coverage (signal descriptor pins, IMEI/IMSI/ICCID disabled-by-default + diagnostic, session-uptime TIMESTAMP, connection binary_sensor) + the `native_value`/`is_on` → `None`-on-cleared-data regression guards (`tests/test_sensor.py`, `tests/test_binary_sensor.py`).
+- **ISSUES.md:** `ENH-260614-lte-modem-info` → Merged to `dev`; hardening + beta pending.
+
+### Why
+Closes the entity-side of the stale-data concern @zvldz raised on #116: clearing `ds["lte"]` to `{}` was necessary but not sufficient — the entity read had to degrade too, or the sensor kept showing the last RSSI/operator/connection as if current. The bug is pre-existing and shared by `system_ups`, so the fix is at the base class, not LTE-specific.
+
+### Verification
+- `ruff check` + `ruff format --check` clean on changed files (local). Full `pytest` matrix (3.13/3.14) runs in CI on the PR (Docker unavailable locally this session).
+- Behaviour asserted by the new tests: present data reads through unchanged; absent/cleared data → `None` (`unknown`), never `KeyError`→stale.
+
+### Release ops
+Lands on `dev`. **Beta-first:** cut `v2.3.21-beta.1` off `dev` for live validation on LTE hardware (maintainer fleet has none — see the beta-gate in `docs/release-validation.md`), then promote to stable and close `ENH-260614`. No version bump in this PR.
+
+---
+
 ## CR-260629-release-v2.3.20 — stable v2.3.20 (PoE energy + netwatch naming)
 
 **Date:** 2026-06-29

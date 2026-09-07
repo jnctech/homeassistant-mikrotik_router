@@ -21,6 +21,14 @@ Monitor and control your entire MikroTik network from Home Assistant. This HACS 
 
 ---
 
+## What's New — v2.3.21
+
+Stable release rolling up the v2.3.21 beta cycle (beta.1–beta.2). Two contributor-driven additions plus an integration-wide reliability fix, live-validated on a four-controller RouterOS deployment — and the LTE sensors confirmed on real modem hardware by the contributor.
+
+- **LTE modem sensors.** Routers with an `/interface/lte` interface now expose signal quality (RSSI, RSRP, RSRQ, SINR, CQI), operator / cell / band info, a connection status, session uptime, and modem firmware. Conditional on LTE hardware — routers without an LTE interface get no new entities. IMEI / IMSI / ICCID are collected but **disabled by default** and redacted from diagnostics. Thanks to **@zvldz** for the implementation and live validation on a MikroTik Chateau (S53UG / Quectel EG18-EA). Implements the long-requested [tomaae#249](https://github.com/tomaae/homeassistant-mikrotik_router/issues/249). See [ADR-019](docs/decisions/ADR-019-lte-modem-sensors.md).
+- **Self-recovery after a transient API outage.** Previously, if the RouterOS API dropped — an upstream gateway reboot, a path outage, a PoE toggle — entities could stay `unavailable` until you manually reloaded the config entry (worst case ~4 hours, since only the 4-hourly hardware-info refresh reconnected). Each poll now attempts a reconnect, so recovery is automatic. Invalid credentials still correctly raise a reauth prompt rather than retrying forever. Thanks to **@sappsys** for finding and fixing this ([#123](https://github.com/jnctech/homeassistant-mikrotik_router/pull/123)).
+- **Sensors degrade to `unknown` instead of showing a stale value.** When a data source stops reporting mid-session (e.g. a UPS or LTE modem drops out), the affected sensor / binary_sensor now reads `unknown` rather than silently retaining its last value. Integration-wide reliability fix.
+
 ## What's New — v2.3.20
 
 Stable release rolling up the v2.3.20 beta cycle (beta.1–beta.3). Both new features were validated live: PoE-out energy on real metering hardware ([#59](https://github.com/jnctech/homeassistant-mikrotik_router/issues/59), thanks @Dillton) and netwatch naming on a multi-entry deployment ([#70](https://github.com/jnctech/homeassistant-mikrotik_router/issues/70), thanks @L2jLiga).

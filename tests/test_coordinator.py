@@ -56,6 +56,8 @@ def make_coordinator(options=None, api_responses=None, major_fw_version=6):
         "ppp_secret": {},
         "ppp_active": {},
         "fw-update": {},
+        "lte": {},
+        "lte_firmware": {},
         "script": {},
         "queue": {},
         "dns": {},
@@ -3514,6 +3516,182 @@ async def test_client_traffic_v0_unknown_skips_and_logs(caplog):
 
 
 # ---------------------------------------------------------------------------
+# Group AG1b: reconnect on poll when disconnected
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_async_update_data_attempts_reconnect_when_disconnected():
+    """When the API is down, each poll must call connection_check before giving up.
+
+    Without this, _run_if_enabled skips all work and reconnect only happens on the
+    ~4h hwinfo path, leaving entities unavailable after a transient outage.
+    """
+    from homeassistant.helpers.update_coordinator import UpdateFailed
+
+    coordinator = make_coordinator()
+    coordinator.api = MagicMock()
+    coordinator.api.connected.return_value = False
+    coordinator.api.connection_check = MagicMock(return_value=False)
+    coordinator.api.error = "cannot_connect"
+    coordinator.hass = MagicMock()
+    coordinator.hass.async_add_executor_job = AsyncMock(side_effect=lambda fn, *a, **k: fn(*a, **k))
+
+    with pytest.raises(UpdateFailed, match="Mikrotik Disconnected"):
+        await coordinator._async_update_data()
+
+    coordinator.hass.async_add_executor_job.assert_awaited_once_with(coordinator.api.connection_check)
+
+
+@pytest.mark.asyncio
+async def test_async_update_data_continues_after_successful_reconnect():
+    """A successful connection_check lets the normal update path run."""
+    coordinator = make_coordinator()
+    coordinator.api = MagicMock()
+    # Track link state from connection_check rather than a fixed connected() list.
+    connected = {"value": False}
+
+    def connection_check():
+        connected["value"] = True
+        return True
+
+    coordinator.api.connected.side_effect = lambda: connected["value"]
+    coordinator.api.connection_check = MagicMock(side_effect=connection_check)
+    # Real connect() sets _reconnected; that triggers a full hwinfo refresh.
+    coordinator.api.has_reconnected = MagicMock(return_value=True)
+    coordinator.api.error = ""
+    coordinator.hass = MagicMock()
+    coordinator.hass.async_add_executor_job = AsyncMock(side_effect=lambda fn, *a, **k: fn(*a, **k) if callable(fn) else None)
+    coordinator.last_hwinfo_update = datetime.now(timezone.utc)
+    # Skip heavy work: keep getters cheap.
+    # has_reconnected=True lets _async_update_hwinfo run, which calls the real
+    # get_access; make_coordinator() has no .host, so stub it out.
+    coordinator._run_if_enabled = AsyncMock()
+    coordinator.get_access = MagicMock()
+    coordinator.async_get_host_hass = AsyncMock()
+    coordinator.async_process_host = AsyncMock()
+    coordinator._async_update_client_traffic = AsyncMock()
+    coordinator._check_new_uids = MagicMock(return_value=[])
+    for flag in (
+        "support_capsman",
+        "support_wireless",
+        "support_lte",
+        "support_ppp",
+        "support_ups",
+        "support_gps",
+        "support_container",
+    ):
+        setattr(coordinator, flag, False)
+    coordinator.ds["host_hass"] = {"seed": True}
+
+    result = await coordinator._async_update_data()
+
+    coordinator.hass.async_add_executor_job.assert_any_await(coordinator.api.connection_check)
+    assert result is coordinator.ds
+
+
+# ---------------------------------------------------------------------------
+# Group AG1c: _async_ensure_connected() — the extracted reconnect gate
+#
+# AG1b covers the gate's effect through _async_update_data. These cover the
+# helper directly, plus the credential branch: _raise_disconnected() routes
+# wrong_login to ConfigEntryAuthFailed so HA opens a reauth flow instead of
+# retrying bad credentials forever. Nothing previously reached that branch.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_ensure_connected_is_noop_when_already_connected():
+    """A healthy link must not cost an executor round-trip on every poll."""
+    coordinator = make_coordinator()
+    coordinator.api = MagicMock()
+    coordinator.api.connected.return_value = True
+    coordinator.hass = MagicMock()
+    coordinator.hass.async_add_executor_job = AsyncMock()
+
+    await coordinator._async_ensure_connected()
+
+    coordinator.hass.async_add_executor_job.assert_not_awaited()
+    coordinator.api.connection_check.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_ensure_connected_returns_when_reconnect_succeeds():
+    """A successful reconnect returns quietly and does not raise."""
+    coordinator = make_coordinator()
+    coordinator.api = MagicMock()
+    connected = {"value": False}
+
+    def connection_check():
+        connected["value"] = True
+        return True
+
+    coordinator.api.connected.side_effect = lambda: connected["value"]
+    coordinator.api.connection_check = MagicMock(side_effect=connection_check)
+    coordinator.hass = MagicMock()
+    coordinator.hass.async_add_executor_job = AsyncMock(side_effect=lambda fn, *a, **k: fn(*a, **k))
+
+    await coordinator._async_ensure_connected()
+
+    coordinator.hass.async_add_executor_job.assert_awaited_once_with(coordinator.api.connection_check)
+
+
+@pytest.mark.asyncio
+async def test_ensure_connected_raises_auth_failed_on_wrong_login():
+    """Bad credentials must surface as ConfigEntryAuthFailed, not UpdateFailed.
+
+    UpdateFailed would leave HA retrying a login that can never succeed;
+    ConfigEntryAuthFailed starts the reauth flow so the user is prompted.
+    """
+    from homeassistant.exceptions import ConfigEntryAuthFailed
+
+    coordinator = make_coordinator()
+    coordinator.api = MagicMock()
+    coordinator.api.connected.return_value = False
+    coordinator.api.connection_check = MagicMock(return_value=False)
+    coordinator.api.error = "wrong_login"
+    coordinator.hass = MagicMock()
+    coordinator.hass.async_add_executor_job = AsyncMock(side_effect=lambda fn, *a, **k: fn(*a, **k))
+
+    with pytest.raises(ConfigEntryAuthFailed, match="Invalid Mikrotik username or password"):
+        await coordinator._async_ensure_connected()
+
+
+@pytest.mark.asyncio
+async def test_async_update_data_raises_auth_failed_on_wrong_login():
+    """The credential branch must survive end-to-end through the poll.
+
+    Guards the wiring, not just the helper: a future refactor that swallowed
+    ConfigEntryAuthFailed into UpdateFailed inside _async_update_data would
+    silently disable reauth, and AG1b alone would not catch it.
+    """
+    from homeassistant.exceptions import ConfigEntryAuthFailed
+
+    coordinator = make_coordinator()
+    coordinator.api = MagicMock()
+    coordinator.api.connected.return_value = False
+    coordinator.api.connection_check = MagicMock(return_value=False)
+    coordinator.api.error = "wrong_login"
+    coordinator.hass = MagicMock()
+    coordinator.hass.async_add_executor_job = AsyncMock(side_effect=lambda fn, *a, **k: fn(*a, **k))
+
+    with pytest.raises(ConfigEntryAuthFailed):
+        await coordinator._async_update_data()
+
+
+def test_raise_disconnected_uses_update_failed_for_transient_errors():
+    """Any error other than wrong_login stays a retryable UpdateFailed."""
+    from homeassistant.helpers.update_coordinator import UpdateFailed
+
+    coordinator = make_coordinator()
+    coordinator.api = MagicMock()
+    coordinator.api.error = "cannot_connect"
+
+    with pytest.raises(UpdateFailed, match="Mikrotik Disconnected"):
+        coordinator._raise_disconnected()
+
+
+# ---------------------------------------------------------------------------
 # Group AG2: get_ups() — UPS path handling
 # ---------------------------------------------------------------------------
 
@@ -5409,3 +5587,141 @@ def test_resolve_poe_power_non_numeric_measured_yields_no_value():
     coordinator = _poe_coordinator()
     iface = {"poe-out-power": "n/a", "poe-out-status": "powered-on", "default-name": "ether1"}
     assert coordinator._resolve_poe_power(iface) == (None, None, None)
+
+
+# Group: LTE (get_lte_signal / get_lte_firmware)
+# ---------------------------------------------------------------------------
+def test_get_lte_signal_parses_monitor():
+    """LTE monitor populates ds[lte]; numeric fields cast to int, connected set."""
+    coordinator = make_coordinator(
+        api_responses={
+            "/interface/lte": [{".id": "*8", "name": "lte1"}],
+            ("/interface/lte", "monitor"): [
+                {
+                    "rssi": -77,
+                    "rsrp": -107,
+                    "rsrq": "-10",
+                    "sinr": "16",
+                    "cqi": "15",
+                    "current-operator": "TestNet",
+                    "data-class": "LTE",
+                    "status": "running",
+                    "session-uptime": "2h8m9s",
+                    "imei": "123456789012345",
+                }
+            ],
+        }
+    )
+    coordinator.get_lte_signal()
+    lte = coordinator.ds["lte"]
+    assert lte["rssi"] == -77
+    assert lte["sinr"] == 16
+    assert lte["current-operator"] == "TestNet"
+    assert lte["connected"] is True
+    # session-uptime is converted to a session-start datetime (TIMESTAMP model)
+    from datetime import datetime as _dt
+
+    assert isinstance(lte["session-uptime"], _dt)
+
+
+def test_get_lte_signal_unknown_fields_become_none():
+    """Non-numeric monitor values (e.g. during cell reselect) -> None, not "unknown",
+    so signal_strength/measurement sensors never get an invalid non-numeric state."""
+    coordinator = make_coordinator(
+        api_responses={
+            "/interface/lte": [{".id": "*8", "name": "lte1"}],
+            ("/interface/lte", "monitor"): [{"status": "running", "current-operator": "TestNet", "session-uptime": "1m"}],
+        }
+    )
+    coordinator.get_lte_signal()
+    lte = coordinator.ds["lte"]
+    for field in ("rssi", "rsrp", "rsrq", "sinr", "cqi"):
+        assert lte[field] is None
+    assert lte["connected"] is True
+
+
+def test_get_lte_firmware_parses_check():
+    """firmware-upgrade check populates installed/latest/available from section 1."""
+    coordinator = make_coordinator(
+        api_responses={
+            "/interface/lte": [{".id": "*8"}],
+            ("/interface/lte", "firmware-upgrade"): [
+                {".section": "0", "installed": "EG18_X", "status": "checking..."},
+                {
+                    ".section": "1",
+                    "installed": "EG18_X",
+                    "latest": "EG18_X",
+                    "status": "firmware is already up to date",
+                },
+            ],
+        }
+    )
+    coordinator.get_lte_firmware()
+    fw = coordinator.ds["lte_firmware"]
+    assert fw["installed"] == "EG18_X"
+    assert fw["latest"] == "EG18_X"
+    assert fw["available"] is False
+
+
+def test_get_lte_no_interface_creates_nothing():
+    """No LTE interface -> ds[lte]/ds[lte_firmware] stay empty (no entities)."""
+    coordinator = make_coordinator(api_responses={"/interface/lte": []})
+    coordinator.get_lte_signal()
+    coordinator.get_lte_firmware()
+    assert coordinator.ds["lte"] == {}
+    assert coordinator.ds["lte_firmware"] == {}
+
+
+def test_get_lte_signal_clears_stale_when_monitor_empty():
+    """Modem stops reporting mid-session (monitor empty) -> ds[lte] cleared, not
+    left showing the previous poll's RSSI/operator as if current."""
+    coordinator = make_coordinator(
+        api_responses={
+            "/interface/lte": [{".id": "*8", "name": "lte1"}],
+            ("/interface/lte", "monitor"): [],
+        }
+    )
+    coordinator.host = "10.0.0.1"
+    coordinator.ds["lte"] = {"rssi": -77.0, "current-operator": "TestNet", "connected": True}
+    coordinator.get_lte_signal()
+    assert coordinator.ds["lte"] == {}
+
+
+def test_get_lte_firmware_clears_stale_when_check_empty():
+    """firmware-upgrade returns nothing -> ds[lte_firmware] cleared, not left stale."""
+    coordinator = make_coordinator(
+        api_responses={
+            "/interface/lte": [{".id": "*8"}],
+            ("/interface/lte", "firmware-upgrade"): [],
+        }
+    )
+    coordinator.host = "10.0.0.1"
+    coordinator.ds["lte_firmware"] = {"installed": "EG18_X", "latest": "EG18_X"}
+    coordinator.get_lte_firmware()
+    assert coordinator.ds["lte_firmware"] == {}
+
+
+def test_get_lte_signal_absent_session_uptime_is_none():
+    """No session-uptime field -> session-start stays None (sensor reads unknown),
+    never fabricated to "connected just now"."""
+    coordinator = make_coordinator(
+        api_responses={
+            "/interface/lte": [{".id": "*8", "name": "lte1"}],
+            ("/interface/lte", "monitor"): [{"status": "running", "rssi": -80}],
+        }
+    )
+    coordinator.get_lte_signal()
+    assert coordinator.ds["lte"]["session-uptime"] is None
+
+
+def test_get_lte_signal_disconnected_session_uptime_is_none():
+    """Modem not connected (status != running) -> session-start None, not a fake time."""
+    coordinator = make_coordinator(
+        api_responses={
+            "/interface/lte": [{".id": "*8", "name": "lte1"}],
+            ("/interface/lte", "monitor"): [{"status": "disconnected", "session-uptime": "5m"}],
+        }
+    )
+    coordinator.get_lte_signal()
+    assert coordinator.ds["lte"]["connected"] is False
+    assert coordinator.ds["lte"]["session-uptime"] is None
