@@ -43,7 +43,7 @@ These need new RouterOS API calls. They add a small amount to each polling cycle
 |---|---------|---------------|------------------|
 | B1 | **Firewall address lists** | Enable/disable address list entries, entry count per list | Toggle ad-blocking lists, block/allow IPs from HA, geo-fence automation |
 | B3 | **Network neighbors (LLDP/CDP/MNDP)** | Discovered neighbor devices | Detect when a new switch or AP appears on your network |
-| B4 | **Route monitoring** | Active route count, default gateway status | Multi-WAN failover alerts: "WAN1 route disappeared, traffic on WAN2" |
+| B4 | **Route monitoring** | Active route count, default gateway status | Multi-WAN failover alerts: "WAN1 route disappeared, traffic on WAN2" — *voted; tracked as `ENH-260907-route-monitoring`* |
 | B5 | **Interface IP addresses** | IP per interface as a sensor | WAN IP change detection, DDNS trigger, multi-WAN IP tracking |
 | B11 | **Connection tracking count** | Active connections (TCP/UDP/ICMP breakdown) | Detect anomalies, alert on connection table near capacity |
 

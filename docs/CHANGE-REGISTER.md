@@ -4,6 +4,33 @@ Changes listed in reverse chronological order.
 
 ---
 
+## CR-260907-release-v2321 — cut v2.3.21 stable
+
+**Date:** 2026-09-07
+**Branch:** `chore/release-v2.3.21` → PR to `dev`, then `dev → master` (Release v2.3.21)
+**Status:** Merged
+
+### What changed
+- `custom_components/mikrotik_router/manifest.json` — version `2.3.21-beta.2` → `2.3.21`. Edited in place to preserve the file's CRLF line endings.
+- `README.md` / `info.md` — consolidated the two beta "What's New" entries (beta.1: LTE sensors + `unknown`-not-stale; beta.2: self-recovery) into a single stable **v2.3.21** entry, crediting **@zvldz** ([#116](https://github.com/jnctech/homeassistant-mikrotik_router/pull/116)) and **@sappsys** ([#123](https://github.com/jnctech/homeassistant-mikrotik_router/pull/123)).
+- `docs/ISSUES.md` — `ENH-260614-lte-modem-info` → Closed (LTE field-confirmed by @zvldz); `ISS-260813-no-reconnect-until-hwinfo` → Shipped in v2.3.21; In-flight refreshed for the post-v2.3.21 state.
+- `docs/FEATURE-POLL.md` — recorded a user vote on **B4 route monitoring**; filed `ENH-260907-route-monitoring`.
+
+### Why
+Promotes the v2.3.21 beta cycle to stable. Both external contributions cleared their gates: LTE sensors field-confirmed by @zvldz on a MikroTik Chateau (S53UG / Quectel EG18-EA); the reconnect self-recovery fix (@sappsys, #123) shipped in beta.2 and validated on the maintainer fleet.
+
+### Verification
+- CI green on the release ref (`dev` `7065247`): CI, Validate, Branch-sync-guard all pass; suite **707 passed, 5 skipped**.
+- Fresh `/validate-live-sensors` on deployed beta.2 (2026-09-07): **501 integration entities**, every sensor class cross-checked against router ground-truth within tolerance, **0 phantom LTE entities**, bad-state set entirely benign (documented orphans + by-design `unknown`). Report retained in internal `config` docs.
+
+### Release ops
+- `chore/release-v2.3.21` → PR to `dev` → merge.
+- `dev → master` PR "Release v2.3.21" → merge (branch-sync-guard requires head=`dev`).
+- GitHub release `v2.3.21` on `master` (full release, not pre-release) → `release.yml` builds `mikrotik_router.zip` + SBOM.
+- Back-merge `master → dev` (real merge commit) to restore `master ⊆ dev`.
+
+---
+
 ## CR-260814-release-v2321-beta2 — cut v2.3.21-beta.2
 
 **Date:** 2026-08-14
