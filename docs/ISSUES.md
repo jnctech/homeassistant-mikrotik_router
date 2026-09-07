@@ -12,7 +12,7 @@
 >
 > **NEXT SESSION (lead):**
 > 1. **Route monitoring (`ENH-260907-route-monitoring`, FEATURE-POLL B4)** — user-voted. Surface `/ip/route`: active/default-route presence + gateway reachability for multi-WAN failover awareness. Scope + capability gate + ADR before coding.
-> 2. **WireGuard peer sensors (`ENH-260703-wireguard-sensors`, FEATURE-POLL B2)** — operator-requested. Per-peer state from `/interface/wireguard/peers` (last-handshake→connected/stale, endpoint, per-peer rx/tx); today only interface-level tx/rx exists. Scope keying (`public-key`), capability gate, ADR-020, redaction — see the ENH entry.
+> 2. **WireGuard peer sensors (`ENH-260703-wireguard-sensors`, FEATURE-POLL B2)** — operator-requested. Per-peer state from `/interface/wireguard/peers` (last-handshake→connected/stale, endpoint, per-peer rx/tx); today only interface-level tx/rx exists. Scope keying (`public-key`), capability gate, ADR-021, redaction — see the ENH entry.
 > 3. **librouteros cap-lift** — `ENH-260512-librouteros-test-matrix`: 3.4.1 / latest-3.x / expected-fail-4.x CI matrix, then lift `manifest` to `>=4.0,<5` (the floor-bump is the **v2.4.0** trigger).
 > 4. **Gold/Platinum** — `reconfiguration-flow` (Gold) may be decoupled from the deferred coordinator decomposition; `strict-typing` (Platinum) stays gated on it (would-be ADR-016). Author a `quality_scale.yaml` to make the remaining gaps auditable.
 > 5. **Stale-debt sweep** — write the deferred `ISS-260512-librouteros-concurrency-adr` (Open, doc-only); reconcile stale statuses. **Operator-open:** `ISS-260712` history-scrub decision + `dev` branch-protection requiring the leak gate.
@@ -50,7 +50,7 @@
 **Type:** Enhancement
 **Priority:** Medium
 **Created:** 2026-09-07
-**Status:** 🔵 Filed — user-voted (FEATURE-POLL B4). Plan before coding.
+**Status:** 🟡 Planned — user-voted (FEATURE-POLL B4). **[ADR-020](decisions/ADR-020-route-monitoring.md) Accepted** (design agreed with the maintainer 2026-09-07); ready to implement. **v1 scope:** per-default-route `binary_sensor` (`active` flag) + active-default-count `sensor` per routing-table; opt-in `CONF_SENSOR_ROUTE`; composite UID (`routing-table`+`dst-address`+`gateway`+`distance`, not `.id`); client-side default-route filter. Non-default watch-list deferred to v2. See ADR-020 for the implementation checklist.
 
 **Ask:**
 A user voted for route monitoring in the feature poll (B4). Surface RouterOS `/ip/route` state in Home Assistant for multi-WAN / failover awareness ("WAN1 route disappeared, traffic on WAN2").
@@ -106,7 +106,7 @@ Today the integration surfaces WireGuard only at the **interface** level (per-if
 - **Entity identity / keying** — peers keyed by `public-key` (stable) vs name/comment; `unique_id` design + whether it needs a migration. Public keys are identifier-ish → consider hidden-by-default + `TO_REDACT` (same pattern as LTE IMEI/IMSI/ICCID, ADR-019).
 - **Capability gate** — `support_wireguard` via `bool(query("/interface/wireguard"))`; conditional creation so non-WG routers get nothing (same pattern as `support_lte`).
 - **"Connected" heuristic** — WG is connectionless; derive from `last-handshake` age (e.g. < ~3 min = up). Decide the threshold + whether it's a binary_sensor or an attribute.
-- **ADR?** — likely yes (entity identity / new data source) → next unused **ADR-020** (per `docs/decisions/README.md § Numbering`).
+- **ADR?** — likely yes (entity identity / new data source) → reserved as **ADR-021** (per `docs/decisions/README.md § Numbering`).
 - Check upstream/forks for prior art; verify field names on a live RB4011 (`/interface/wireguard/peers print detail`) before descriptors.
 
 Note: this is separate from the `wireguard1`→`wg-home` rename orphans (config-side, not a bug).
