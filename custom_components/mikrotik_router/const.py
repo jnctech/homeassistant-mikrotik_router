@@ -68,6 +68,13 @@ CONF_SENSOR_RAW = "sensor_raw"
 DEFAULT_SENSOR_RAW = False
 CONF_SENSOR_CONTAINER = "sensor_container"
 DEFAULT_SENSOR_CONTAINER = False
+CONF_SENSOR_WIREGUARD = "sensor_wireguard"
+DEFAULT_SENSOR_WIREGUARD = False
+
+# A WireGuard peer is "connected" when its last handshake is younger than this.
+# WireGuard rekeys ~every 2 min under traffic; 180 s is the common "up" window.
+# See ADR-021.
+WIREGUARD_STALE_SECONDS = 180
 
 TO_REDACT = {
     "ip-address",
@@ -102,4 +109,9 @@ TO_REDACT = {
     "imei",
     "imsi",
     "iccid",
+    # WireGuard peer identity / remote topology (ADR-021).
+    "public-key",
+    "endpoint-address",
+    "current-endpoint-address",
+    "allowed-address",
 }

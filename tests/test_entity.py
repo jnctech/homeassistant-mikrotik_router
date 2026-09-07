@@ -25,6 +25,7 @@ from custom_components.mikrotik_router.const import (
     CONF_SENSOR_NETWATCH_TRACKER,
     CONF_TRACK_HOSTS,
     CONF_SENSOR_POE,
+    CONF_SENSOR_WIREGUARD,
 )
 from .conftest import (
     make_mock_coordinator,
@@ -1065,3 +1066,47 @@ def test_no_skip_poe_energy_sensor_when_estimated():
     data = {"ether1": {"poe-out-energy-source": "estimated"}}
     cfg = make_config_entry({CONF_SENSOR_POE: True})
     assert _skip_sensor(cfg, _energy_desc(), data, "ether1") is False
+
+
+# ---------------------------------------------------------------------------
+# WireGuard peers: naming, unique_id, and skip-gating (ADR-021)
+# ---------------------------------------------------------------------------
+
+# Real WireGuard connected binary_sensor field set (mirrors binary_sensor_types.py).
+WIREGUARD_DESC_KW = dict(
+    key="wireguard_peer_connected",
+    name="Connected",
+    data_name="peer-label",
+    data_uid="public-key",
+    data_reference="public-key",
+    data_name_prefer=True,
+)
+
+
+class TestWireguardPeerNaming:
+    def test_peer_label_is_the_display_name(self):
+        row = {"public-key": "ABC", "peer-label": "remote site", "connected": True}
+        entity = _binary_entity_with_real_desc("wireguard_peers", "ABC", row, **WIREGUARD_DESC_KW)
+        assert entity.custom_name == "remote site"
+
+    def test_unique_id_derives_from_public_key(self):
+        """unique_id slugifies the stable public-key, so it survives reboots."""
+        row = {"public-key": "AbC+123/xyz=", "peer-label": "home", "connected": True}
+        entity = _binary_entity_with_real_desc("wireguard_peers", "AbC+123/xyz=", row, **WIREGUARD_DESC_KW)
+        assert entity.unique_id == f"mikrotik-wireguard_peer_connected-{slugify('AbC+123/xyz=')}"
+
+
+def _wireguard_desc():
+    return make_entity_desc(func="MikrotikBinarySensor", data_path="wireguard_peers", data_attribute="connected")
+
+
+def test_skip_wireguard_when_option_disabled():
+    data = {"KEY": {"connected": True}}
+    cfg = make_config_entry({CONF_SENSOR_WIREGUARD: False})
+    assert _skip_sensor(cfg, _wireguard_desc(), data, "KEY") is True
+
+
+def test_no_skip_wireguard_when_option_enabled():
+    data = {"KEY": {"connected": True}}
+    cfg = make_config_entry({CONF_SENSOR_WIREGUARD: True})
+    assert _skip_sensor(cfg, _wireguard_desc(), data, "KEY") is False

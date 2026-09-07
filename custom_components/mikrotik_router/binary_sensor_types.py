@@ -53,6 +53,17 @@ DEVICE_ATTRIBUTES_NETWATCH = [
     "comment",
 ]
 
+DEVICE_ATTRIBUTES_WIREGUARD_PEER = [
+    "interface",
+    "name",
+    "comment",
+    "responder",
+    "current-endpoint-address",
+    "current-endpoint-port",
+    "allowed-address",
+    "disabled",
+]
+
 
 @dataclass
 class MikrotikBinarySensorEntityDescription(BinarySensorEntityDescription):
@@ -157,6 +168,24 @@ SENSOR_TYPES: tuple[BinarySensorEntityDescription, ...] = (
         data_uid="host",
         data_reference="host",
         data_attributes_list=DEVICE_ATTRIBUTES_NETWATCH,
+        func="MikrotikBinarySensor",
+    ),
+    MikrotikBinarySensorEntityDescription(
+        key="wireguard_peer_connected",
+        name="Connected",
+        icon_enabled="mdi:vpn",
+        icon_disabled="mdi:vpn",
+        device_class=BinarySensorDeviceClass.CONNECTIVITY,
+        ha_group="WireGuard",
+        ha_connection=DOMAIN,
+        ha_connection_value="WireGuard",
+        data_path="wireguard_peers",
+        data_attribute="connected",
+        data_name="peer-label",
+        data_name_prefer=True,
+        data_uid="public-key",
+        data_reference="public-key",
+        data_attributes_list=DEVICE_ATTRIBUTES_WIREGUARD_PEER,
         func="MikrotikBinarySensor",
     ),
 )

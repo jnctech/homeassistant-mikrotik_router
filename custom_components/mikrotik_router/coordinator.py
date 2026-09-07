@@ -69,6 +69,9 @@ from .const import (
     DEFAULT_SENSOR_RAW,
     CONF_SENSOR_CONTAINER,
     DEFAULT_SENSOR_CONTAINER,
+    CONF_SENSOR_WIREGUARD,
+    DEFAULT_SENSOR_WIREGUARD,
+    WIREGUARD_STALE_SECONDS,
 )
 from .apiparser import parse_api
 from .mikrotikapi import MikrotikAPI
@@ -304,6 +307,7 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
             "raw": {},
             "container": {},
             "neighbor": {},
+            "wireguard_peers": {},
         }
 
         self.notified_flags = []
@@ -336,6 +340,7 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
         self.support_gps = False
         self.support_container = False
         self.support_lte = False
+        self.support_wireguard = False
         self._wifimodule = "wireless"
 
         self.major_fw_version = 0
@@ -474,6 +479,14 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
         return self.config_entry.options.get(CONF_SENSOR_CONTAINER, DEFAULT_SENSOR_CONTAINER)
 
     # ---------------------------
+    #   option_sensor_wireguard
+    # ---------------------------
+    @property
+    def option_sensor_wireguard(self):
+        """Config entry option for WireGuard peer sensors."""
+        return self.config_entry.options.get(CONF_SENSOR_WIREGUARD, DEFAULT_SENSOR_WIREGUARD)
+
+    # ---------------------------
     #   option_sensor_scripts
     # ---------------------------
     @property
@@ -561,6 +574,15 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
         # Safe on non-LTE routers: /interface/lte returns an empty list (not an error)
         # when no LTE interface exists, so support_lte is simply False.
         self.support_lte = bool(self.api.query("/interface/lte"))
+
+        # WireGuard is RouterOS v7+ only. Detect by interface presence (no
+        # /system/package entry), but only probe on v7+: on v6 the
+        # /interface/wireguard menu does not exist, and querying a missing menu
+        # can raise "no such command prefix" and force a reconnect on every
+        # capabilities refresh (the #64 / ISS-260509 disconnect class). A v6
+        # router cannot have WireGuard, so support_wireguard is correctly False
+        # without probing (ADR-021).
+        self.support_wireguard = self.major_fw_version >= 7 and bool(self.api.query("/interface/wireguard"))
 
     def _detect_capabilities_v6(self, packages: dict) -> None:
         """Detect wireless/PPP capabilities for RouterOS v6."""
@@ -765,6 +787,10 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
                 self.get_container,
                 self.support_container and self.option_sensor_container,
             ),
+            (
+                self.get_wireguard_peers,
+                self.support_wireguard and self.option_sensor_wireguard,
+            ),
         ]:
             await self._run_if_enabled(func, requires=enabled)
 
@@ -797,6 +823,7 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
             "container",
             "environment",
             "netwatch",
+            "wireguard_peers",
         }
     )
 
@@ -1741,6 +1768,95 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
                 },
             ],
         )
+
+    # ---------------------------
+    #   get_wireguard_peers
+    # ---------------------------
+    def get_wireguard_peers(self) -> None:
+        """Get per-peer WireGuard state from Mikrotik.
+
+        Keyed by `public-key` — globally unique and stable across reboots (unlike
+        `.id`), and a real field on the raw entry so parse_api can key on it
+        directly. Derives a `connected` flag and an absolute `last-handshake`
+        TIMESTAMP from RouterOS's relative last-handshake age, mirroring the LTE
+        session-uptime model. See ADR-021.
+
+        Rebuilt fresh each poll (data={}) so a removed peer drops out; the prior
+        per-peer handshake timestamp is carried across for the drift guard.
+        """
+        source = self.api.query("/interface/wireguard/peers")
+        if source is None:
+            # Query failed (transient disconnect) — keep prior peer state rather
+            # than crashing the poll on a None iteration, mirroring get_neighbor.
+            return
+
+        prior_peers = self.ds.get("wireguard_peers", {})
+        previous_handshake = {pk: row.get("last-handshake") for pk, row in prior_peers.items()}
+
+        peers = parse_api(
+            data={},
+            source=source,
+            key="public-key",
+            vals=[
+                {"name": "public-key"},
+                {"name": "interface", "default": "unknown"},
+                {"name": "name", "default": ""},
+                {"name": "comment", "default": ""},
+                {"name": "responder", "type": "bool", "default": False},
+                {"name": "current-endpoint-address", "default": ""},
+                {"name": "current-endpoint-port", "default": ""},
+                {"name": "allowed-address", "default": ""},
+                {"name": "rx", "default": 0},
+                {"name": "tx", "default": 0},
+                {"name": "disabled", "type": "bool", "default": False},
+                {"name": "last-handshake-age", "source": "last-handshake", "default": ""},
+            ],
+        )
+
+        now = dt_now().replace(microsecond=0)
+        for public_key, peer in peers.items():
+            peer["peer-label"] = self._wireguard_label(peer)
+            self._resolve_wireguard_handshake(peer, previous_handshake.get(public_key), now)
+
+        self.ds["wireguard_peers"] = peers
+
+    @staticmethod
+    def _wireguard_label(peer: dict) -> str:
+        """Display name for a peer: name -> comment -> truncated key fingerprint.
+
+        Only a short fingerprint of the public key is used as a last resort, never
+        the full key (which is redacted). See ADR-021.
+        """
+        if peer.get("name"):
+            return peer["name"]
+        if peer.get("comment"):
+            return peer["comment"]
+        public_key = peer.get("public-key", "")
+        return f"peer {public_key[:8]}" if public_key else "peer"
+
+    @staticmethod
+    def _resolve_wireguard_handshake(peer: dict, previous_start, now) -> None:
+        """Derive `connected` + a stable last-handshake TIMESTAMP for a peer.
+
+        RouterOS reports last-handshake as a relative age ("53s", "1m28s"), not a
+        timestamp. Compute now - age (LTE session-uptime model). A never-handshaked
+        peer (field absent) reads disconnected / None rather than a fabricated
+        time. A drift guard keeps the timestamp stable across polls (the age
+        advances every poll while the actual handshake time is fixed). ADR-021.
+        """
+        raw_age = peer.get("last-handshake-age")
+        if not raw_age:
+            peer["connected"] = False
+            peer["last-handshake"] = None
+            return
+
+        age_seconds = _parse_uptime_to_seconds(raw_age)
+        peer["connected"] = age_seconds < WIREGUARD_STALE_SECONDS
+        handshake = datetime.timestamp(now - timedelta(seconds=age_seconds))
+        if not previous_start or abs(handshake - datetime.timestamp(previous_start)) > 10:
+            peer["last-handshake"] = utc_from_timestamp(handshake)
+        else:
+            peer["last-handshake"] = previous_start
 
     # ---------------------------
     #   get_system_routerboard

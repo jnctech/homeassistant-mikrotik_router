@@ -12,7 +12,7 @@
 >
 > **NEXT SESSION (lead):**
 > 1. **Route monitoring (`ENH-260907-route-monitoring`, FEATURE-POLL B4)** — user-voted. Surface `/ip/route`: active/default-route presence + gateway reachability for multi-WAN failover awareness. Scope + capability gate + ADR before coding.
-> 2. **WireGuard peer sensors (`ENH-260703-wireguard-sensors`, FEATURE-POLL B2)** — operator-requested. Per-peer state from `/interface/wireguard/peers` (last-handshake→connected/stale, endpoint, per-peer rx/tx); today only interface-level tx/rx exists. Scope keying (`public-key`), capability gate, ADR-021, redaction — see the ENH entry.
+> 2. **WireGuard peer sensors (`ENH-260703-wireguard-sensors`, FEATURE-POLL B2)** — 🟠 **implemented** on `feature/wireguard-peers` (ADR-021, CR-260907-wireguard-peers), PR to `dev`; 24 tests green. Remaining: live validation on RB4011 (2 peers) + non-WG device + diagnostics redaction at release time.
 > 3. **librouteros cap-lift** — `ENH-260512-librouteros-test-matrix`: 3.4.1 / latest-3.x / expected-fail-4.x CI matrix, then lift `manifest` to `>=4.0,<5` (the floor-bump is the **v2.4.0** trigger).
 > 4. **Gold/Platinum** — `reconfiguration-flow` (Gold) may be decoupled from the deferred coordinator decomposition; `strict-typing` (Platinum) stays gated on it (would-be ADR-016). Author a `quality_scale.yaml` to make the remaining gaps auditable.
 > 5. **Stale-debt sweep** — write the deferred `ISS-260512-librouteros-concurrency-adr` (Open, doc-only); reconcile stale statuses. **Operator-open:** `ISS-260712` history-scrub decision + `dev` branch-protection requiring the leak gate.
@@ -97,7 +97,7 @@ After a transient RouterOS API outage (e.g. an upstream gateway reboot), entitie
 **Type:** Enhancement (new sensors)
 **Priority:** Medium
 **Created:** 2026-07-03
-**Status:** 🟡 Planned — operator-requested. **[ADR-021](decisions/ADR-021-wireguard-peer-sensors.md) Accepted** (design agreed 2026-09-07); ready to implement. **v1 scope:** per-peer `connected` binary_sensor (last-handshake age < 180s) + `last-handshake` TIMESTAMP + rx/tx; keyed by `public-key` (not `.id`); gated by `support_wireguard` + opt-in `CONF_SENSOR_WIREGUARD`; `public-key`/endpoints/allowed-address added to `TO_REDACT` + public-key hidden-by-default. See ADR-021 for the implementation checklist.
+**Status:** 🟠 In Review — implemented on `feature/wireguard-peers` (CR-260907-wireguard-peers), PR to `dev`. **[ADR-021](decisions/ADR-021-wireguard-peer-sensors.md) Accepted.** **v1 shipped:** per-peer `connected` binary_sensor (last-handshake age < 180s) + `last-handshake` TIMESTAMP (age→timestamp with drift guard) + rx/tx + hidden public-key sensor; keyed by `public-key` (not `.id`); gated by `support_wireguard` capability flag + opt-in `CONF_SENSOR_WIREGUARD`; `public-key`/endpoints/allowed-address in `TO_REDACT`. 24 unit/golden tests, suite green. **Remaining gate:** live validation on RB4011 (two peers) + a non-WG device (0 entities) + a diagnostics redaction check at release time (ADR-021 test plan).
 
 Today the integration surfaces WireGuard only at the **interface** level (per-iface tx/rx + a connection binary_sensor — e.g. `wg-home`, `wg-us` on the RB4011). It does **not** surface **per-peer** state. RouterOS exposes that at `/interface/wireguard/peers` — per peer: `public-key`, `endpoint-address`/`endpoint-port`, `current-endpoint-address`/`-port`, **`last-handshake`**, `rx`/`tx`, `allowed-address`, `disabled`.
 
