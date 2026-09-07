@@ -455,6 +455,15 @@ Track netwatch probe status.
 
 ![Netwatch](https://raw.githubusercontent.com/tomaae/homeassistant-mikrotik_router/master/docs/assets/images/ui/netwatch_tracker.png)
 
+## Route Monitoring *(new)*
+Multi-WAN / failover awareness from `/ip/route`. Enable **Default route monitoring sensors** in the integration options.
+
+For each default route (`0.0.0.0/0` and `::/0`) you get a **connectivity binary_sensor** that follows the route's RouterOS `active` flag — so you can alert when a WAN's default route drops and traffic moves to another uplink. Alongside it, an **active default routes** count sensor per routing-table tells you how many default routes are currently up.
+
+It is correct under policy routing (each routing-table is tracked separately) and ECMP / dual-uplink (multiple defaults in one table). Route comments name the entity when set, otherwise it is named `"{routing-table} via {gateway}"`; a blackhole kill-switch route is labelled `"{routing-table} blackhole"`. Attributes include gateway, immediate gateway, distance, scope and the dynamic/static/blackhole flags.
+
+Only default routes become entities — the full route table is never enumerated, so this stays bounded even on a BGP/OSPF router. The option is off by default. Entity `unique_id`s derive from a stable `routing-table`+`dst-address`+`gateway`+`distance` composite, not the volatile RouterOS `.id`, so they survive reboots. See [ADR-020](docs/decisions/ADR-020-route-monitoring.md).
+
 ## Scripts
 Execute MikroTik Router scripts from Home Assistant via automatically created buttons.
 

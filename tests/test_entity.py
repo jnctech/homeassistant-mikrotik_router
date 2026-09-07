@@ -25,6 +25,7 @@ from custom_components.mikrotik_router.const import (
     CONF_SENSOR_NETWATCH_TRACKER,
     CONF_TRACK_HOSTS,
     CONF_SENSOR_POE,
+    CONF_SENSOR_ROUTE,
 )
 from .conftest import (
     make_mock_coordinator,
@@ -1065,3 +1066,66 @@ def test_no_skip_poe_energy_sensor_when_estimated():
     data = {"ether1": {"poe-out-energy-source": "estimated"}}
     cfg = make_config_entry({CONF_SENSOR_POE: True})
     assert _skip_sensor(cfg, _energy_desc(), data, "ether1") is False
+
+
+# ---------------------------------------------------------------------------
+# Route monitoring: naming, unique_id, and skip-gating (ADR-020)
+# ---------------------------------------------------------------------------
+
+# Real route binary_sensor descriptor field set (mirrors binary_sensor_types.py).
+ROUTE_DESC_KW = dict(
+    key="route",
+    name="Route",
+    data_name="route-label",
+    data_uid="uniq-id",
+    data_reference="uniq-id",
+    data_name_prefer=True,
+)
+
+
+class TestRouteCustomName:
+    """A route names itself from its composed label (comment, else table via gw),
+    built from the REAL binary_sensor description so a renamed field fails."""
+
+    def test_label_is_the_display_name(self):
+        row = {"uniq-id": "main:0.0.0.0/0:10.0.0.1:1", "route-label": "Primary WAN"}
+        entity = _binary_entity_with_real_desc("route", row["uniq-id"], row, **ROUTE_DESC_KW)
+        assert entity.custom_name == "Primary WAN"
+
+    def test_unique_id_is_composite_derived(self):
+        """unique_id slugifies the routing-table:dst:gateway:distance composite,
+        not the unstable .id — two ECMP defaults stay distinct."""
+        row_a = {"uniq-id": "main:0.0.0.0/0:10.0.0.1:1", "route-label": "main via 10.0.0.1"}
+        row_b = {"uniq-id": "main:0.0.0.0/0:10.0.1.1:1", "route-label": "main via 10.0.1.1"}
+        ent_a = _binary_entity_with_real_desc("route", row_a["uniq-id"], row_a, **ROUTE_DESC_KW)
+        ent_b = _binary_entity_with_real_desc("route", row_b["uniq-id"], row_b, **ROUTE_DESC_KW)
+        assert ent_a.unique_id == f"mikrotik-route-{slugify('main:0.0.0.0/0:10.0.0.1:1')}"
+        assert ent_a.unique_id != ent_b.unique_id
+
+
+def _route_desc(data_path="route", data_attribute="active"):
+    return make_entity_desc(func="MikrotikBinarySensor", data_path=data_path, data_attribute=data_attribute)
+
+
+def test_skip_route_when_option_disabled():
+    """Route entities are skipped when CONF_SENSOR_ROUTE is off."""
+    data = {"main:0.0.0.0/0:10.0.0.1:1": {"active": True}}
+    cfg = make_config_entry({CONF_SENSOR_ROUTE: False})
+    assert _skip_sensor(cfg, _route_desc(), data, "main:0.0.0.0/0:10.0.0.1:1") is True
+
+
+def test_no_skip_route_when_option_enabled():
+    """Route entities are created when CONF_SENSOR_ROUTE is on."""
+    data = {"main:0.0.0.0/0:10.0.0.1:1": {"active": True}}
+    cfg = make_config_entry({CONF_SENSOR_ROUTE: True})
+    assert _skip_sensor(cfg, _route_desc(), data, "main:0.0.0.0/0:10.0.0.1:1") is False
+
+
+def test_skip_route_table_count_follows_same_gate():
+    """The per-table count sensor shares the route opt-in gate."""
+    data = {"main": {"active-default-count": 2}}
+    cfg = make_config_entry({CONF_SENSOR_ROUTE: False})
+    desc = _route_desc(data_path="route_table", data_attribute="active-default-count")
+    assert _skip_sensor(cfg, desc, data, "main") is True
+    cfg_on = make_config_entry({CONF_SENSOR_ROUTE: True})
+    assert _skip_sensor(cfg_on, desc, data, "main") is False

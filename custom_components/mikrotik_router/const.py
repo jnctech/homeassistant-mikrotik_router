@@ -68,6 +68,8 @@ CONF_SENSOR_RAW = "sensor_raw"
 DEFAULT_SENSOR_RAW = False
 CONF_SENSOR_CONTAINER = "sensor_container"
 DEFAULT_SENSOR_CONTAINER = False
+CONF_SENSOR_ROUTE = "sensor_route"
+DEFAULT_SENSOR_ROUTE = False
 
 TO_REDACT = {
     "ip-address",
@@ -102,4 +104,11 @@ TO_REDACT = {
     "imei",
     "imsi",
     "iccid",
+    "immediate-gw",
+    # Synthetic composites that embed sensitive values (gateway/dst-address for
+    # routes, to-addresses for firewall rules). Redacted as whole strings because
+    # async_redact_data is key-name based and cannot reach values embedded inside
+    # a combined string. See ADR-020.
+    "uniq-id",
+    "route-label",
 }

@@ -69,6 +69,8 @@ from .const import (
     DEFAULT_SENSOR_RAW,
     CONF_SENSOR_CONTAINER,
     DEFAULT_SENSOR_CONTAINER,
+    CONF_SENSOR_ROUTE,
+    DEFAULT_SENSOR_ROUTE,
 )
 from .apiparser import parse_api
 from .mikrotikapi import MikrotikAPI
@@ -304,6 +306,8 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
             "raw": {},
             "container": {},
             "neighbor": {},
+            "route": {},
+            "route_table": {},
         }
 
         self.notified_flags = []
@@ -472,6 +476,14 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
     def option_sensor_container(self):
         """Config entry option for container sensors."""
         return self.config_entry.options.get(CONF_SENSOR_CONTAINER, DEFAULT_SENSOR_CONTAINER)
+
+    # ---------------------------
+    #   option_sensor_route
+    # ---------------------------
+    @property
+    def option_sensor_route(self):
+        """Config entry option for default-route monitoring sensors."""
+        return self.config_entry.options.get(CONF_SENSOR_ROUTE, DEFAULT_SENSOR_ROUTE)
 
     # ---------------------------
     #   option_sensor_scripts
@@ -750,6 +762,7 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
             (self.get_raw, self.option_sensor_raw),
             (self.get_netwatch, self.option_sensor_netwatch),
             (self.get_ppp, self.support_ppp and self.option_sensor_ppp),
+            (self.get_route, self.option_sensor_route),
         ]:
             await self._run_if_enabled(func, requires=enabled)
 
@@ -797,6 +810,8 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
             "container",
             "environment",
             "netwatch",
+            "route",
+            "route_table",
         }
     )
 
@@ -1741,6 +1756,110 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
                 },
             ],
         )
+
+    # Default-route destinations (IPv4 and IPv6). get_route filters the full
+    # /ip/route table down to these client-side — see ADR-020.
+    _DEFAULT_DST_ADDRESSES = frozenset({"0.0.0.0/0", "::/0"})
+
+    # ---------------------------
+    #   get_route
+    # ---------------------------
+    def get_route(self) -> None:
+        """Get default-route reachability from Mikrotik.
+
+        Fetches /ip/route and filters to default routes client-side (the API
+        wrapper has no server-side filter), so the coordinator only ever holds
+        the failover-relevant set — never the full table. Builds one entity row
+        per default route plus a per-routing-table active-default count.
+
+        Rebuilt fresh each poll (data={}) rather than merged: the default set is
+        tiny and bounded, and a withdrawn route must drop out of the per-table
+        count immediately instead of lingering. See ADR-020.
+        """
+        source = self.api.query("/ip/route")
+        if source is None:
+            # Query failed (e.g. a transient disconnect — query() returns None on
+            # a dropped connection or an empty result). Keep the prior route state
+            # rather than crashing the poll on a None iteration, mirroring
+            # get_neighbor. The next successful poll rebuilds it.
+            return
+
+        defaults = []
+        for entry in source:
+            if entry.get("dst-address") not in self._DEFAULT_DST_ADDRESSES:
+                continue
+            # Normalise routing-table once (RouterOS v6 / single-table gear omits
+            # it) so the composite key, the parsed field, the label and the count
+            # all agree on "main".
+            if not entry.get("routing-table"):
+                entry["routing-table"] = "main"
+            # Key on a stable synthetic composite, NEVER RouterOS `.id`: `.id` is
+            # reassigned across reboots and route churn (a dynamic default route
+            # renewing on PPPoE/DHCP reconnect — the very failover event this
+            # watches), which would orphan the entity's data binding and freeze it.
+            # The dict key must equal the entity uid, so build the composite on the
+            # raw entry before parse_api keys on it (parse_api reads `key` from the
+            # raw entry; a val_proc field is computed too late to key on). ADR-020 §4.
+            entry["uniq-id"] = self._route_uid(entry)
+            defaults.append(entry)
+
+        routes = parse_api(
+            data={},
+            source=defaults,
+            key="uniq-id",
+            vals=[
+                {"name": "uniq-id"},
+                {"name": "dst-address", "default": "unknown"},
+                {"name": "routing-table", "default": "main"},
+                {"name": "gateway", "default": ""},
+                {"name": "immediate-gw", "default": ""},
+                {"name": "distance", "default": ""},
+                {"name": "scope", "default": ""},
+                {"name": "comment", "default": ""},
+                {"name": "active", "type": "bool", "default": False},
+                {"name": "dynamic", "type": "bool", "default": False},
+                {"name": "static", "type": "bool", "default": False},
+                {"name": "blackhole", "type": "bool", "default": False},
+            ],
+        )
+
+        route_tables: dict = {}
+        for row in routes.values():
+            row["route-label"] = self._route_label(row)
+            table = row["routing-table"]
+            entry = route_tables.setdefault(table, {"routing-table": table, "active-default-count": 0})
+            if row["active"]:
+                entry["active-default-count"] += 1
+
+        self.ds["route"] = routes
+        self.ds["route_table"] = route_tables
+
+    @staticmethod
+    def _route_uid(entry: dict) -> str:
+        """Build the stable composite unique key for a default route (ADR-020 §4).
+
+        routing-table + dst-address + gateway + distance. `distance` distinguishes
+        a primary default from a same-table backup/blackhole; `gateway`
+        distinguishes ECMP peers. routing-table is normalised to `main` by the
+        caller before this runs.
+        """
+        table = entry.get("routing-table", "main")
+        return f"{table}:{entry.get('dst-address', '')}:{entry.get('gateway', '')}:{entry.get('distance', '')}"
+
+    @staticmethod
+    def _route_label(row: dict) -> str:
+        """Compose a display label for a default route.
+
+        Prefers the user's route comment; otherwise names it by routing-table
+        and next hop. A blackhole (kill-switch) route has no gateway, so it is
+        labelled as such rather than "via <empty>". See ADR-020.
+        """
+        if row.get("comment"):
+            return row["comment"]
+        table = row["routing-table"]
+        if row.get("blackhole"):
+            return f"{table} blackhole"
+        return f"{table} via {row['gateway']}"
 
     # ---------------------------
     #   get_system_routerboard
