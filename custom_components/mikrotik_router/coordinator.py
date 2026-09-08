@@ -1820,6 +1820,15 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
             # all agree on "main".
             if not entry.get("routing-table"):
                 entry["routing-table"] = "main"
+            # `blackhole` is a bare RouterOS flag, not a value: over the API
+            # librouteros delivers it as an empty-string word (`{'blackhole': ''}`)
+            # when the route is a blackhole and omits the key entirely otherwise.
+            # parse_api's bool coercion reads an empty string as the default
+            # (False), so the flag never registered — collapse it to a real bool
+            # by key-presence here, before parse_api. Verified against a live
+            # librouteros dump; contrast `active`/`dynamic`/`static`, which the
+            # API delivers as genuine bools. See #139 / ADR-020.
+            entry["blackhole"] = "blackhole" in entry
             # Key on a stable synthetic composite, NEVER RouterOS `.id`: `.id` is
             # reassigned across reboots and route churn (a dynamic default route
             # renewing on PPPoE/DHCP reconnect — the very failover event this
