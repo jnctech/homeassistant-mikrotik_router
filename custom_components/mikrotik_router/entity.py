@@ -32,6 +32,8 @@ from .const import (
     DEFAULT_SENSOR_POE,
     CONF_SENSOR_WIREGUARD,
     DEFAULT_SENSOR_WIREGUARD,
+    CONF_SENSOR_ROUTE,
+    DEFAULT_SENSOR_ROUTE,
 )
 from .coordinator import MikrotikConfigEntry, MikrotikCoordinator, MikrotikTrackerCoordinator
 from .helper import format_attribute
@@ -116,6 +118,7 @@ def _skip_sensor(config_entry, entity_description, data, uid) -> bool:
         or _skip_poe_sensor(config_entry, entity_description, data, uid)
         or _skip_environment_sensor(entity_description, data, uid)
         or _skip_wireguard_sensor(config_entry, entity_description)
+        or _skip_route_sensor(config_entry, entity_description)
     )
 
 
@@ -129,6 +132,17 @@ def _skip_wireguard_sensor(config_entry, entity_description) -> bool:
     if entity_description.data_path != "wireguard_peers":
         return False
     return not config_entry.options.get(CONF_SENSOR_WIREGUARD, DEFAULT_SENSOR_WIREGUARD)
+
+
+def _skip_route_sensor(config_entry, entity_description) -> bool:
+    """Skip route entities (per-route binary_sensor and per-table count) when disabled.
+
+    Both share the opt-in gate; the fetch is already gated in the coordinator,
+    so this only guards entity creation when the option is off. See ADR-020.
+    """
+    if entity_description.data_path not in ("route", "route_table"):
+        return False
+    return not config_entry.options.get(CONF_SENSOR_ROUTE, DEFAULT_SENSOR_ROUTE)
 
 
 def _skip_interface_traffic(config_entry, entity_description, data, uid) -> bool:

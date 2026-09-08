@@ -75,6 +75,8 @@ DEFAULT_SENSOR_WIREGUARD = False
 # WireGuard rekeys ~every 2 min under traffic; 180 s is the common "up" window.
 # See ADR-021.
 WIREGUARD_STALE_SECONDS = 180
+CONF_SENSOR_ROUTE = "sensor_route"
+DEFAULT_SENSOR_ROUTE = False
 
 TO_REDACT = {
     "ip-address",
@@ -114,4 +116,11 @@ TO_REDACT = {
     "endpoint-address",
     "current-endpoint-address",
     "allowed-address",
+    "immediate-gw",
+    # Synthetic composites that embed sensitive values (gateway/dst-address for
+    # routes, to-addresses for firewall rules). Redacted as whole strings because
+    # async_redact_data is key-name based and cannot reach values embedded inside
+    # a combined string. See ADR-020.
+    "uniq-id",
+    "route-label",
 }
