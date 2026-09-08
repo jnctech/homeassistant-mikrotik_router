@@ -4,6 +4,25 @@ Changes listed in reverse chronological order.
 
 ---
 
+## CR-260908-release-v2.3.22-beta.1 — cut v2.3.22-beta.1 pre-release
+
+**Date:** 2026-09-08
+**Branch:** `chore/release-v2.3.22-beta.1` → PR to `dev`
+**Status:** In Review
+
+### What changed
+- `custom_components/mikrotik_router/manifest.json` — version `2.3.21` → `2.3.22-beta.1`.
+- `README.md`, `info.md` — "What's New — v2.3.22-beta.1" section (route monitoring + WireGuard peers, both opt-in).
+- `docs/ISSUES.md` — In-flight refreshed: B4/B2 merged to `dev`, beta cut; #139 tracked as a known-open discrepancy.
+
+### Why
+Roll the two merged FEATURE-POLL features — default-route monitoring (ADR-020, CR-260907-route-monitoring, #136) and WireGuard peer sensors (ADR-021, CR-260907-wireguard-peers, #137) — into a `-beta.1` pre-release off `dev` for HACS opt-in testing. Neither is hardware-gated to absent hardware, so this is a normal beta cadence (not a beta-first hardware gate).
+
+### Verification
+- CI green on `dev` (Python 3.13 + 3.14); full suite 758 passed.
+- **Live validation PASS** on the deployed `dev` code (`origin/dev` @ 74787f8) on the four-router fleet, 2026-09-08: route (policy routing + ECMP + blackhole-inactive) and WireGuard (2 peers, rx/tx within tolerance, capability gate correct) both correct; core-class regression spot-check exact. Per `docs/release-validation.md`.
+- Known-open: [#139](https://github.com/jnctech/homeassistant-mikrotik_router/issues/139) blackhole attribute reads False (low impact; `active` correct) — documented, ships in the beta.
+
 ## CR-260907-wireguard-peers — implement WireGuard peer sensors (B2)
 
 **Date:** 2026-09-07

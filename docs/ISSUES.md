@@ -2,6 +2,8 @@
 
 ## In-flight
 
+> **Updated 2026-09-08 (route + WireGuard beta session).** Merged **B4 route monitoring** ([#136](https://github.com/jnctech/homeassistant-mikrotik_router/pull/136), ADR-020) and **B2 WireGuard peers** ([#137](https://github.com/jnctech/homeassistant-mikrotik_router/pull/137), ADR-021) to `dev`; live-validated the deployed `dev` code on the four-router fleet (**PASS**, `docs/release-validation.md`); cut **v2.3.22-beta.1** as a pre-release off `dev` (CR-260908). Known-open: [#139](https://github.com/jnctech/homeassistant-mikrotik_router/issues/139) blackhole attribute reads False (low impact; `active` signal correct) — ships documented in the beta. Promote to stable **v2.3.22** after beta soak (`dev→master` PR + back-merge).
+>
 > **Updated 2026-09-07 (v2.3.21 release session).** **Cut stable [v2.3.21](https://github.com/jnctech/homeassistant-mikrotik_router/releases/tag/v2.3.21)** — the v2.3.21 beta cycle (beta.1 LTE, beta.2 self-recovery) rolled up to stable via a `dev→master` PR + back-merge (`master ⊆ dev` restored, branch-sync-guard green). CR-260907-release-v2321.
 >
 > **v2.3.21 rolls up:** LTE modem sensors (ADR-019, #116, @zvldz) · self-recovery reconnect-on-poll after a transient API outage (#123/#127, @sappsys) · `unknown`-not-stale base-class fix (#120) · leak-gate governance-token extension (#125) · CONTRIBUTING/ADR-index docs (#119).
@@ -11,8 +13,8 @@
 > **Release validated.** Fresh `/validate-live-sensors` on the deployed beta.2 (2026-09-07): **501 integration entities**, every sensor class cross-checked against router ground-truth within tolerance, **0 phantom LTE entities**; bad-state set benign (documented orphans + by-design `unknown`). Stable == beta.2 code + version bump only. Internal report in gitignored config docs.
 >
 > **NEXT SESSION (lead):**
-> 1. **Route monitoring (`ENH-260907-route-monitoring`, FEATURE-POLL B4)** — 🟠 **implemented** on `feature/route-monitoring` (ADR-020, CR-260907-route-monitoring), PR to `dev`; 20 tests green. Remaining: live validation on RB4011/CRS310/single-table at release time.
-> 2. **WireGuard peer sensors (`ENH-260703-wireguard-sensors`, FEATURE-POLL B2)** — 🟠 **implemented** on `feature/wireguard-peers` (ADR-021, CR-260907-wireguard-peers), PR to `dev`; 24 tests green. Remaining: live validation on RB4011 (2 peers) + non-WG device + diagnostics redaction at release time.
+> 1. **Route monitoring (`ENH-260907-route-monitoring`, FEATURE-POLL B4)** — 🟢 **merged to `dev`** (#136, ADR-020, CR-260907-route-monitoring); live-validated PASS on the four-router fleet 2026-09-08; shipping in **v2.3.22-beta.1**.
+> 2. **WireGuard peer sensors (`ENH-260703-wireguard-sensors`, FEATURE-POLL B2)** — 🟢 **merged to `dev`** (#137, ADR-021, CR-260907-wireguard-peers); live-validated PASS on rb4011 (2 peers) + zero phantom entities on non-WG routers 2026-09-08; shipping in **v2.3.22-beta.1**.
 > 3. **librouteros cap-lift** — `ENH-260512-librouteros-test-matrix`: 3.4.1 / latest-3.x / expected-fail-4.x CI matrix, then lift `manifest` to `>=4.0,<5` (the floor-bump is the **v2.4.0** trigger).
 > 4. **Gold/Platinum** — `reconfiguration-flow` (Gold) may be decoupled from the deferred coordinator decomposition; `strict-typing` (Platinum) stays gated on it (would-be ADR-016). Author a `quality_scale.yaml` to make the remaining gaps auditable.
 > 5. **Stale-debt sweep** — write the deferred `ISS-260512-librouteros-concurrency-adr` (Open, doc-only); reconcile stale statuses. **Operator-open:** `ISS-260712` history-scrub decision + `dev` branch-protection requiring the leak gate.
