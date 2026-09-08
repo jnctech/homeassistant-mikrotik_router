@@ -5789,9 +5789,7 @@ def test_wireguard_query_none_keeps_prior_state():
 
 def test_wireguard_rebuilt_fresh_drops_removed_peers():
     """ds is rebuilt each poll: a removed peer disappears rather than lingering."""
-    coordinator = make_coordinator(
-        api_responses={"/interface/wireguard/peers": [_peer(public_key="A"), _peer(public_key="B")]}
-    )
+    coordinator = make_coordinator(api_responses={"/interface/wireguard/peers": [_peer(public_key="A"), _peer(public_key="B")]})
     coordinator.get_wireguard_peers()
     assert set(coordinator.ds["wireguard_peers"].keys()) == {"A", "B"}
     coordinator.api.responses["/interface/wireguard/peers"] = [_peer(public_key="A")]
