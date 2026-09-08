@@ -4,6 +4,24 @@ Changes listed in reverse chronological order.
 
 ---
 
+## CR-260909-route-blackhole-attr — fix blackhole route attribute reading False (#139)
+
+**Date:** 2026-09-09
+**Branch:** `fix/route-blackhole-attr` → PR to `dev`
+**Status:** In Review
+
+### What changed
+- `custom_components/mikrotik_router/coordinator.py` — `get_route()` now collapses the bare `blackhole` flag to a real bool by key-presence (`entry["blackhole"] = "blackhole" in entry`) before `parse_api`.
+- `tests/test_coordinator.py` — added `_blackhole_route()` fixture mirroring the real librouteros wire shape and two regression tests (bare-flag→True, absent-key→False); corrected the `_route` helper docstring, which wrongly implied librouteros returns *all* flags as bools.
+
+### Why
+A blackhole (kill-switch) default route's `blackhole` attribute read `False` in HA though RouterOS flags it (#139). Root cause, confirmed against a live librouteros dump: `blackhole` is a **bare RouterOS flag** — the API delivers it as an empty-string word (`{'blackhole': ''}`) when set and omits the key entirely otherwise. `from_entry_bool` reads the empty string as neither truthy nor falsy and falls back to the default (`False`), so the flag never registered. The value-bearing flags (`active`/`dynamic`/`static`) arrive as genuine bools and were unaffected — the bug was field-specific, not a general `from_entry_bool` fault. The `active` failover signal was always correct, so this was attribute-accuracy only.
+
+### Verification
+- Root cause captured from live rb4011 debug dump: blackhole route `{'blackhole': '', ...}` (no `active`, no `gateway`); both non-blackhole defaults carry no `blackhole` key — so presence-detection is sound.
+- csr310 inactive-default `distance=""` re-verified correct-by-design (a disabled route has no `distance` key at the router).
+- Full suite **760 passed** (was 758, +2); ruff 0.9.0 format + check clean; homelab-leak gate clean.
+
 ## CR-260908-release-v2.3.22-beta.1 — cut v2.3.22-beta.1 pre-release
 
 **Date:** 2026-09-08

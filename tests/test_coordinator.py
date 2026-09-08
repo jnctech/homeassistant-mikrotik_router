@@ -2829,7 +2829,15 @@ def test_netwatch_name_defaults_empty_when_absent_or_empty():
 
 
 def _route(dst="0.0.0.0/0", table="main", gateway="10.0.0.1", distance=1, active=True, **extra):
-    """Build a raw /ip/route source row (librouteros returns flags as bools)."""
+    """Build a raw /ip/route source row.
+
+    librouteros delivers the *value-bearing* flags (`active`, `dynamic`,
+    `static`, `inactive`) as genuine Python bools. It does NOT do so for the
+    *bare* flag `blackhole`: that arrives as an empty-string word when set and
+    is omitted otherwise — see `_blackhole_route` and #139 for the real wire
+    shape. Passing `blackhole=True` here is a convenience for the count/label
+    tests and does not mirror the wire.
+    """
     row = {
         ".id": extra.pop("id", f"*{table}{distance}"),
         "dst-address": dst,
@@ -2942,6 +2950,47 @@ def test_route_label_blackhole_has_no_gateway():
     coordinator = make_coordinator(api_responses={"/ip/route": [_route(table="wg_us", gateway="", distance=10, active=False, blackhole=True, id="*1")]})
     coordinator.get_route()
     assert coordinator.ds["route"]["wg_us:0.0.0.0/0::10"]["route-label"] == "wg_us blackhole"
+
+
+def _blackhole_route():
+    """The exact raw row librouteros returns for a blackhole kill-switch default,
+    captured from a live rb4011 dump (#139): `blackhole` is a bare flag word with
+    an empty-string value, `active` and `gateway` are omitted entirely, and the
+    value-bearing flags arrive as real bools."""
+    return {
+        ".id": "*80000032",
+        "dst-address": "0.0.0.0/0",
+        "routing-table": "wg_us",
+        "blackhole": "",  # bare flag: present-but-empty when set
+        "immediate-gw": "",
+        "distance": 10,
+        "dynamic": False,
+        "inactive": False,
+        "static": True,
+        "comment": "us fail closed (kill-switch)",
+    }
+
+
+def test_route_blackhole_bare_flag_parses_true():
+    """Regression for #139: the `blackhole` attribute must read True from the
+    real wire shape — a bare flag delivered as an empty string — where the old
+    parse (bool coercion of "") silently defaulted it to False. `active` is
+    absent on this route and must stay False (the kill-switch is inactive)."""
+    coordinator = make_coordinator(api_responses={"/ip/route": [_blackhole_route()]})
+    coordinator.get_route()
+    row = coordinator.ds["route"]["wg_us:0.0.0.0/0::10"]
+    assert row["blackhole"] is True
+    assert row["active"] is False
+    assert row["gateway"] == ""
+    assert row["route-label"] == "us fail closed (kill-switch)"
+
+
+def test_route_blackhole_absent_key_parses_false():
+    """A normal default route carries no `blackhole` key at all; presence-detection
+    must not manufacture a True from its absence (#139)."""
+    coordinator = make_coordinator(api_responses={"/ip/route": [_route(table="main", gateway="10.0.0.1", id="*1")]})
+    coordinator.get_route()
+    assert coordinator.ds["route"]["main:0.0.0.0/0:10.0.0.1:1"]["blackhole"] is False
 
 
 def test_route_rebuilt_fresh_drops_withdrawn_routes():
