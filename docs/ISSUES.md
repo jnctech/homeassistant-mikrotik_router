@@ -11,7 +11,7 @@
 > **Release validated.** Fresh `/validate-live-sensors` on the deployed beta.2 (2026-09-07): **501 integration entities**, every sensor class cross-checked against router ground-truth within tolerance, **0 phantom LTE entities**; bad-state set benign (documented orphans + by-design `unknown`). Stable == beta.2 code + version bump only. Internal report in gitignored config docs.
 >
 > **NEXT SESSION (lead):**
-> 1. **Route monitoring (`ENH-260907-route-monitoring`, FEATURE-POLL B4)** — user-voted. Surface `/ip/route`: active/default-route presence + gateway reachability for multi-WAN failover awareness. Scope + capability gate + ADR before coding.
+> 1. **Route monitoring (`ENH-260907-route-monitoring`, FEATURE-POLL B4)** — 🟠 **implemented** on `feature/route-monitoring` (ADR-020, CR-260907-route-monitoring), PR to `dev`; 20 tests green. Remaining: live validation on RB4011/CRS310/single-table at release time.
 > 2. **WireGuard peer sensors (`ENH-260703-wireguard-sensors`, FEATURE-POLL B2)** — operator-requested. Per-peer state from `/interface/wireguard/peers` (last-handshake→connected/stale, endpoint, per-peer rx/tx); today only interface-level tx/rx exists. Scope keying (`public-key`), capability gate, ADR-021, redaction — see the ENH entry.
 > 3. **librouteros cap-lift** — `ENH-260512-librouteros-test-matrix`: 3.4.1 / latest-3.x / expected-fail-4.x CI matrix, then lift `manifest` to `>=4.0,<5` (the floor-bump is the **v2.4.0** trigger).
 > 4. **Gold/Platinum** — `reconfiguration-flow` (Gold) may be decoupled from the deferred coordinator decomposition; `strict-typing` (Platinum) stays gated on it (would-be ADR-016). Author a `quality_scale.yaml` to make the remaining gaps auditable.
@@ -50,7 +50,7 @@
 **Type:** Enhancement
 **Priority:** Medium
 **Created:** 2026-09-07
-**Status:** 🟡 Planned — user-voted (FEATURE-POLL B4). **[ADR-020](decisions/ADR-020-route-monitoring.md) Accepted** (design agreed with the maintainer 2026-09-07); ready to implement. **v1 scope:** per-default-route `binary_sensor` (`active` flag) + active-default-count `sensor` per routing-table; opt-in `CONF_SENSOR_ROUTE`; composite UID (`routing-table`+`dst-address`+`gateway`+`distance`, not `.id`); client-side default-route filter. Non-default watch-list deferred to v2. See ADR-020 for the implementation checklist.
+**Status:** 🟠 In Review — implemented on `feature/route-monitoring` (CR-260907-route-monitoring), PR to `dev`. **[ADR-020](decisions/ADR-020-route-monitoring.md) Accepted.** **v1 shipped:** per-default-route `binary_sensor` (`active` flag) + active-default-count `sensor` per routing-table; opt-in `CONF_SENSOR_ROUTE`; composite UID (`routing-table`+`dst-address`+`gateway`+`distance`, not `.id`); client-side default-route filter; `uniq-id`/`route-label` redacted in diagnostics. 20 unit/golden tests, suite green. Non-default watch-list deferred to v2. **Remaining gate:** live validation on RB4011 (policy routing + blackhole) / CRS310 (2 defaults) / single-table device at release time (ADR-020 test plan).
 
 **Ask:**
 A user voted for route monitoring in the feature poll (B4). Surface RouterOS `/ip/route` state in Home Assistant for multi-WAN / failover awareness ("WAN1 route disappeared, traffic on WAN2").

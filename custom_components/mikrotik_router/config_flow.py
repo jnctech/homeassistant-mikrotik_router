@@ -70,6 +70,8 @@ from .const import (
     DEFAULT_SENSOR_RAW,
     CONF_SENSOR_CONTAINER,
     DEFAULT_SENSOR_CONTAINER,
+    CONF_SENSOR_ROUTE,
+    DEFAULT_SENSOR_ROUTE,
 )
 from .mikrotikapi import MikrotikAPI
 
@@ -320,6 +322,10 @@ class MikrotikControllerOptionsFlowHandler(OptionsFlowWithConfigEntry):
                     vol.Optional(
                         CONF_SENSOR_CONTAINER,
                         default=self._options.get(CONF_SENSOR_CONTAINER, DEFAULT_SENSOR_CONTAINER),
+                    ): bool,
+                    vol.Optional(
+                        CONF_SENSOR_ROUTE,
+                        default=self._options.get(CONF_SENSOR_ROUTE, DEFAULT_SENSOR_ROUTE),
                     ): bool,
                 },
             ),

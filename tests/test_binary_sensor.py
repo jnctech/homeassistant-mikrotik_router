@@ -260,3 +260,41 @@ class TestLTEConnectionBinarySensor:
             },
         )
         assert entity.icon == "mdi:signal-off"
+
+
+# ---------------------------------------------------------------------------
+# Route monitoring binary_sensor (ADR-020)
+# ---------------------------------------------------------------------------
+
+
+class TestRouteBinarySensor:
+    def test_descriptor_pins(self):
+        """The route sensor is a per-default-route CONNECTIVITY binary_sensor
+        reading `active` out of ds['route'], keyed by the stable composite."""
+        desc = next(s for s in SENSOR_TYPES if s.key == "route")
+        assert desc.device_class == BinarySensorDeviceClass.CONNECTIVITY
+        assert desc.data_path == "route"
+        assert desc.data_attribute == "active"
+        assert desc.data_reference == "uniq-id"
+        assert desc.ha_group == "Routing"
+
+    _ROUTE_OVERRIDES = {
+        "data_path": "route",
+        "data_attribute": "active",
+        "data_name": "route-label",
+        "data_reference": "uniq-id",
+    }
+
+    def test_is_on_true_when_active(self):
+        uid = "main:0.0.0.0/0:10.0.0.1:1"
+        coord = make_mock_coordinator()
+        coord.data["route"] = {uid: {"uniq-id": uid, "route-label": "main via 10.0.0.1", "active": True}}
+        entity = _make_binary_sensor(coordinator=coord, desc_overrides=self._ROUTE_OVERRIDES, uid=uid)
+        assert entity.is_on is True
+
+    def test_is_on_false_when_route_withdrawn(self):
+        uid = "main:0.0.0.0/0:10.0.0.1:1"
+        coord = make_mock_coordinator()
+        coord.data["route"] = {uid: {"uniq-id": uid, "route-label": "main via 10.0.0.1", "active": False}}
+        entity = _make_binary_sensor(coordinator=coord, desc_overrides=self._ROUTE_OVERRIDES, uid=uid)
+        assert entity.is_on is False

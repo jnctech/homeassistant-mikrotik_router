@@ -2824,6 +2824,180 @@ def test_netwatch_name_defaults_empty_when_absent_or_empty():
 
 
 # ---------------------------------------------------------------------------
+# Group AZ: get_route() — default-route monitoring (ADR-020)
+# ---------------------------------------------------------------------------
+
+
+def _route(dst="0.0.0.0/0", table="main", gateway="10.0.0.1", distance=1, active=True, **extra):
+    """Build a raw /ip/route source row (librouteros returns flags as bools)."""
+    row = {
+        ".id": extra.pop("id", f"*{table}{distance}"),
+        "dst-address": dst,
+        "routing-table": table,
+        "gateway": gateway,
+        "distance": distance,
+        "active": active,
+    }
+    row.update(extra)
+    return row
+
+
+def test_route_filters_to_default_routes_only():
+    """Only 0.0.0.0/0 and ::/0 become rows; every non-default route is dropped
+    client-side so the coordinator never holds the full table (ADR-020)."""
+    coordinator = make_coordinator(
+        api_responses={
+            "/ip/route": [
+                _route(id="*1"),
+                _route(dst="192.168.88.0/24", id="*2"),  # connected LAN route — excluded
+                _route(dst="10.5.0.0/16", table="main", id="*3"),  # static non-default — excluded
+                _route(dst="::/0", gateway="fe80::1", id="*4"),  # IPv6 default — included
+            ],
+        }
+    )
+    coordinator.get_route()
+    dsts = {row["dst-address"] for row in coordinator.ds["route"].values()}
+    assert dsts == {"0.0.0.0/0", "::/0"}
+
+
+def test_route_dict_keyed_by_composite_not_id():
+    """The ds['route'] key IS the routing-table:dst:gateway:distance composite,
+    not the unstable RouterOS .id. The dict key is what the entity binds to as
+    its uid, so it must be the stable value (ADR-020 §4)."""
+    coordinator = make_coordinator(api_responses={"/ip/route": [_route(table="wg_us", gateway="wg-us", distance=1, id="*7")]})
+    coordinator.get_route()
+    assert set(coordinator.ds["route"].keys()) == {"wg_us:0.0.0.0/0:wg-us:1"}
+    row = coordinator.ds["route"]["wg_us:0.0.0.0/0:wg-us:1"]
+    assert row["uniq-id"] == "wg_us:0.0.0.0/0:wg-us:1"
+
+
+def test_route_entity_binding_survives_id_reassignment():
+    """A dynamic default route renews (PPPoE/DHCP) and RouterOS hands it a new
+    .id, but routing-table/dst/gateway/distance are unchanged: the ds key stays
+    constant, so the entity's uid binding does not break. This is the failure
+    ADR-020 §4 forbids — keying on .id would freeze the entity here."""
+    coordinator = make_coordinator(api_responses={"/ip/route": [_route(table="main", gateway="10.0.0.1", id="*1")]})
+    coordinator.get_route()
+    first_keys = set(coordinator.ds["route"].keys())
+
+    # Next poll: identical route, reassigned .id, and it has just gone inactive.
+    coordinator.api.responses["/ip/route"] = [_route(table="main", gateway="10.0.0.1", id="*9", active=False)]
+    coordinator.get_route()
+    assert set(coordinator.ds["route"].keys()) == first_keys  # binding preserved
+    assert coordinator.ds["route"]["main:0.0.0.0/0:10.0.0.1:1"]["active"] is False
+
+
+def test_route_per_table_active_default_count():
+    """The count sensor tallies active defaults per routing-table — the multi-WAN
+    signal. Inactive defaults are not counted."""
+    coordinator = make_coordinator(
+        api_responses={
+            "/ip/route": [
+                _route(table="main", gateway="10.0.0.1", active=True, id="*1"),
+                _route(table="wg_us", gateway="wg-us", active=True, distance=1, id="*2"),
+                _route(table="wg_us", gateway="", distance=10, active=False, blackhole=True, id="*3"),
+            ]
+        }
+    )
+    coordinator.get_route()
+    tables = coordinator.ds["route_table"]
+    assert tables["main"]["active-default-count"] == 1
+    assert tables["wg_us"]["active-default-count"] == 1  # blackhole is inactive
+
+
+def test_route_ecmp_two_active_defaults_same_table():
+    """Dual-uplink (ECMP): two active defaults in one table count as 2 and stay
+    distinct entities via their gateway-bearing composite (ADR-020)."""
+    coordinator = make_coordinator(
+        api_responses={
+            "/ip/route": [
+                _route(table="main", gateway="10.0.0.1", id="*1"),
+                _route(table="main", gateway="10.0.1.1", id="*2"),
+            ]
+        }
+    )
+    coordinator.get_route()
+    assert coordinator.ds["route_table"]["main"]["active-default-count"] == 2
+    uids = {row["uniq-id"] for row in coordinator.ds["route"].values()}
+    assert uids == {"main:0.0.0.0/0:10.0.0.1:1", "main:0.0.0.0/0:10.0.1.1:1"}
+
+
+def test_route_label_prefers_comment():
+    """route-label uses the user's route comment when set."""
+    coordinator = make_coordinator(api_responses={"/ip/route": [_route(comment="Primary WAN", id="*1")]})
+    coordinator.get_route()
+    assert coordinator.ds["route"]["main:0.0.0.0/0:10.0.0.1:1"]["route-label"] == "Primary WAN"
+
+
+def test_route_label_composes_table_and_gateway_without_comment():
+    """No comment -> '{routing-table} via {gateway}'."""
+    coordinator = make_coordinator(api_responses={"/ip/route": [_route(table="wg_us", gateway="wg-us", comment="", id="*1")]})
+    coordinator.get_route()
+    assert coordinator.ds["route"]["wg_us:0.0.0.0/0:wg-us:1"]["route-label"] == "wg_us via wg-us"
+
+
+def test_route_label_blackhole_has_no_gateway():
+    """A blackhole kill-switch route has no gateway, so it is labelled by table,
+    not 'via <empty>' (ADR-020)."""
+    coordinator = make_coordinator(api_responses={"/ip/route": [_route(table="wg_us", gateway="", distance=10, active=False, blackhole=True, id="*1")]})
+    coordinator.get_route()
+    assert coordinator.ds["route"]["wg_us:0.0.0.0/0::10"]["route-label"] == "wg_us blackhole"
+
+
+def test_route_rebuilt_fresh_drops_withdrawn_routes():
+    """ds['route'] is rebuilt each poll: a withdrawn default disappears (and its
+    count drops) rather than lingering stale (ADR-020)."""
+    coordinator = make_coordinator(
+        api_responses={
+            "/ip/route": [
+                _route(table="main", gateway="10.0.0.1", id="*1"),
+                _route(table="main", gateway="10.0.1.1", id="*2"),
+            ]
+        }
+    )
+    coordinator.get_route()
+    assert coordinator.ds["route_table"]["main"]["active-default-count"] == 2
+
+    # Second poll: the backup uplink route is gone.
+    coordinator.api.responses["/ip/route"] = [_route(table="main", gateway="10.0.0.1", id="*1")]
+    coordinator.get_route()
+    assert len(coordinator.ds["route"]) == 1
+    assert coordinator.ds["route_table"]["main"]["active-default-count"] == 1
+
+
+def test_route_missing_routing_table_defaults_to_main():
+    """RouterOS v6 / single-table gear omits routing-table; default it to 'main'."""
+    coordinator = make_coordinator(api_responses={"/ip/route": [{".id": "*1", "dst-address": "0.0.0.0/0", "gateway": "10.0.0.1", "active": True}]})
+    coordinator.get_route()
+    # No routing-table and no distance in the source -> "main" default, empty distance.
+    row = coordinator.ds["route"]["main:0.0.0.0/0:10.0.0.1:"]
+    assert row["routing-table"] == "main"
+    assert coordinator.ds["route_table"]["main"]["active-default-count"] == 1
+
+
+def test_route_empty_table_yields_no_entities():
+    """No routes at all -> empty dicts, no crash."""
+    coordinator = make_coordinator(api_responses={"/ip/route": []})
+    coordinator.get_route()
+    assert coordinator.ds["route"] == {}
+    assert coordinator.ds["route_table"] == {}
+
+
+def test_route_query_none_keeps_prior_state():
+    """A transient disconnect makes query() return None; get_route must keep the
+    prior route state and not crash on a None iteration (mirrors get_neighbor)."""
+    coordinator = make_coordinator()
+    coordinator.ds["route"] = {"*1": {"active": True, "uniq-id": "main:0.0.0.0/0:10.0.0.1:1"}}
+    coordinator.ds["route_table"] = {"main": {"routing-table": "main", "active-default-count": 1}}
+    coordinator.api.query = MagicMock(return_value=None)
+
+    coordinator.get_route()  # must not raise
+
+    assert coordinator.ds["route"] == {"*1": {"active": True, "uniq-id": "main:0.0.0.0/0:10.0.0.1:1"}}
+    assert coordinator.ds["route_table"]["main"]["active-default-count"] == 1
+
+
+# ---------------------------------------------------------------------------
 # Group AA: get_system_routerboard() — routerboard parsing
 # ---------------------------------------------------------------------------
 

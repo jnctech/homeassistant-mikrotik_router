@@ -488,3 +488,37 @@ def test_poe_energy_update_skips_when_uid_missing():
     sensor._handle_coordinator_update()
     assert sensor.native_value == before
     sensor.async_write_ha_state.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# Route monitoring: per-table active-default-count sensor (ADR-020)
+# ---------------------------------------------------------------------------
+
+
+def test_route_count_descriptor_pins():
+    """The count sensor tallies active default routes per routing-table, keyed
+    by routing-table and composing its name so per-table sensors stay distinct."""
+    desc = next(s for s in SENSOR_TYPES if s.key == "route_active_defaults")
+    assert desc.data_path == "route_table"
+    assert desc.data_attribute == "active-default-count"
+    assert desc.data_reference == "routing-table"
+    assert desc.data_name_compose is True
+    assert desc.state_class == SensorStateClass.MEASUREMENT
+    assert desc.ha_group == "Routing"
+
+
+def test_route_count_native_value():
+    """native_value returns the active-default count for the table."""
+    desc = _description(
+        key="route_active_defaults",
+        data_path="route_table",
+        data_attribute="active-default-count",
+        data_name="routing-table",
+        data_reference="routing-table",
+    )
+    sensor = _build_sensor(
+        {"route_table": {"wg_us": {"routing-table": "wg_us", "active-default-count": 1}}},
+        desc,
+        uid="wg_us",
+    )
+    assert sensor.native_value == 1
