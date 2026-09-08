@@ -20,6 +20,7 @@
 > **Tooling:** pytest runs via **CI** (push to a PR triggers the matrix; feature-branch pushes don't). `manifest.json` is CRLF — Edit the version line, don't python-rewrite. Session/tooling specifics (shell, deploy target, test runner) live in gitignored `docs/internal/`, never in this tracked file.
 >
 > **Open threads (durable):**
+> - **`ISS-260907-route-blackhole-attr`** ([#139](https://github.com/jnctech/homeassistant-mikrotik_router/issues/139)) — Filed/Low. A blackhole default route's `blackhole` attribute reads `False` in HA though RouterOS flags it; the `active` failover signal is correct. Root cause narrowed to `from_entry_bool`/librouteros bool encoding (absent field vs unrecognised `"true"` string) — needs a raw `/ip/route` dump to disambiguate before fixing. Also verify the inactive default parsed `distance=""`. See ADR-020.
 > - **`ENH-260615-netwatch-host-key-collision`** — Filed/deferred (same-host probe collapse; needs `.id` re-key + unique_id migration). **`ISS-260616-test-fixture-subnet`** — Filed/Low (test_coordinator fixtures use the maintainer's real management subnet; guard excludes tests).
 > - **Upstream-ported enhancements:** `ENH-260614-sfp-temperature` ([tomaae#499], Low — hardware-gated) · `ENH-260614-lte-modem-info` ([tomaae#249], Medium — needs LTE hardware/contributor).
 > - **Test-catch hardening:** deprecation-as-failure `setup_integration` test (folded into `ENH-260608` goldens) + `ENH-260614-ha-canary-ci` (non-blocking HA-latest lane).
