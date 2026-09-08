@@ -13,6 +13,7 @@ from custom_components.mikrotik_router.apiparser import (
 from custom_components.mikrotik_router.coordinator import (
     MikrotikCoordinator,
     _parse_uptime_to_seconds,
+    _port_mac_for_virtual_iface,
     as_local,
     utc_from_timestamp,
 )
@@ -2046,6 +2047,61 @@ def test_interface_virtual_interface_naming():
     iface = coordinator.ds["interface"]["vlan100"]
     assert iface["default-name"] == "vlan100"
     assert "vlan100" in iface["port-mac-address"]
+
+
+def test_port_mac_for_virtual_iface_dummy_and_empty():
+    """Dummy/empty MACs are serial-prefixed; real MACs keep the hardware address."""
+    assert _port_mac_for_virtual_iface("00:00:00:00:00:00", "lo", "HGR1234567") == "HGR1234567-lo"
+    assert _port_mac_for_virtual_iface("", "wireguard1", "HGR1234567") == "HGR1234567-wireguard1"
+    assert _port_mac_for_virtual_iface(None, "pppoe-out1", "HGR1234567") == "HGR1234567-pppoe-out1"
+    assert _port_mac_for_virtual_iface("AA:BB:CC:DD:EE:01", "vlan100", "HGR1234567") == "AA:BB:CC:DD:EE:01-vlan100"
+
+
+def test_interface_loopback_dummy_mac_uses_serial():
+    """lo always reports 00:00:00:00:00:00; port-mac must include the router serial."""
+    coordinator = make_coordinator(
+        options={CONF_SENSOR_PORT_TRAFFIC: False},
+        api_responses={
+            "/interface": [
+                {
+                    ".id": "*1",
+                    "name": "lo",
+                    "type": "loopback",
+                    "disabled": False,
+                    "mac-address": "00:00:00:00:00:00",
+                }
+            ],
+            "/interface/ethernet": [],
+        },
+    )
+    coordinator.ds["routerboard"]["serial-number"] = "HGR1234567"
+    coordinator.get_interface()
+    iface = coordinator.ds["interface"]["lo"]
+    assert iface["default-name"] == "lo"
+    assert iface["port-mac-address"] == "HGR1234567-lo"
+
+
+def test_interface_empty_mac_tunnel_uses_serial():
+    """Tunnels with an empty MAC are serial-prefixed so they do not collide across routers."""
+    coordinator = make_coordinator(
+        options={CONF_SENSOR_PORT_TRAFFIC: False},
+        api_responses={
+            "/interface": [
+                {
+                    ".id": "*1",
+                    "name": "wireguard1",
+                    "type": "wg",
+                    "disabled": False,
+                    "mac-address": "",
+                }
+            ],
+            "/interface/ethernet": [],
+        },
+    )
+    coordinator.ds["routerboard"]["serial-number"] = "HGR1234567"
+    coordinator.get_interface()
+    iface = coordinator.ds["interface"]["wireguard1"]
+    assert iface["port-mac-address"] == "HGR1234567-wireguard1"
 
 
 def test_interface_bonding_detected():
