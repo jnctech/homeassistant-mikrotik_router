@@ -10,11 +10,11 @@ Monitor and control your MikroTik router from Home Assistant.
 
 ![Mikrotik Logo](https://raw.githubusercontent.com/tomaae/homeassistant-mikrotik_router/master/docs/assets/images/ui/header.png)
 
-### What's new in v2.3.22-beta.1
-Pre-release adding two opt-in monitoring features (off by default), live-validated on a four-router fleet.
+### What's new in v2.3.22-rc.1
+Release candidate adding two opt-in monitoring features (off by default), live-validated on a four-router fleet. Supersedes v2.3.22-beta.1 with the blackhole-attribute fix.
 - **Default-route monitoring** — per-default-route `active` binary_sensor + per-table active-default count, for multi-WAN failover awareness. Correct under policy routing + ECMP; blackhole kill-switch routes read inactive. Enable **Default route monitoring sensors**. FEATURE-POLL B4. See ADR-020.
 - **WireGuard peer sensors** — per-peer `connected` (from handshake recency), a stable last-handshake timestamp, and RX/TX totals. Only on routers with WireGuard; peer keys redacted, public-key sensor disabled by default. Enable **WireGuard peer sensors**. FEATURE-POLL B2. See ADR-021.
-- Known issue: blackhole route `blackhole` attribute reads False (#139) — low impact; `active` signal correct.
+- **Blackhole attribute fix** — a blackhole route's `blackhole` attribute now reads correctly (#139); RouterOS delivers it as a bare flag over the API, now presence-detected. The `active` signal was always correct.
 
 ### What's new in v2.3.21
 Stable release rolling up the v2.3.21 beta cycle (beta.1–beta.2). Two contributor-driven additions + an integration-wide reliability fix, live-validated on a four-controller deployment; the LTE sensors confirmed on real modem hardware by the contributor.

@@ -4,6 +4,23 @@ Changes listed in reverse chronological order.
 
 ---
 
+## CR-260909-release-v2.3.22-rc.1 — cut v2.3.22-rc.1 release candidate
+
+**Date:** 2026-09-09
+**Branch:** `chore/release-v2.3.22-rc.1` → PR to `dev`
+**Status:** In Review
+
+### What changed
+- `custom_components/mikrotik_router/manifest.json` — version `2.3.22-beta.1` → `2.3.22-rc.1`.
+- `README.md`, `info.md` — "What's New" heading rolled to `v2.3.22-rc.1`; the beta's blackhole known-issue line replaced with the fix note.
+
+### Why
+Roll the #139 blackhole-attribute fix (CR-260909-route-blackhole-attr, merged to `dev` in #142) into a release candidate off `dev`. RC supersedes v2.3.22-beta.1 — same two opt-in features (route monitoring ADR-020, WireGuard peers ADR-021) with the one attribute-accuracy fix, no other behaviour delta.
+
+### Verification
+- `dev` full suite green (760) at the merge of #142; CI matrix (3.13 + 3.14) green on the release PR.
+- release.yml builds the HACS zip + SBOM on publish of the `v2.3.22-rc.1` tag (pre-release).
+
 ## CR-260909-route-blackhole-attr — fix blackhole route attribute reading False (#139)
 
 **Date:** 2026-09-09
