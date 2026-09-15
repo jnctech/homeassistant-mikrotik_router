@@ -13,6 +13,7 @@ from .const import (
 )
 
 import librouteros
+from librouteros.exceptions import MultiTrapError, TrapError
 from librouteros.login import plain as _login_plain, token as _login_token
 
 _LOGGER = logging.getLogger(__name__)
@@ -59,6 +60,7 @@ class MikrotikAPI:
         self.connection_error_reported = False
         self.client_traffic_last_run: int | None = None
         self.disable_health = False
+        self._refused_commands: set[str] = set()
 
         if not self._port:
             self._port = 8729 if self._use_ssl else 8728
@@ -78,6 +80,31 @@ class MikrotikAPI:
             if not self.connect():
                 return False
         return True
+
+    def _handle_call_error(self, location: str, error: Exception) -> None:
+        """Deal with an exception raised by an API call.
+
+        librouteros raises TrapError for a `!trap` reply, which is the router
+        declining one command while the session stays up. A device answers that
+        way for a menu it does not implement, or for hardware a command needs
+        and this board does not have. Dropping the connection over a declined
+        command takes every entity of the integration down with it, and on the
+        first poll after a restart it stops the config entry from loading at
+        all. Anything other than a trap is a transport failure and still
+        disconnects.
+
+        See ADR-NEXT-trap-is-not-a-disconnect.
+        """
+        if isinstance(error, (TrapError, MultiTrapError)):
+            key = f"{location}:{error}"
+            if key in self._refused_commands:
+                _LOGGER.debug("Mikrotik %s refused %s : %s", self._host, location, error)
+            else:
+                self._refused_commands.add(key)
+                _LOGGER.warning("Mikrotik %s refused %s : %s", self._host, location, error)
+            return
+
+        self.disconnect(location, error)
 
     def disconnect(self, location: str = "unknown", error: object = None) -> None:
         """Disconnect from Mikrotik device."""
@@ -181,7 +208,7 @@ class MikrotikAPI:
                 _LOGGER.debug("API query: %s", path)
                 response = self._connection.path(path)
             except Exception as e:
-                self.disconnect("path", e)
+                self._handle_call_error(f"opening path {path}", e)
                 return None
 
             if command:
@@ -199,7 +226,7 @@ class MikrotikAPI:
             if path == "/system/health" and "no such command prefix" in str(e):
                 self.disable_health = True
                 return None
-            self.disconnect(f"building list for path {path}", e)
+            self._handle_call_error(f"building list for path {path}", e)
             return None
 
     def _query_command(self, response, path: str, command: str, args: dict) -> list | None:
@@ -208,7 +235,7 @@ class MikrotikAPI:
         try:
             return list(response(command, **args)) or None
         except Exception as e:
-            self.disconnect("path", e)
+            self._handle_call_error(f"command {command} on path {path}", e)
             return None
 
     @staticmethod
@@ -248,7 +275,7 @@ class MikrotikAPI:
                     return False
                 response.update(**{".id": entry_found, mod_param: mod_value})
             except Exception as e:
-                self.disconnect("set_value", e)
+                self._handle_call_error("set_value", e)
                 return False
 
         return True
@@ -290,7 +317,7 @@ class MikrotikAPI:
 
                 tuple(response(command, **params))
             except Exception as e:
-                self.disconnect("execute", e)
+                self._handle_call_error("execute", e)
                 return False
 
         return True
@@ -314,7 +341,7 @@ class MikrotikAPI:
                 run = response("run", **{".id": entry_found})
                 tuple(run)
             except Exception as e:
-                self.disconnect("run_script", e)
+                self._handle_call_error("run_script", e)
                 return False
 
         return True
@@ -339,13 +366,13 @@ class MikrotikAPI:
             try:
                 ping = response("/ping", **args)
             except Exception as e:
-                self.disconnect("arp_ping", e)
+                self._handle_call_error("arp_ping", e)
                 return False
 
             try:
                 ping = list(ping)
             except Exception as e:
-                self.disconnect("arp_ping", e)
+                self._handle_call_error("arp_ping", e)
                 return False
 
         for tmp in ping:
@@ -395,13 +422,13 @@ class MikrotikAPI:
                 try:
                     take = accounting("snapshot/take")
                 except Exception as e:
-                    self.disconnect("accounting_snapshot", e)
+                    self._handle_call_error("accounting_snapshot", e)
                     return 0
 
                 try:
                     list(take)
                 except Exception as e:
-                    self.disconnect("accounting_snapshot", e)
+                    self._handle_call_error("accounting_snapshot", e)
                     return 0
 
         if not self.client_traffic_last_run:

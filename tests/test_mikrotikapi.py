@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import logging
 from unittest.mock import MagicMock, patch
+
+from librouteros.exceptions import TrapError
 
 from custom_components.mikrotik_router.mikrotikapi import MikrotikAPI
 
@@ -588,3 +591,92 @@ class TestConnectKwargs:
         _, kwargs = self._call(use_ssl=True)
         assert "ssl_wrapper" in kwargs
         assert "login_methods" not in kwargs
+
+
+# --- refused command (!trap) vs transport failure ---
+
+
+class TestRefusedCommand:
+    """A `!trap` reply refuses one command; it does not end the session.
+
+    RouterOS answers a command it will not run with a trap — a menu the board
+    does not implement, or hardware the command needs and this board lacks.
+    Disconnecting on it takes every entity of the integration down, and on the
+    first poll after a restart it stops the config entry from loading at all.
+    See ISS-260915 / ADR-NEXT-trap-is-not-a-disconnect.
+    """
+
+    REFUSAL = "failure: Firmware update is not supported on this device!"
+
+    def _connected_api(self) -> MikrotikAPI:
+        api = make_api()
+        api._connected = True
+        api._connection = MagicMock()
+        return api
+
+    def _refusing_path(self, api: MikrotikAPI) -> None:
+        """Make both the print and the command form of the path raise the trap."""
+        trap = TrapError(message=self.REFUSAL)
+        mock_path = MagicMock()
+        mock_path.__bool__ = MagicMock(return_value=True)
+        mock_path.__iter__ = MagicMock(side_effect=trap)
+        mock_path.side_effect = trap
+        api._connection.path.return_value = mock_path
+
+    def _refusals_logged(self, caplog) -> list[str]:
+        return [record.getMessage() for record in caplog.records if record.levelno == logging.WARNING and "refused" in record.getMessage()]
+
+    def test_refused_command_keeps_connection(self):
+        api = self._connected_api()
+        self._refusing_path(api)
+        assert api.query("/interface/lte", "firmware-upgrade", {".id": "*A"}) is None
+        assert api._connected is True
+
+    def test_refused_print_keeps_connection(self):
+        api = self._connected_api()
+        self._refusing_path(api)
+        assert api.query("/interface/wireguard") is None
+        assert api._connected is True
+
+    def test_refused_execute_keeps_connection(self):
+        api = self._connected_api()
+        self._refusing_path(api)
+        assert api.execute("/system/routerboard", "upgrade", None, None) is False
+        assert api._connected is True
+
+    def test_refused_arp_ping_keeps_connection(self):
+        api = self._connected_api()
+        self._refusing_path(api)
+        assert api.arp_ping("10.0.0.2", "bridge") is False
+        assert api._connected is True
+
+    def test_transport_failure_still_disconnects(self):
+        api = self._connected_api()
+        mock_path = MagicMock()
+        mock_path.__bool__ = MagicMock(return_value=True)
+        mock_path.side_effect = OSError("connection reset by peer")
+        api._connection.path.return_value = mock_path
+        assert api.query("/interface/lte", "firmware-upgrade", {".id": "*A"}) is None
+        assert api._connected is False
+
+    def test_refusal_names_the_command_and_path(self, caplog):
+        api = self._connected_api()
+        self._refusing_path(api)
+        with caplog.at_level(logging.WARNING):
+            api.query("/interface/lte", "firmware-upgrade", {".id": "*A"})
+        assert self._refusals_logged(caplog) == [f"Mikrotik 10.0.0.1 refused command firmware-upgrade on path /interface/lte : {self.REFUSAL}"]
+
+    def test_repeated_refusal_is_logged_once(self, caplog):
+        api = self._connected_api()
+        self._refusing_path(api)
+        with caplog.at_level(logging.WARNING):
+            api.query("/interface/lte", "firmware-upgrade", {".id": "*A"})
+            api.query("/interface/lte", "firmware-upgrade", {".id": "*A"})
+        assert len(self._refusals_logged(caplog)) == 1
+
+    def test_lock_released_after_refusal(self):
+        api = self._connected_api()
+        self._refusing_path(api)
+        api.query("/interface/lte", "firmware-upgrade", {".id": "*A"})
+        assert api.lock.acquire(timeout=1) is True
+        api.lock.release()
