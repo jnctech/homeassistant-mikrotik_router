@@ -538,6 +538,58 @@ def test_wireguard_rx_native_value():
 
 
 # ---------------------------------------------------------------------------
+# Live interface rates (ADR-022)
+# ---------------------------------------------------------------------------
+
+
+def test_live_traffic_descriptor_pins():
+    """Live-rate descriptors: bit/s DATA_RATE MEASUREMENT on the interface path."""
+    for key, attr in (("traffic_tx_live", "tx-live"), ("traffic_rx_live", "rx-live")):
+        desc = next(s for s in SENSOR_TYPES if s.key == key)
+        assert desc.device_class == SensorDeviceClass.DATA_RATE
+        assert desc.state_class == SensorStateClass.MEASUREMENT
+        assert desc.data_path == "interface"
+        assert desc.data_attribute == attr
+        assert desc.data_reference == "default-name"
+        assert desc.func == "MikrotikInterfaceTrafficSensor"
+        assert "rx-packets-per-second" in desc.data_attributes_list
+
+
+def test_live_traffic_native_value_reads_when_present():
+    """A populated rx-live/tx-live field surfaces as the sensor value."""
+    desc = _description(
+        key="traffic_rx_live",
+        data_path="interface",
+        data_attribute="rx-live",
+        data_name="default-name",
+        data_reference="default-name",
+    )
+    sensor = _build_sensor(
+        {"interface": {"ether1": {"default-name": "ether1", "rx-live": 277000.0}}},
+        desc,
+        uid="ether1",
+    )
+    assert sensor.native_value == 277000.0
+
+
+def test_live_traffic_native_value_unknown_when_no_data():
+    """A cleared (None) live field reads unknown, never stale (null-not-guess)."""
+    desc = _description(
+        key="traffic_tx_live",
+        data_path="interface",
+        data_attribute="tx-live",
+        data_name="default-name",
+        data_reference="default-name",
+    )
+    sensor = _build_sensor(
+        {"interface": {"wifi1": {"default-name": "wifi1", "tx-live": None}}},
+        desc,
+        uid="wifi1",
+    )
+    assert sensor.native_value is None
+
+
+# ---------------------------------------------------------------------------
 # Route monitoring: per-table active-default-count sensor (ADR-020)
 # ---------------------------------------------------------------------------
 

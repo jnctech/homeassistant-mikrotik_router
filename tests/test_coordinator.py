@@ -6108,3 +6108,195 @@ def test_wireguard_empty_source_no_phantom_entities():
     coordinator = make_coordinator(api_responses={"/interface/wireguard/peers": []})
     coordinator.get_wireguard_peers()
     assert coordinator.ds["wireguard_peers"] == {}
+
+
+# ---------------------------------------------------------------------------
+# Group AZ3: wifi package detection + wifi registration mapping + live rates (ADR-022)
+# ---------------------------------------------------------------------------
+
+
+def _wifi_packages(*enabled):
+    """Build a /system/package-style dict with the given packages enabled."""
+    return {name: {"enabled": True} for name in enabled}
+
+
+def test_has_wifi_package_recognises_qcom_be():
+    """wifi-qcom-be (hAP be3) is detected as a wifi package."""
+    coordinator = make_coordinator(major_fw_version=7)
+    assert coordinator._has_wifi_package(_wifi_packages("routeros", "wifi-qcom-be")) is True
+
+
+def test_has_wifi_package_recognises_mediatek():
+    """wifi-mediatek is detected as a wifi package."""
+    coordinator = make_coordinator(major_fw_version=7)
+    assert coordinator._has_wifi_package(_wifi_packages("routeros", "wifi-mediatek")) is True
+
+
+def test_has_wifi_package_still_recognises_known_variants():
+    """Previously known variants keep working."""
+    coordinator = make_coordinator(major_fw_version=7)
+    for pkg in ("wifi", "wifi-qcom", "wifi-qcom-ac"):
+        assert coordinator._has_wifi_package(_wifi_packages(pkg)) is True
+
+
+def test_capabilities_v7_qcom_be_selects_wifi_module():
+    """A be3-style package set (wifi-qcom-be) selects the wifi module explicitly."""
+    coordinator = make_coordinator(
+        major_fw_version=7,
+        api_responses={
+            "/system/package": [
+                {"name": "routeros", "disabled": False},
+                {"name": "wifi-qcom-be", "disabled": False},
+            ],
+            "/interface/lte": [],
+            "/interface/wireguard": [],
+        },
+    )
+    coordinator.host = "testhost"
+    coordinator.get_capabilities()
+    assert coordinator._wifimodule == "wifi"
+    assert coordinator.support_wireless is True
+    assert coordinator.support_capsman is False
+
+
+def test_wireless_hosts_wifi_schema_mapping():
+    """Wifi registration rows map signal/bps fields; signal aliases signal-strength."""
+    coordinator = make_coordinator(major_fw_version=7)
+    coordinator.host = "testhost"
+    coordinator._wifimodule = "wifi"
+    coordinator.api = MockMikrotikAPI(
+        responses={
+            "/interface/wifi/registration-table": [
+                {
+                    "mac-address": "AA:BB:CC:DD:EE:01",
+                    "interface": "wifi1",
+                    "ap": False,
+                    "uptime": "10m",
+                    "signal": "-44",
+                    "tx-rate": "65Mbps",
+                    "rx-rate": "72.2Mbps",
+                    "tx-bits-per-second": "1200",
+                    "rx-bits-per-second": "3400",
+                    "bytes": "123456",
+                    "band": "2ghz-n",
+                },
+            ],
+        }
+    )
+    coordinator.get_wireless_hosts()
+    wh = coordinator.ds["wireless_hosts"]["AA:BB:CC:DD:EE:01"]
+    assert wh["interface"] == "wifi1"
+    assert wh["signal"] == "-44"
+    assert wh["signal-strength"] == "-44"
+    assert wh["tx-bits-per-second"] == "1200"
+    assert wh["rx-bits-per-second"] == "3400"
+    assert wh["band"] == "2ghz-n"
+
+
+def test_wireless_hosts_legacy_signal_strength_wins():
+    """A legacy signal-strength value is never overwritten by the wifi alias."""
+    coordinator = make_coordinator(major_fw_version=6)
+    coordinator.host = "testhost"
+    coordinator._wifimodule = "wireless"
+    coordinator.api = MockMikrotikAPI(
+        responses={
+            "/interface/wireless/registration-table": [
+                {
+                    "mac-address": "AA:BB:CC:DD:EE:01",
+                    "interface": "wlan1",
+                    "signal-strength": "-65",
+                    "signal": "-44",
+                },
+            ],
+        }
+    )
+    coordinator.get_wireless_hosts()
+    assert coordinator.ds["wireless_hosts"]["AA:BB:CC:DD:EE:01"]["signal-strength"] == "-65"
+
+
+def test_wireless_hosts_empty_clears_stale():
+    """No registration rows clear the slot so departed clients linger never (stale-clear)."""
+    coordinator = make_coordinator(major_fw_version=7)
+    coordinator.host = "testhost"
+    coordinator._wifimodule = "wifi"
+    coordinator.api = MockMikrotikAPI(responses={"/interface/wifi/registration-table": []})
+    coordinator.ds["wireless_hosts"] = {"STALE": {"mac-address": "STALE"}}
+    coordinator.get_wireless_hosts()
+    assert coordinator.ds["wireless_hosts"] == {}
+
+
+def _live_coordinator(interfaces, monitor_rows):
+    """Build a coordinator with preset interfaces and canned monitor-traffic rows."""
+    coordinator = make_coordinator()
+    coordinator.host = "testhost"
+    coordinator.ds["interface"] = interfaces
+    coordinator.api = MockMikrotikAPI(responses={("/interface", "monitor-traffic"): monitor_rows})
+    return coordinator
+
+
+def test_live_traffic_happy_path():
+    """Monitor rows populate rx-live/tx-live plus pps/drops/errors as floats."""
+    coordinator = _live_coordinator(
+        {"ether1": {"default-name": "ether1", "name": "ether1", "type": "ether"}},
+        [
+            {
+                "rx-bits-per-second": "277000",
+                "tx-bits-per-second": 318000,
+                "rx-packets-per-second": "10",
+                "tx-packets-per-second": "12",
+                "rx-drops-per-second": "0",
+                "tx-drops-per-second": "0",
+                "rx-errors-per-second": "0",
+                "tx-errors-per-second": "0",
+            },
+        ],
+    )
+    coordinator.get_interface_live_traffic()
+    iface = coordinator.ds["interface"]["ether1"]
+    assert iface["rx-live"] == 277000.0
+    assert iface["tx-live"] == 318000.0
+    assert iface["rx-packets-per-second"] == 10.0
+    assert iface["tx-errors-per-second"] == 0.0
+
+
+def test_live_traffic_no_data_clears_to_none():
+    """A silent monitor call clears live fields to None (null-not-guess, no stale)."""
+    coordinator = _live_coordinator(
+        {"ether1": {"default-name": "ether1", "name": "ether1", "type": "ether", "rx-live": 5.0, "tx-live": 6.0}},
+        [],
+    )
+    coordinator.get_interface_live_traffic()
+    assert coordinator.ds["interface"]["ether1"]["rx-live"] is None
+    assert coordinator.ds["interface"]["ether1"]["tx-live"] is None
+
+
+def test_live_traffic_non_numeric_is_none():
+    """Non-numeric monitor tokens never become fabricated rates."""
+    coordinator = _live_coordinator(
+        {"wifi1": {"default-name": "wifi1", "name": "wifi1", "type": "wifi"}},
+        [{"rx-bits-per-second": "n/a", "tx-bits-per-second": ""}],
+    )
+    coordinator.get_interface_live_traffic()
+    assert coordinator.ds["interface"]["wifi1"]["rx-live"] is None
+    assert coordinator.ds["interface"]["wifi1"]["tx-live"] is None
+
+
+def test_live_traffic_skips_bridge():
+    """Bridge interfaces are left untouched by the live poll."""
+    coordinator = _live_coordinator(
+        {
+            "bridge1": {"default-name": "bridge1", "name": "bridge1", "type": "bridge", "rx-live": 5.0},
+            "ether1": {"default-name": "ether1", "name": "ether1", "type": "ether"},
+        },
+        [{"rx-bits-per-second": "100", "tx-bits-per-second": "200"}],
+    )
+    coordinator.get_interface_live_traffic()
+    assert coordinator.ds["interface"]["bridge1"]["rx-live"] == 5.0
+    assert coordinator.ds["interface"]["ether1"]["rx-live"] == 100.0
+
+
+def test_live_traffic_no_interfaces_is_noop():
+    """An empty interface map returns early without querying."""
+    coordinator = _live_coordinator({}, [{"rx-bits-per-second": "100"}])
+    coordinator.get_interface_live_traffic()
+    assert coordinator.ds["interface"] == {}

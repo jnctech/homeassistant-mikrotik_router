@@ -27,6 +27,7 @@ from custom_components.mikrotik_router.const import (
     CONF_SENSOR_POE,
     CONF_SENSOR_WIREGUARD,
     CONF_SENSOR_ROUTE,
+    CONF_SENSOR_LIVE_TRAFFIC,
 )
 from .conftest import (
     make_mock_coordinator,
@@ -530,6 +531,43 @@ def test_no_skip_traffic_sensor_on_ether_interface():
     assert _skip_sensor(cfg, desc, data, "ether1") is False
 
 
+def test_skip_live_traffic_sensor_when_option_disabled():
+    """Live-rate sensor is skipped when CONF_SENSOR_LIVE_TRAFFIC is False."""
+    desc = make_entity_desc(func="MikrotikInterfaceTrafficSensor", data_attribute="rx-live")
+    data = {"ether1": {"type": "ether"}}
+    cfg = make_config_entry({CONF_SENSOR_PORT_TRAFFIC: True, CONF_SENSOR_LIVE_TRAFFIC: False})
+
+    assert _skip_sensor(cfg, desc, data, "ether1") is True
+
+
+def test_no_skip_live_traffic_sensor_when_enabled():
+    """Live-rate sensor is created for ether/wifi when the live option is on."""
+    for uid, itype in (("ether1", "ether"), ("wifi1", "wifi")):
+        desc = make_entity_desc(func="MikrotikInterfaceTrafficSensor", data_attribute="tx-live")
+        data = {uid: {"type": itype}}
+        cfg = make_config_entry({CONF_SENSOR_PORT_TRAFFIC: False, CONF_SENSOR_LIVE_TRAFFIC: True})
+
+        assert _skip_sensor(cfg, desc, data, uid) is False
+
+
+def test_skip_live_traffic_sensor_on_bridge_interface():
+    """Live-rate sensor is skipped for bridge-type interfaces even when enabled."""
+    desc = make_entity_desc(func="MikrotikInterfaceTrafficSensor", data_attribute="rx-live")
+    data = {"bridge1": {"type": "bridge"}}
+    cfg = make_config_entry({CONF_SENSOR_LIVE_TRAFFIC: True})
+
+    assert _skip_sensor(cfg, desc, data, "bridge1") is True
+
+
+def test_averaged_traffic_unaffected_by_live_option():
+    """The averaged TX/RX sensors still gate on sensor_port_traffic only."""
+    desc = make_entity_desc(func="MikrotikInterfaceTrafficSensor", data_attribute="tx")
+    data = {"ether1": {"type": "ether"}}
+    cfg = make_config_entry({CONF_SENSOR_PORT_TRAFFIC: True, CONF_SENSOR_LIVE_TRAFFIC: False})
+
+    assert _skip_sensor(cfg, desc, data, "ether1") is False
+
+
 # ---------------------------------------------------------------------------
 # Port binary sensor tests
 # ---------------------------------------------------------------------------
@@ -542,6 +580,15 @@ def test_skip_port_binary_sensor_on_wlan_interface():
     cfg = make_config_entry({CONF_SENSOR_PORT_TRACKER: True})
 
     assert _skip_sensor(cfg, desc, data, "wlan1") is True
+
+
+def test_skip_port_binary_sensor_on_wifi_interface():
+    """Port binary sensor is skipped for wifi-type interfaces (be3, ADR-022)."""
+    desc = make_entity_desc(func="MikrotikPortBinarySensor")
+    data = {"wifi1": {"type": "wifi"}}
+    cfg = make_config_entry({CONF_SENSOR_PORT_TRACKER: True})
+
+    assert _skip_sensor(cfg, desc, data, "wifi1") is True
 
 
 def test_skip_port_binary_sensor_when_option_disabled():
@@ -888,6 +935,14 @@ def test_mixin_wlan_adds_wireless_attributes():
     assert "ssid" in attrs
     assert attrs["ssid"] == "MyWifi"
     assert "band" in attrs
+
+
+def test_mixin_wifi_adds_wireless_attributes():
+    """Wifi-type interface (be3) populates the same wireless attributes as wlan."""
+    entity = _ConcreteEntity({"type": "wifi", "ssid": "MyWifi", "band": "2ghz-ax"})
+    attrs = entity.extra_state_attributes
+    assert attrs["ssid"] == "MyWifi"
+    assert attrs["band"] == "2ghz-ax"
 
 
 def test_mixin_other_type_adds_no_type_specific_attributes():

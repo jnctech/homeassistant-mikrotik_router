@@ -74,6 +74,8 @@ from .const import (
     WIREGUARD_STALE_SECONDS,
     CONF_SENSOR_ROUTE,
     DEFAULT_SENSOR_ROUTE,
+    CONF_SENSOR_LIVE_TRAFFIC,
+    DEFAULT_SENSOR_LIVE_TRAFFIC,
 )
 from .apiparser import parse_api
 from .mikrotikapi import MikrotikAPI
@@ -499,6 +501,14 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
         return self.config_entry.options.get(CONF_SENSOR_ROUTE, DEFAULT_SENSOR_ROUTE)
 
     # ---------------------------
+    #   option_sensor_live_traffic
+    # ---------------------------
+    @property
+    def option_sensor_live_traffic(self):
+        """Config entry option for live interface rate sensors (monitor-traffic)."""
+        return self.config_entry.options.get(CONF_SENSOR_LIVE_TRAFFIC, DEFAULT_SENSOR_LIVE_TRAFFIC)
+
+    # ---------------------------
     #   option_sensor_scripts
     # ---------------------------
     @property
@@ -628,7 +638,7 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
 
     def _has_wifi_package(self, packages: dict) -> bool:
         """Check if a wifi package is enabled or version implies wifi module."""
-        if any(pkg in packages and packages[pkg]["enabled"] for pkg in ("wifi", "wifi-qcom", "wifi-qcom-ac")):
+        if any(pkg in packages and packages[pkg]["enabled"] for pkg in ("wifi", "wifi-qcom", "wifi-qcom-ac", "wifi-qcom-be", "wifi-mediatek")):
             return True
         # An explicitly enabled legacy `wireless` package wins over the
         # version heuristic: 7.13+ routers that still ship it are not on
@@ -753,6 +763,8 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
 
         for func in [self.get_system_health, self.get_dhcp_client, self.get_interface]:
             await self._run_if_enabled(func)
+
+        await self._run_if_enabled(self.get_interface_live_traffic, requires=self.option_sensor_live_traffic)
 
         if self.api.connected() and not self.ds["host_hass"]:
             await self.async_get_host_hass()
@@ -1003,6 +1015,63 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
                 iface[f"{direction}-previous"] = current
                 iface[f"{direction}-total"] = current
 
+    _LIVE_TRAFFIC_FIELDS = (
+        ("rx-live", "rx-bits-per-second"),
+        ("tx-live", "tx-bits-per-second"),
+        ("rx-packets-per-second", "rx-packets-per-second"),
+        ("tx-packets-per-second", "tx-packets-per-second"),
+        ("rx-drops-per-second", "rx-drops-per-second"),
+        ("tx-drops-per-second", "tx-drops-per-second"),
+        ("rx-errors-per-second", "rx-errors-per-second"),
+        ("tx-errors-per-second", "tx-errors-per-second"),
+    )
+
+    @staticmethod
+    def _to_float_or_none(value) -> float | None:
+        """Parse a monitor-traffic counter to float, None when absent/non-numeric."""
+        if value is None or isinstance(value, bool):
+            return None
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return None
+
+    def get_interface_live_traffic(self) -> None:
+        """Poll live per-interface rates via monitor-traffic (once=yes).
+
+        One `once=yes` call per non-bridge interface — the RouterOS live-rate
+        source the averaged /interface byte-counter delta cannot provide.
+        Runs only when the sensor_live_traffic opt-in is enabled (see
+        _async_update_data). Absent or non-numeric fields resolve to None
+        (null-not-guess) so the sensors read `unknown` instead of a stale or
+        fabricated value. See ADR-022.
+        """
+        if not self.ds.get("interface"):
+            _LOGGER.debug("Mikrotik %s monitor-traffic skipped: no interfaces", self.host)
+            return
+        for uid, iface in list(self.ds["interface"].items()):
+            if iface.get("type") == "bridge":
+                continue
+            name = iface.get("name") or uid
+            rows = self.api.query(
+                "/interface",
+                command="monitor-traffic",
+                args={"interface": name, "once": True},
+            )
+            if not rows:
+                _LOGGER.debug("Mikrotik %s monitor-traffic for %s returned no data", self.host, name)
+                for field, _source in self._LIVE_TRAFFIC_FIELDS:
+                    iface[field] = None
+                continue
+            row = rows[0] if isinstance(rows, list) else rows
+            if not isinstance(row, dict):
+                _LOGGER.debug("Mikrotik %s monitor-traffic for %s returned unexpected data", self.host, name)
+                for field, _source in self._LIVE_TRAFFIC_FIELDS:
+                    iface[field] = None
+                continue
+            for field, source in self._LIVE_TRAFFIC_FIELDS:
+                iface[field] = self._to_float_or_none(row.get(source))
+
     def get_neighbor(self) -> None:
         """Map interface name -> advertised neighbour board(s) via /ip/neighbor.
 
@@ -1147,6 +1216,14 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
                 {"name": "tx", "default": 0.0},
                 {"name": "rx-total", "default": 0.0},
                 {"name": "tx-total", "default": 0.0},
+                {"name": "rx-live", "default": None},
+                {"name": "tx-live", "default": None},
+                {"name": "rx-packets-per-second", "default": None},
+                {"name": "tx-packets-per-second", "default": None},
+                {"name": "rx-drops-per-second", "default": None},
+                {"name": "tx-drops-per-second", "default": None},
+                {"name": "rx-errors-per-second", "default": None},
+                {"name": "tx-errors-per-second", "default": None},
                 {"name": "poe-out-energy-delta-wh", "default": 0.0},
                 {"name": "poe-out-energy-source", "default": None},
                 {"name": "poe-out-energy-model", "default": None},
@@ -2869,10 +2946,23 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
     #   get_wireless_hosts
     # ---------------------------
     def get_wireless_hosts(self) -> None:
-        """Get wireless hosts data from Mikrotik"""
+        """Get wireless hosts data from Mikrotik.
+
+        Reads both the legacy `wireless` schema (signal-strength, tx-ccq)
+        and the wifi (wifi-qcom*, wifi-mediatek) schema (signal,
+        tx-bits-per-second, rx-bits-per-second, bytes). Wifi-only fields are
+        aliased onto the legacy names when the legacy field is absent so
+        downstream consumers keep working; absent stays absent
+        (null-not-guess). See ADR-022.
+        """
+        source = self.api.query(f"/interface/{self._wifimodule}/registration-table")
+        if not source:
+            _LOGGER.debug("Mikrotik %s /interface/%s/registration-table returned no data", self.host, self._wifimodule)
+            self.ds["wireless_hosts"] = {}
+            return
         self.ds["wireless_hosts"] = parse_api(
             data={},
-            source=self.api.query(f"/interface/{self._wifimodule}/registration-table"),
+            source=source,
             key="mac-address",
             vals=[
                 {"name": "mac-address"},
@@ -2880,11 +2970,19 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
                 {"name": "ap", "type": "bool"},
                 {"name": "uptime"},
                 {"name": "signal-strength"},
+                {"name": "signal"},
                 {"name": "tx-ccq"},
                 {"name": "tx-rate"},
                 {"name": "rx-rate"},
+                {"name": "tx-bits-per-second"},
+                {"name": "rx-bits-per-second"},
+                {"name": "bytes"},
+                {"name": "band"},
             ],
         )
+        for uid, host in self.ds["wireless_hosts"].items():
+            if not host.get("signal-strength") and host.get("signal"):
+                host["signal-strength"] = host["signal"]
 
     # ---------------------------
     #   _merge_capsman_hosts
