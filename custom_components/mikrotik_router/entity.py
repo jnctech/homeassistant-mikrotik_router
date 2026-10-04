@@ -36,7 +36,12 @@ from .const import (
     CONF_SENSOR_ROUTE,
     DEFAULT_SENSOR_ROUTE,
 )
-from .coordinator import MikrotikConfigEntry, MikrotikCoordinator, MikrotikTrackerCoordinator
+from .coordinator import (
+    MikrotikConfigEntry,
+    MikrotikCoordinator,
+    MikrotikTrackerCoordinator,
+    _iface_identity_serial,
+)
 from .helper import format_attribute
 from .iface_attributes import (
     DEVICE_ATTRIBUTES_IFACE_CLIENT,
@@ -326,6 +331,28 @@ def _interface_device_ident(serial: str, conn_val: str) -> str:
     return f"{serial}-{suffix}"
 
 
+def _virtual_iface_device_info(
+    inst: str,
+    serial: str,
+    ident: str,
+    dev_group: str,
+    board_name: str,
+    platform: str,
+) -> DeviceInfo:
+    """DeviceInfo for a dummy/empty-MAC virtual interface (ADR-007 extraction)."""
+    return DeviceInfo(
+        connections={(DOMAIN, ident)},
+        identifiers={(DOMAIN, ident)},
+        name=f"{inst} {dev_group}",
+        model=f"{board_name}",
+        manufacturer=f"{platform}",
+        via_device=(
+            DOMAIN,
+            f"{serial}",
+        ),
+    )
+
+
 # ---------------------------
 #   MikrotikEntity
 # ---------------------------
@@ -470,19 +497,18 @@ class MikrotikEntity(CoordinatorEntity[_MikrotikCoordinatorT], Entity):
             )
         else:
             serial = self.coordinator.data["routerboard"]["serial-number"]
+            identity = _iface_identity_serial(serial, self._config_entry.entry_id)
             conn_val = f"{dev_connection_value}"
-            if dev_connection == CONNECTION_NETWORK_MAC and not _real_network_mac(conn_val):
-                ident = _interface_device_ident(serial, conn_val)
-                return DeviceInfo(
-                    connections={(DOMAIN, ident)},
-                    identifiers={(DOMAIN, ident)},
-                    name=f"{self._inst} {dev_group}",
-                    model=f"{self.coordinator.data['resource']['board-name']}",
-                    manufacturer=f"{self.coordinator.data['resource']['platform']}",
-                    via_device=(
-                        DOMAIN,
-                        f"{serial}",
-                    ),
+            # Prefer the serial/entry prefix over hex sniffing so hex-shaped
+            # serial tokens are treated as DOMAIN identities, not MACs.
+            if dev_connection == CONNECTION_NETWORK_MAC and (conn_val.startswith(f"{identity}-") or not _real_network_mac(conn_val)):
+                return _virtual_iface_device_info(
+                    self._inst,
+                    serial,
+                    _interface_device_ident(identity, conn_val),
+                    dev_group,
+                    self.coordinator.data["resource"]["board-name"],
+                    self.coordinator.data["resource"]["platform"],
                 )
             return DeviceInfo(
                 connections={(dev_connection, conn_val)},

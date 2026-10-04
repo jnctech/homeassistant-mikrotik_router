@@ -12,6 +12,7 @@ from custom_components.mikrotik_router.apiparser import (
 )
 from custom_components.mikrotik_router.coordinator import (
     MikrotikCoordinator,
+    _iface_identity_serial,
     _parse_uptime_to_seconds,
     _port_mac_for_virtual_iface,
     as_local,
@@ -40,7 +41,7 @@ def make_coordinator(options=None, api_responses=None, major_fw_version=6):
 
     coordinator.ds = {
         "access": ["write", "policy", "reboot", "test"],
-        "routerboard": {},
+        "routerboard": {"serial-number": "unknown"},
         "resource": {},
         "health": {},
         "health7": {},
@@ -88,7 +89,9 @@ def make_coordinator(options=None, api_responses=None, major_fw_version=6):
 
     cfg = MagicMock()
     cfg.options = options or {}
+    cfg.entry_id = "test-entry-id"
     coordinator.config_entry = cfg
+    coordinator.name = "TestRouter"
 
     return coordinator
 
@@ -2102,6 +2105,37 @@ def test_interface_empty_mac_tunnel_uses_serial():
     coordinator.get_interface()
     iface = coordinator.ds["interface"]["wireguard1"]
     assert iface["port-mac-address"] == "HGR1234567-wireguard1"
+
+
+def test_iface_identity_serial_falls_back_for_chr_placeholders():
+    """CHR/x86 placeholders are not unique; entry_id closes the interface collision."""
+    assert _iface_identity_serial("HGR1234567", "entry-a") == "HGR1234567"
+    assert _iface_identity_serial("N/A", "entry-a") == "entry-a"
+    assert _iface_identity_serial("unknown", "entry-b") == "entry-b"
+    assert _iface_identity_serial("", "entry-c") == "entry-c"
+
+
+def test_interface_chr_placeholder_serial_uses_entry_id():
+    """Two CHR entries would collide on N/A-lo; entry_id makes port-mac unique."""
+    coordinator = make_coordinator(
+        options={CONF_SENSOR_PORT_TRAFFIC: False},
+        api_responses={
+            "/interface": [
+                {
+                    ".id": "*1",
+                    "name": "lo",
+                    "type": "loopback",
+                    "disabled": False,
+                    "mac-address": "00:00:00:00:00:00",
+                }
+            ],
+            "/interface/ethernet": [],
+        },
+    )
+    coordinator.ds["routerboard"]["serial-number"] = "N/A"
+    coordinator.config_entry.entry_id = "chr-entry-1"
+    coordinator.get_interface()
+    assert coordinator.ds["interface"]["lo"]["port-mac-address"] == "chr-entry-1-lo"
 
 
 def test_interface_bonding_detected():

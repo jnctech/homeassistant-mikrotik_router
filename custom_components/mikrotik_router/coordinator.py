@@ -144,6 +144,13 @@ _WIFI_FLAT_MAP = {
 }
 
 
+def _iface_identity_serial(serial: str, entry_id: str) -> str:
+    """Prefer routerboard serial; fall back to entry_id for CHR/x86 placeholders."""
+    if serial in ("", "N/A", "unknown"):
+        return entry_id
+    return serial
+
+
 def _port_mac_for_virtual_iface(mac: str | None, ifname: str, serial: str) -> str:
     """Build a per-router port-mac token for virtual interfaces.
 
@@ -1229,7 +1236,10 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
 
             if vals["default-name"] == "":
                 iface["default-name"] = vals["name"]
-                serial = self.ds.get("routerboard", {}).get("serial-number") or getattr(self, "name", None) or "unknown"
+                serial = _iface_identity_serial(
+                    self.ds["routerboard"]["serial-number"],
+                    self.config_entry.entry_id,
+                )
                 iface["port-mac-address"] = _port_mac_for_virtual_iface(vals.get("port-mac-address"), vals["name"], serial)
 
             if iface["type"] == "ether":

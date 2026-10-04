@@ -12,6 +12,7 @@ from custom_components.mikrotik_router.entity import (
     _skip_sensor,
     _real_network_mac,
     _interface_device_ident,
+    _virtual_iface_device_info,
     MikrotikEntity,
     MikrotikInterfaceEntityMixin,
 )
@@ -522,6 +523,41 @@ class TestDummyMacInterfaceDeviceInfo:
         assert info["connections"] == {(CONNECTION_NETWORK_MAC, "AA:BB:CC:DD:EE:01")}
         assert "identifiers" not in info
         assert info["via_device"] == (DOMAIN, "HGR1234567")
+
+    def test_hex_shaped_serial_prefix_uses_domain_not_mac(self):
+        """A hex-shaped serial must not be sniffed as CONNECTION_NETWORK_MAC."""
+        serial = "AE380B0C2A69"
+        entity = self._entity(serial, f"{serial}-lo")
+        info = entity.device_info
+        ident = (DOMAIN, f"{serial}-lo")
+        assert info["connections"] == {ident}
+        assert info["identifiers"] == {ident}
+        assert CONNECTION_NETWORK_MAC not in {c[0] for c in info["connections"]}
+
+    def test_chr_placeholder_uses_entry_id_identity(self):
+        """CHR N/A serial falls back to config entry id for interface identity."""
+        entity = self._entity("N/A", "mock-entry-id-lo")
+        info = entity.device_info
+        ident = (DOMAIN, "mock-entry-id-lo")
+        assert info["connections"] == {ident}
+        assert info["identifiers"] == {ident}
+        assert info["via_device"] == (DOMAIN, "N/A")
+
+
+def test_virtual_iface_device_info_helper_shape():
+    """Extracted helper keeps a single DeviceInfo shape for dummy-MAC ifaces."""
+    info = _virtual_iface_device_info(
+        "RouterA",
+        "HGR1234567",
+        "HGR1234567-lo",
+        "lo",
+        "hAP ax3",
+        "MikroTik",
+    )
+    assert info["connections"] == {(DOMAIN, "HGR1234567-lo")}
+    assert info["identifiers"] == {(DOMAIN, "HGR1234567-lo")}
+    assert info["via_device"] == (DOMAIN, "HGR1234567")
+    assert info["name"] == "RouterA lo"
 
 
 # ---------------------------------------------------------------------------
