@@ -495,31 +495,47 @@ class MikrotikEntity(CoordinatorEntity[_MikrotikCoordinatorT], Entity):
                     f"{self.coordinator.data['routerboard']['serial-number']}",
                 ),
             )
-        else:
-            serial = self.coordinator.data["routerboard"]["serial-number"]
-            identity = _iface_identity_serial(serial, self._config_entry.entry_id)
-            conn_val = f"{dev_connection_value}"
-            # Prefer the serial/entry prefix over hex sniffing so hex-shaped
-            # serial tokens are treated as DOMAIN identities, not MACs.
-            if dev_connection == CONNECTION_NETWORK_MAC and (conn_val.startswith(f"{identity}-") or not _real_network_mac(conn_val)):
-                return _virtual_iface_device_info(
-                    self._inst,
-                    serial,
-                    _interface_device_ident(identity, conn_val),
-                    dev_group,
-                    self.coordinator.data["resource"]["board-name"],
-                    self.coordinator.data["resource"]["platform"],
-                )
-            return DeviceInfo(
-                connections={(dev_connection, conn_val)},
-                name=f"{self._inst} {dev_group}",
-                model=f"{self.coordinator.data['resource']['board-name']}",
-                manufacturer=f"{self.coordinator.data['resource']['platform']}",
-                via_device=(
-                    DOMAIN,
-                    f"{serial}",
-                ),
-            )
+
+        if info := self._virtual_iface_device_info_or_none(dev_connection, dev_connection_value, dev_group):
+            return info
+
+        serial = self.coordinator.data["routerboard"]["serial-number"]
+        conn_val = f"{dev_connection_value}"
+        return DeviceInfo(
+            connections={(dev_connection, conn_val)},
+            name=f"{self._inst} {dev_group}",
+            model=f"{self.coordinator.data['resource']['board-name']}",
+            manufacturer=f"{self.coordinator.data['resource']['platform']}",
+            via_device=(
+                DOMAIN,
+                f"{serial}",
+            ),
+        )
+
+    def _virtual_iface_device_info_or_none(
+        self,
+        dev_connection,
+        dev_connection_value,
+        dev_group,
+    ) -> DeviceInfo | None:
+        """Return DeviceInfo for dummy-MAC virtual ifaces, else None (ADR-007)."""
+        serial = self.coordinator.data["routerboard"]["serial-number"]
+        identity = _iface_identity_serial(serial, self._config_entry.entry_id)
+        conn_val = f"{dev_connection_value}"
+        if dev_connection != CONNECTION_NETWORK_MAC:
+            return None
+        # Prefer the serial/entry prefix over hex sniffing so hex-shaped
+        # serial tokens are treated as DOMAIN identities, not MACs.
+        if not conn_val.startswith(f"{identity}-") and _real_network_mac(conn_val):
+            return None
+        return _virtual_iface_device_info(
+            self._inst,
+            serial,
+            _interface_device_ident(identity, conn_val),
+            dev_group,
+            self.coordinator.data["resource"]["board-name"],
+            self.coordinator.data["resource"]["platform"],
+        )
 
     @property
     def extra_state_attributes(self) -> Mapping[str, Any]:
