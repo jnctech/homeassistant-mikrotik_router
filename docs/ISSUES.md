@@ -67,7 +67,7 @@
 **Type:** Bug (availability / setup)
 **Priority:** High — **v2.3.22 release-blocker**
 **Created:** 2026-09-15
-**Status:** 🟢 Merged to `dev` 2026-10-04 — [#145](https://github.com/jnctech/homeassistant-mikrotik_router/pull/145) (@nowak-mariusz), ADR-022; full CI green (incl. `test_reauth_flow_updates_credentials`). Ships in v2.3.22-rc.2; close #144 on stable.
+**Status:** ✅ Shipped in **v2.3.22** (2026-10-07; CR-261007-release-v2322). [#145](https://github.com/jnctech/homeassistant-mikrotik_router/pull/145) (@nowak-mariusz), ADR-022. Follow-ups (refusal log context, re-warn after reconnect) in #155 → 2.3.23.
 
 **Symptom:**
 On a router whose `/interface/lte` menu exists with no modem behind it, the v2.3.21 LTE firmware probe (`get_lte_firmware()` → `/interface/lte firmware-upgrade`) is declined by RouterOS with a `!trap` (`failure: Firmware update is not supported on this device!`). `MikrotikAPI` hands every caught exception to `disconnect()`, so the refusal tears down a healthy session; `_async_update_hwinfo()` then `_raise_disconnected()` and `async_setup_entry` never completes — the entry sits in `setup_retry` every 600 s and every entity (device trackers included) stays `unavailable`. Reported on hAP ac² (RBD52G-5HacD2HnD) and hEX S (RB760iGS), RouterOS 7.24.2. **Confirmed affects v2.3.21 and v2.3.22-rc.1** (2.3.20 predates the probe).

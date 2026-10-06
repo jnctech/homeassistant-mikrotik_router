@@ -21,9 +21,9 @@ Monitor and control your entire MikroTik network from Home Assistant. This HACS 
 
 ---
 
-## What's New — v2.3.22-rc.2
+## What's New — v2.3.22
 
-Release candidate off `dev` adding two opt-in monitoring features from the feature poll, live-validated on a four-router RouterOS fleet before tagging. Both are **off by default** — enable them in the integration options. Supersedes v2.3.22-rc.1, adding the refused-command fix and the librouteros 4.x support below.
+Stable release rolling up the v2.3.22 pre-release cycle (beta.1, rc.1, rc.2). It adds two opt-in monitoring features from the feature poll, both **off by default** (enable them in the integration options), plus two fixes and librouteros 4.x support. Live-validated on a four-router RouterOS fleet, and rc.2 soaked for 2.5 days with no regressions. Thanks to **@nowak-mariusz** for the refused-command fix.
 
 - **Default-route monitoring (multi-WAN / failover awareness).** For each default route (`0.0.0.0/0`, `::/0`) a connectivity binary_sensor follows the route's RouterOS `active` flag, plus a per-routing-table "active default routes" count. Correct under policy routing (each table tracked separately) and ECMP / dual-uplink. Blackhole kill-switch routes are labelled and read inactive. Entity `unique_id`s use a stable `routing-table`+`dst-address`+`gateway`+`distance` composite, not the volatile RouterOS `.id`. Enable **Default route monitoring sensors**. FEATURE-POLL B4. See [ADR-020](docs/decisions/ADR-020-route-monitoring.md).
 - **WireGuard peer sensors.** For each peer: a `connected` binary_sensor (derived from handshake recency), a stable last-handshake timestamp, and per-peer RX/TX totals. Only routers that have WireGuard get these entities; peer identifiers are redacted from diagnostics and the public-key sensor is disabled by default. Enable **WireGuard peer sensors**. FEATURE-POLL B2. See [ADR-021](docs/decisions/ADR-021-wireguard-peer-sensors.md).

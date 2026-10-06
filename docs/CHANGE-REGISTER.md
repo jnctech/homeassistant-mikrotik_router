@@ -4,6 +4,24 @@ Changes listed in reverse chronological order.
 
 ---
 
+## CR-261007-release-v2322 — v2.3.22 stable
+
+**Date:** 2026-10-07
+**Branch:** `release/v2.3.22` (from tag `v2.3.22-rc.2`, `c9a0457`) → PR to `master`, then a real back-merge `master → dev`
+**Status:** In Review
+
+### What changed
+- `manifest.json` — `2.3.22-rc.2` → `2.3.22`.
+- `README.md`, `info.md` — What's New rolled to stable v2.3.22 (route monitoring ADR-020, WireGuard peers ADR-021, blackhole fix #139, refused-command fix #144/#145 ADR-022, librouteros `<5`).
+
+### Why
+Promote the soaked rc.2 build to stable. Cut from the rc.2 commit, **not** from `dev`, because `dev` already carries post-rc.2 2.3.23 work (#152, #155) that hasn't been through an RC. The stable code is byte-identical to rc.2 apart from the version string.
+
+### Verification
+- rc.2 live validation PASS (2026-10-05): 318 sensors, 0 faults, values within tolerance against router SSH.
+- 2.5-day soak (re-checked 2026-10-07): 0 unavailable integration entities, 318 router-level sensors (unchanged), 0 stale, no integration errors or refusals in the retained HA log (~6 h window). The entity total fell 1143 → 1103, all in device_tracker/per-client sensors; this is attributed to client churn (UNVERIFIED: no entity-list snapshot from 2026-10-05).
+- Closes #144 on release.
+
 ## CR-261005-release-v2.3.22-rc.2 — cut v2.3.22-rc.2 release candidate
 
 **Date:** 2026-10-05
