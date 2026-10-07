@@ -144,6 +144,26 @@ _WIFI_FLAT_MAP = {
 }
 
 
+def _iface_identity_serial(serial: str, entry_id: str) -> str:
+    """Prefer routerboard serial; fall back to entry_id for CHR/x86 placeholders."""
+    if serial in ("", "N/A", "unknown"):
+        return entry_id
+    return serial
+
+
+def _port_mac_for_virtual_iface(mac: str | None, ifname: str, serial: str) -> str:
+    """Build a per-router port-mac token for virtual interfaces.
+
+    Ethernet already has a unique hardware MAC. Virtual ifaces (lo, tunnels)
+    often share an all-zero or empty MAC, which HA's device registry
+    would merge across config entries if used as CONNECTION_NETWORK_MAC.
+    """
+    compact = str(mac or "").replace(":", "").lower()
+    if compact in ("", "000000000000"):
+        return f"{serial}-{ifname}"
+    return f"{mac}-{ifname}"
+
+
 @dataclass
 class MikrotikData:
     """Data for the mikrotik integration."""
@@ -1216,7 +1236,11 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
 
             if vals["default-name"] == "":
                 iface["default-name"] = vals["name"]
-                iface["port-mac-address"] = f"{vals['port-mac-address']}-{vals['name']}"
+                serial = _iface_identity_serial(
+                    self.ds["routerboard"]["serial-number"],
+                    self.config_entry.entry_id,
+                )
+                iface["port-mac-address"] = _port_mac_for_virtual_iface(vals.get("port-mac-address"), vals["name"], serial)
 
             if iface["type"] == "ether":
                 self._monitor_ethernet_port(vals)
