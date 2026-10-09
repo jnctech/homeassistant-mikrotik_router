@@ -91,3 +91,13 @@ DEVICE_ATTRIBUTES_IFACE_WIRELESS = [
     "bridge-mode",
     "hide-ssid",
 ]
+
+DEVICE_ATTRIBUTES_IFACE_LIVE = [
+    *DEVICE_ATTRIBUTES_IFACE,
+    "rx-packets-per-second",
+    "tx-packets-per-second",
+    "rx-drops-per-second",
+    "tx-drops-per-second",
+    "rx-errors-per-second",
+    "tx-errors-per-second",
+]

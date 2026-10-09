@@ -74,6 +74,8 @@ from .const import (
     WIREGUARD_STALE_SECONDS,
     CONF_SENSOR_ROUTE,
     DEFAULT_SENSOR_ROUTE,
+    CONF_SENSOR_LIVE_TRAFFIC,
+    DEFAULT_SENSOR_LIVE_TRAFFIC,
 )
 from .apiparser import parse_api
 from .mikrotikapi import MikrotikAPI
@@ -264,6 +266,9 @@ class MikrotikTrackerCoordinator(DataUpdateCoordinator[None]):
 
 class MikrotikCoordinator(DataUpdateCoordinator[None]):
     """MikrotikCoordinator Class"""
+
+    # Interface names in the latest /interface reply (None until the first poll).
+    _interface_names_seen: set[str] | None = None
 
     def __init__(self, hass: HomeAssistant, config_entry: ConfigEntry):
         """Initialize MikrotikCoordinator."""
@@ -508,6 +513,14 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
     def option_sensor_route(self):
         """Config entry option for default-route monitoring sensors."""
         return self.config_entry.options.get(CONF_SENSOR_ROUTE, DEFAULT_SENSOR_ROUTE)
+
+    # ---------------------------
+    #   option_sensor_live_traffic
+    # ---------------------------
+    @property
+    def option_sensor_live_traffic(self):
+        """Config entry option for live interface rate sensors (monitor-traffic)."""
+        return self.config_entry.options.get(CONF_SENSOR_LIVE_TRAFFIC, DEFAULT_SENSOR_LIVE_TRAFFIC)
 
     # ---------------------------
     #   option_sensor_scripts
@@ -765,6 +778,8 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
         for func in [self.get_system_health, self.get_dhcp_client, self.get_interface]:
             await self._run_if_enabled(func)
 
+        await self._run_if_enabled(self.get_interface_live_traffic, requires=self.option_sensor_live_traffic)
+
         if self.api.connected() and not self.ds["host_hass"]:
             await self.async_get_host_hass()
 
@@ -1014,6 +1029,95 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
                 iface[f"{direction}-previous"] = current
                 iface[f"{direction}-total"] = current
 
+    _LIVE_TRAFFIC_FIELDS = (
+        ("rx-live", "rx-bits-per-second"),
+        ("tx-live", "tx-bits-per-second"),
+        ("rx-packets-per-second", "rx-packets-per-second"),
+        ("tx-packets-per-second", "tx-packets-per-second"),
+        ("rx-drops-per-second", "rx-drops-per-second"),
+        ("tx-drops-per-second", "tx-drops-per-second"),
+        ("rx-errors-per-second", "rx-errors-per-second"),
+        ("tx-errors-per-second", "tx-errors-per-second"),
+    )
+
+    @staticmethod
+    def _to_float_or_none(value) -> float | None:
+        """Parse a monitor-traffic counter to float, None when absent/non-numeric."""
+        if value is None or isinstance(value, bool):
+            return None
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return None
+
+    def _clear_live_fields(self, iface: dict) -> None:
+        """Reset the live-rate fields of one interface to None (null-not-guess)."""
+        for field, _source in self._LIVE_TRAFFIC_FIELDS:
+            iface[field] = None
+
+    def _apply_live_row(self, iface: dict, row: dict) -> None:
+        """Copy one monitor-traffic row onto an interface; absent/non-numeric -> None."""
+        for field, source in self._LIVE_TRAFFIC_FIELDS:
+            iface[field] = self._to_float_or_none(row.get(source))
+
+    def _split_stale_interfaces(self, interfaces: dict) -> tuple[dict, dict]:
+        """Split interfaces into (current, stale) by the latest /interface reply.
+
+        `ds["interface"]` only merges, so a deleted/renamed interface lingers.
+        A single unknown name makes RouterOS refuse the whole batched
+        monitor-traffic call, so only names seen in the current poll are batched.
+        Before the first /interface poll (None) nothing is treated as stale.
+        """
+        seen = self._interface_names_seen
+        if seen is None:
+            return interfaces, {}
+        current = {uid: i for uid, i in interfaces.items() if (i.get("name") or uid) in seen}
+        stale = {uid: i for uid, i in interfaces.items() if uid not in current}
+        return current, stale
+
+    def get_interface_live_traffic(self) -> None:
+        """Poll live per-interface rates via a single batched monitor-traffic call.
+
+        RouterOS `monitor-traffic` accepts a comma-separated `interface=` list
+        and returns one row per interface (`name=`), so one API round-trip
+        covers every non-bridge interface (verified on a hAP be3, ROS
+        7.25beta5). Interfaces missing from the reply resolve to None
+        (null-not-guess). Runs only when the sensor_live_traffic opt-in is
+        enabled. See ADR-NEXT-live-interface-rates.
+        """
+        interfaces = {uid: iface for uid, iface in self.ds.get("interface", {}).items() if iface.get("type") != "bridge"}
+        if not interfaces:
+            _LOGGER.debug("Mikrotik %s monitor-traffic skipped: no interfaces", self.host)
+            return
+        interfaces, stale = self._split_stale_interfaces(interfaces)
+        for iface in stale.values():
+            self._clear_live_fields(iface)
+        if not interfaces:
+            _LOGGER.debug("Mikrotik %s monitor-traffic skipped: no current interfaces", self.host)
+            return
+        names = [iface.get("name") or uid for uid, iface in interfaces.items()]
+        rows = self.api.query(
+            "/interface",
+            command="monitor-traffic",
+            args={"interface": ",".join(names), "once": True},
+        )
+        if not rows:
+            _LOGGER.debug("Mikrotik %s monitor-traffic returned no data", self.host)
+            for iface in interfaces.values():
+                self._clear_live_fields(iface)
+            return
+        self._merge_live_rows(interfaces, rows)
+
+    def _merge_live_rows(self, interfaces: dict, rows: list) -> None:
+        """Apply each monitor-traffic row to its interface; a missing row clears it."""
+        by_name = {row.get("name"): row for row in rows}
+        for uid, iface in interfaces.items():
+            row = by_name.get(iface.get("name") or uid)
+            if row is None:
+                self._clear_live_fields(iface)
+            else:
+                self._apply_live_row(iface, row)
+
     def get_neighbor(self) -> None:
         """Map interface name -> advertised neighbour board(s) via /ip/neighbor.
 
@@ -1121,9 +1225,12 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
 
     def get_interface(self) -> None:
         """Get all interfaces data from Mikrotik"""
+        response = self.api.query("/interface")
+        if response is not None:
+            self._interface_names_seen = {row["name"] for row in response if row.get("name")}
         self.ds["interface"] = parse_api(
             data=self.ds["interface"],
-            source=self.api.query("/interface"),
+            source=response,
             key="default-name",
             key_secondary="name",
             vals=[
@@ -1158,6 +1265,14 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
                 {"name": "tx", "default": 0.0},
                 {"name": "rx-total", "default": 0.0},
                 {"name": "tx-total", "default": 0.0},
+                {"name": "rx-live", "default": None},
+                {"name": "tx-live", "default": None},
+                {"name": "rx-packets-per-second", "default": None},
+                {"name": "tx-packets-per-second", "default": None},
+                {"name": "rx-drops-per-second", "default": None},
+                {"name": "tx-drops-per-second", "default": None},
+                {"name": "rx-errors-per-second", "default": None},
+                {"name": "tx-errors-per-second", "default": None},
                 {"name": "poe-out-energy-delta-wh", "default": 0.0},
                 {"name": "poe-out-energy-source", "default": None},
                 {"name": "poe-out-energy-model", "default": None},

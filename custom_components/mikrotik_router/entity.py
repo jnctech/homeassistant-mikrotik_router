@@ -34,6 +34,8 @@ from .const import (
     DEFAULT_SENSOR_WIREGUARD,
     CONF_SENSOR_ROUTE,
     DEFAULT_SENSOR_ROUTE,
+    CONF_SENSOR_LIVE_TRAFFIC,
+    DEFAULT_SENSOR_LIVE_TRAFFIC,
 )
 from .coordinator import MikrotikConfigEntry, MikrotikCoordinator, MikrotikTrackerCoordinator
 from .helper import format_attribute
@@ -151,7 +153,10 @@ def _skip_route_sensor(config_entry, entity_description) -> bool:
 def _skip_interface_traffic(config_entry, entity_description, data, uid) -> bool:
     """Skip traffic sensors when disabled or on bridge interfaces."""
     if entity_description.func == "MikrotikInterfaceTrafficSensor":
-        if not config_entry.options.get(CONF_SENSOR_PORT_TRAFFIC, DEFAULT_SENSOR_PORT_TRAFFIC):
+        if entity_description.data_attribute in ("rx-live", "tx-live"):
+            if not config_entry.options.get(CONF_SENSOR_LIVE_TRAFFIC, DEFAULT_SENSOR_LIVE_TRAFFIC):
+                return True
+        elif not config_entry.options.get(CONF_SENSOR_PORT_TRAFFIC, DEFAULT_SENSOR_PORT_TRAFFIC):
             return True
         if data[uid]["type"] == "bridge":
             return True
