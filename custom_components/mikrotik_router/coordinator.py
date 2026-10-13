@@ -69,6 +69,11 @@ from .const import (
     DEFAULT_SENSOR_RAW,
     CONF_SENSOR_CONTAINER,
     DEFAULT_SENSOR_CONTAINER,
+    CONF_SENSOR_WIREGUARD,
+    DEFAULT_SENSOR_WIREGUARD,
+    WIREGUARD_STALE_SECONDS,
+    CONF_SENSOR_ROUTE,
+    DEFAULT_SENSOR_ROUTE,
 )
 from .apiparser import parse_api
 from .mikrotikapi import MikrotikAPI
@@ -126,6 +131,17 @@ def as_local(dattim: datetime) -> datetime:
         dattim = dattim.replace(tzinfo=timezone.utc)
 
     return dattim.astimezone(DEFAULT_TIME_ZONE)
+
+
+# /interface/wifi nests settings as dotted keys; flatten them onto the legacy
+# flat attribute names so wifi interfaces expose the same names as wlan.
+_WIFI_FLAT_MAP = {
+    "configuration.ssid": "ssid",
+    "configuration.mode": "mode",
+    "configuration.country": "country",
+    "channel.band": "band",
+    "channel.width": "channel-width",
+}
 
 
 @dataclass
@@ -304,6 +320,9 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
             "raw": {},
             "container": {},
             "neighbor": {},
+            "wireguard_peers": {},
+            "route": {},
+            "route_table": {},
         }
 
         self.notified_flags = []
@@ -336,6 +355,7 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
         self.support_gps = False
         self.support_container = False
         self.support_lte = False
+        self.support_wireguard = False
         self._wifimodule = "wireless"
 
         self.major_fw_version = 0
@@ -474,6 +494,22 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
         return self.config_entry.options.get(CONF_SENSOR_CONTAINER, DEFAULT_SENSOR_CONTAINER)
 
     # ---------------------------
+    #   option_sensor_wireguard
+    # ---------------------------
+    @property
+    def option_sensor_wireguard(self):
+        """Config entry option for WireGuard peer sensors."""
+        return self.config_entry.options.get(CONF_SENSOR_WIREGUARD, DEFAULT_SENSOR_WIREGUARD)
+
+    # ---------------------------
+    #   option_sensor_route
+    # ---------------------------
+    @property
+    def option_sensor_route(self):
+        """Config entry option for default-route monitoring sensors."""
+        return self.config_entry.options.get(CONF_SENSOR_ROUTE, DEFAULT_SENSOR_ROUTE)
+
+    # ---------------------------
     #   option_sensor_scripts
     # ---------------------------
     @property
@@ -562,6 +598,15 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
         # when no LTE interface exists, so support_lte is simply False.
         self.support_lte = bool(self.api.query("/interface/lte"))
 
+        # WireGuard is RouterOS v7+ only. Detect by interface presence (no
+        # /system/package entry), but only probe on v7+: on v6 the
+        # /interface/wireguard menu does not exist, and querying a missing menu
+        # can raise "no such command prefix" and force a reconnect on every
+        # capabilities refresh (the #64 / ISS-260509 disconnect class). A v6
+        # router cannot have WireGuard, so support_wireguard is correctly False
+        # without probing (ADR-021).
+        self.support_wireguard = self.major_fw_version >= 7 and bool(self.api.query("/interface/wireguard"))
+
     def _detect_capabilities_v6(self, packages: dict) -> None:
         """Detect wireless/PPP capabilities for RouterOS v6."""
         if "ppp" in packages:
@@ -594,7 +639,7 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
 
     def _has_wifi_package(self, packages: dict) -> bool:
         """Check if a wifi package is enabled or version implies wifi module."""
-        if any(pkg in packages and packages[pkg]["enabled"] for pkg in ("wifi", "wifi-qcom", "wifi-qcom-ac")):
+        if any(pkg in packages and packages[pkg]["enabled"] for pkg in ("wifi", "wifi-qcom", "wifi-qcom-ac", "wifi-qcom-be", "wifi-mediatek")):
             return True
         # An explicitly enabled legacy `wireless` package wins over the
         # version heuristic: 7.13+ routers that still ship it are not on
@@ -750,6 +795,7 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
             (self.get_raw, self.option_sensor_raw),
             (self.get_netwatch, self.option_sensor_netwatch),
             (self.get_ppp, self.support_ppp and self.option_sensor_ppp),
+            (self.get_route, self.option_sensor_route),
         ]:
             await self._run_if_enabled(func, requires=enabled)
 
@@ -764,6 +810,10 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
             (
                 self.get_container,
                 self.support_container and self.option_sensor_container,
+            ),
+            (
+                self.get_wireguard_peers,
+                self.support_wireguard and self.option_sensor_wireguard,
             ),
         ]:
             await self._run_if_enabled(func, requires=enabled)
@@ -797,6 +847,9 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
             "container",
             "environment",
             "netwatch",
+            "wireguard_peers",
+            "route",
+            "route_table",
         }
     )
 
@@ -1742,6 +1795,208 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
             ],
         )
 
+    # Default-route destinations (IPv4 and IPv6). get_route filters the full
+    # /ip/route table down to these client-side — see ADR-020.
+    _DEFAULT_DST_ADDRESSES = frozenset({"0.0.0.0/0", "::/0"})
+
+    # ---------------------------
+    #   get_route
+    # ---------------------------
+    def get_route(self) -> None:
+        """Get default-route reachability from Mikrotik.
+
+        Fetches /ip/route and filters to default routes client-side (the API
+        wrapper has no server-side filter), so the coordinator only ever holds
+        the failover-relevant set — never the full table. Builds one entity row
+        per default route plus a per-routing-table active-default count.
+
+        Rebuilt fresh each poll (data={}) rather than merged: the default set is
+        tiny and bounded, and a withdrawn route must drop out of the per-table
+        count immediately instead of lingering. See ADR-020.
+        """
+        source = self.api.query("/ip/route")
+        if source is None:
+            # Query failed (e.g. a transient disconnect — query() returns None on
+            # a dropped connection or an empty result). Keep the prior route state
+            # rather than crashing the poll on a None iteration, mirroring
+            # get_neighbor. The next successful poll rebuilds it.
+            return
+
+        defaults = []
+        for entry in source:
+            if entry.get("dst-address") not in self._DEFAULT_DST_ADDRESSES:
+                continue
+            # Normalise routing-table once (RouterOS v6 / single-table gear omits
+            # it) so the composite key, the parsed field, the label and the count
+            # all agree on "main".
+            if not entry.get("routing-table"):
+                entry["routing-table"] = "main"
+            # `blackhole` is a bare RouterOS flag, not a value: over the API
+            # librouteros delivers it as an empty-string word (`{'blackhole': ''}`)
+            # when the route is a blackhole and omits the key entirely otherwise.
+            # parse_api's bool coercion reads an empty string as the default
+            # (False), so the flag never registered — collapse it to a real bool
+            # by key-presence here, before parse_api. Verified against a live
+            # librouteros dump; contrast `active`/`dynamic`/`static`, which the
+            # API delivers as genuine bools. See #139 / ADR-020.
+            entry["blackhole"] = "blackhole" in entry
+            # Key on a stable synthetic composite, NEVER RouterOS `.id`: `.id` is
+            # reassigned across reboots and route churn (a dynamic default route
+            # renewing on PPPoE/DHCP reconnect — the very failover event this
+            # watches), which would orphan the entity's data binding and freeze it.
+            # The dict key must equal the entity uid, so build the composite on the
+            # raw entry before parse_api keys on it (parse_api reads `key` from the
+            # raw entry; a val_proc field is computed too late to key on). ADR-020 §4.
+            entry["uniq-id"] = self._route_uid(entry)
+            defaults.append(entry)
+
+        routes = parse_api(
+            data={},
+            source=defaults,
+            key="uniq-id",
+            vals=[
+                {"name": "uniq-id"},
+                {"name": "dst-address", "default": "unknown"},
+                {"name": "routing-table", "default": "main"},
+                {"name": "gateway", "default": ""},
+                {"name": "immediate-gw", "default": ""},
+                {"name": "distance", "default": ""},
+                {"name": "scope", "default": ""},
+                {"name": "comment", "default": ""},
+                {"name": "active", "type": "bool", "default": False},
+                {"name": "dynamic", "type": "bool", "default": False},
+                {"name": "static", "type": "bool", "default": False},
+                {"name": "blackhole", "type": "bool", "default": False},
+            ],
+        )
+
+        route_tables: dict = {}
+        for row in routes.values():
+            row["route-label"] = self._route_label(row)
+            table = row["routing-table"]
+            entry = route_tables.setdefault(table, {"routing-table": table, "active-default-count": 0})
+            if row["active"]:
+                entry["active-default-count"] += 1
+
+        self.ds["route"] = routes
+        self.ds["route_table"] = route_tables
+
+    @staticmethod
+    def _route_uid(entry: dict) -> str:
+        """Build the stable composite unique key for a default route (ADR-020 §4).
+
+        routing-table + dst-address + gateway + distance. `distance` distinguishes
+        a primary default from a same-table backup/blackhole; `gateway`
+        distinguishes ECMP peers. routing-table is normalised to `main` by the
+        caller before this runs.
+        """
+        table = entry.get("routing-table", "main")
+        return f"{table}:{entry.get('dst-address', '')}:{entry.get('gateway', '')}:{entry.get('distance', '')}"
+
+    @staticmethod
+    def _route_label(row: dict) -> str:
+        """Compose a display label for a default route.
+
+        Prefers the user's route comment; otherwise names it by routing-table
+        and next hop. A blackhole (kill-switch) route has no gateway, so it is
+        labelled as such rather than "via <empty>". See ADR-020.
+        """
+        if row.get("comment"):
+            return row["comment"]
+        table = row["routing-table"]
+        if row.get("blackhole"):
+            return f"{table} blackhole"
+        return f"{table} via {row['gateway']}"
+
+    # ---------------------------
+    #   get_wireguard_peers
+    # ---------------------------
+    def get_wireguard_peers(self) -> None:
+        """Get per-peer WireGuard state from Mikrotik.
+
+        Keyed by `public-key` — globally unique and stable across reboots (unlike
+        `.id`), and a real field on the raw entry so parse_api can key on it
+        directly. Derives a `connected` flag and an absolute `last-handshake`
+        TIMESTAMP from RouterOS's relative last-handshake age, mirroring the LTE
+        session-uptime model. See ADR-021.
+
+        Rebuilt fresh each poll (data={}) so a removed peer drops out; the prior
+        per-peer handshake timestamp is carried across for the drift guard.
+        """
+        source = self.api.query("/interface/wireguard/peers")
+        if source is None:
+            # Query failed (transient disconnect) — keep prior peer state rather
+            # than crashing the poll on a None iteration, mirroring get_neighbor.
+            return
+
+        prior_peers = self.ds.get("wireguard_peers", {})
+        previous_handshake = {pk: row.get("last-handshake") for pk, row in prior_peers.items()}
+
+        peers = parse_api(
+            data={},
+            source=source,
+            key="public-key",
+            vals=[
+                {"name": "public-key"},
+                {"name": "interface", "default": "unknown"},
+                {"name": "name", "default": ""},
+                {"name": "comment", "default": ""},
+                {"name": "responder", "type": "bool", "default": False},
+                {"name": "current-endpoint-address", "default": ""},
+                {"name": "current-endpoint-port", "default": ""},
+                {"name": "allowed-address", "default": ""},
+                {"name": "rx", "default": 0},
+                {"name": "tx", "default": 0},
+                {"name": "disabled", "type": "bool", "default": False},
+                {"name": "last-handshake-age", "source": "last-handshake", "default": ""},
+            ],
+        )
+
+        now = dt_now().replace(microsecond=0)
+        for public_key, peer in peers.items():
+            peer["peer-label"] = self._wireguard_label(peer)
+            self._resolve_wireguard_handshake(peer, previous_handshake.get(public_key), now)
+
+        self.ds["wireguard_peers"] = peers
+
+    @staticmethod
+    def _wireguard_label(peer: dict) -> str:
+        """Display name for a peer: name -> comment -> truncated key fingerprint.
+
+        Only a short fingerprint of the public key is used as a last resort, never
+        the full key (which is redacted). See ADR-021.
+        """
+        if peer.get("name"):
+            return peer["name"]
+        if peer.get("comment"):
+            return peer["comment"]
+        public_key = peer.get("public-key", "")
+        return f"peer {public_key[:8]}" if public_key else "peer"
+
+    @staticmethod
+    def _resolve_wireguard_handshake(peer: dict, previous_start, now) -> None:
+        """Derive `connected` + a stable last-handshake TIMESTAMP for a peer.
+
+        RouterOS reports last-handshake as a relative age ("53s", "1m28s"), not a
+        timestamp. Compute now - age (LTE session-uptime model). A never-handshaked
+        peer (field absent) reads disconnected / None rather than a fabricated
+        time. A drift guard keeps the timestamp stable across polls (the age
+        advances every poll while the actual handshake time is fixed). ADR-021.
+        """
+        raw_age = peer.get("last-handshake-age")
+        if not raw_age:
+            peer["connected"] = False
+            peer["last-handshake"] = None
+            return
+
+        age_seconds = _parse_uptime_to_seconds(raw_age)
+        peer["connected"] = age_seconds < WIREGUARD_STALE_SECONDS
+        handshake = datetime.timestamp(now - timedelta(seconds=age_seconds))
+        if not previous_start or abs(handshake - datetime.timestamp(previous_start)) > 10:
+            peer["last-handshake"] = utc_from_timestamp(handshake)
+        else:
+            peer["last-handshake"] = previous_start
+
     # ---------------------------
     #   get_system_routerboard
     # ---------------------------
@@ -2338,10 +2593,20 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
     #   get_dhcp
     # ---------------------------
     def get_dhcp(self) -> None:
-        """Get DHCP data from Mikrotik"""
+        """Get DHCP data from Mikrotik
+
+        Rebuilt fresh each poll (data={}) so a lease removed on the router drops
+        out of ds["dhcp"] and the per-server lease count (#160). query() returns
+        None both on failure and for an empty table; only a dropped connection
+        means failure, so keep the prior leases then rather than blanking hosts.
+        """
+        source = self.api.query("/ip/dhcp-server/lease")
+        if source is None and not self.api.connected():
+            return
+
         self.ds["dhcp"] = parse_api(
-            data=self.ds["dhcp"],
-            source=self.api.query("/ip/dhcp-server/lease"),
+            data={},
+            source=source,
             key="mac-address",
             vals=[
                 {"name": "mac-address"},
@@ -2573,6 +2838,24 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
             vals=vals,
         )
 
+    def _inherit_master_iface(self, uid) -> None:
+        """Back-fill `unknown` values of a virtual interface from its master interface."""
+        row = self.ds["wireless"][uid]
+        if not row["master-interface"]:
+            return
+        master = self.ds["wireless"][row["master-interface"]]
+        for tmp in row:
+            if row[tmp] == "unknown":
+                row[tmp] = master[tmp]
+
+    @staticmethod
+    def _flatten_wifi_keys(row: dict) -> None:
+        """Copy /interface/wifi dotted keys onto the legacy flat attribute names."""
+        for nested, flat in _WIFI_FLAT_MAP.items():
+            value = row.get(nested)
+            if value not in (None, "unknown"):
+                row[flat] = value
+
     # ---------------------------
     #   get_wireless
     # ---------------------------
@@ -2605,6 +2888,11 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
                 {"name": "wds-mode", "default": "unknown"},
                 {"name": "wds-default-bridge", "default": "unknown"},
                 {"name": "bridge-mode", "default": "unknown"},
+                {"name": "configuration.ssid", "default": "unknown"},
+                {"name": "configuration.mode", "default": "unknown"},
+                {"name": "configuration.country", "default": "unknown"},
+                {"name": "channel.band", "default": "unknown"},
+                {"name": "channel.width", "default": "unknown"},
                 {"name": "hide-ssid", "type": "bool"},
                 {"name": "running", "type": "bool"},
                 {"name": "disabled", "type": "bool"},
@@ -2612,10 +2900,10 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
         )
 
         for uid in self.ds["wireless"]:
-            if self.ds["wireless"][uid]["master-interface"]:
-                for tmp in self.ds["wireless"][uid]:
-                    if self.ds["wireless"][uid][tmp] == "unknown":
-                        self.ds["wireless"][uid][tmp] = self.ds["wireless"][self.ds["wireless"][uid]["master-interface"]][tmp]
+            self._inherit_master_iface(uid)
+
+            if self._wifimodule == "wifi":
+                self._flatten_wifi_keys(self.ds["wireless"][uid])
 
             if uid in self.ds["interface"]:
                 for tmp in self.ds["wireless"][uid]:
@@ -2636,11 +2924,21 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
                 {"name": "ap", "type": "bool"},
                 {"name": "uptime"},
                 {"name": "signal-strength"},
+                {"name": "signal"},
                 {"name": "tx-ccq"},
                 {"name": "tx-rate"},
                 {"name": "rx-rate"},
+                {"name": "tx-bits-per-second"},
+                {"name": "rx-bits-per-second"},
+                {"name": "bytes"},
+                {"name": "band"},
             ],
         )
+        # wifi (wifi-qcom*, wifi-mediatek) reports `signal`; alias it onto the
+        # legacy `signal-strength` only when the legacy field is absent.
+        for host in self.ds["wireless_hosts"].values():
+            if not host.get("signal-strength") and host.get("signal"):
+                host["signal-strength"] = host["signal"]
 
     # ---------------------------
     #   _merge_capsman_hosts

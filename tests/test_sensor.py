@@ -488,3 +488,84 @@ def test_poe_energy_update_skips_when_uid_missing():
     sensor._handle_coordinator_update()
     assert sensor.native_value == before
     sensor.async_write_ha_state.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# WireGuard peer sensors: last-handshake / rx / tx / public-key (ADR-021)
+# ---------------------------------------------------------------------------
+
+
+def test_wireguard_last_handshake_descriptor_pins():
+    desc = next(s for s in SENSOR_TYPES if s.key == "wireguard_peer_last_handshake")
+    assert desc.device_class == SensorDeviceClass.TIMESTAMP
+    assert desc.data_path == "wireguard_peers"
+    assert desc.data_attribute == "last-handshake"
+    assert desc.data_reference == "public-key"
+    assert desc.ha_group == "WireGuard"
+
+
+def test_wireguard_rx_tx_are_total_increasing_data_size():
+    for key, attr in (("wireguard_peer_rx", "rx"), ("wireguard_peer_tx", "tx")):
+        desc = next(s for s in SENSOR_TYPES if s.key == key)
+        assert desc.device_class == SensorDeviceClass.DATA_SIZE
+        assert desc.state_class == SensorStateClass.TOTAL_INCREASING
+        assert desc.data_attribute == attr
+        assert desc.data_reference == "public-key"
+
+
+def test_wireguard_public_key_sensor_hidden_by_default():
+    """The public key is identifying: surfaced only as a disabled-by-default,
+    redacted diagnostic sensor (LTE IMEI precedent, ADR-021)."""
+    desc = next(s for s in SENSOR_TYPES if s.key == "wireguard_peer_public_key")
+    assert desc.entity_registry_enabled_default is False
+    assert desc.data_attribute == "public-key"
+
+
+def test_wireguard_rx_native_value():
+    desc = _description(
+        key="wireguard_peer_rx",
+        data_path="wireguard_peers",
+        data_attribute="rx",
+        data_name="peer-label",
+        data_reference="public-key",
+    )
+    sensor = _build_sensor(
+        {"wireguard_peers": {"KEY": {"public-key": "KEY", "peer-label": "home", "rx": 12345}}},
+        desc,
+        uid="KEY",
+    )
+    assert sensor.native_value == 12345
+
+
+# ---------------------------------------------------------------------------
+# Route monitoring: per-table active-default-count sensor (ADR-020)
+# ---------------------------------------------------------------------------
+
+
+def test_route_count_descriptor_pins():
+    """The count sensor tallies active default routes per routing-table, keyed
+    by routing-table and composing its name so per-table sensors stay distinct."""
+    desc = next(s for s in SENSOR_TYPES if s.key == "route_active_defaults")
+    assert desc.data_path == "route_table"
+    assert desc.data_attribute == "active-default-count"
+    assert desc.data_reference == "routing-table"
+    assert desc.data_name_compose is True
+    assert desc.state_class == SensorStateClass.MEASUREMENT
+    assert desc.ha_group == "Routing"
+
+
+def test_route_count_native_value():
+    """native_value returns the active-default count for the table."""
+    desc = _description(
+        key="route_active_defaults",
+        data_path="route_table",
+        data_attribute="active-default-count",
+        data_name="routing-table",
+        data_reference="routing-table",
+    )
+    sensor = _build_sensor(
+        {"route_table": {"wg_us": {"routing-table": "wg_us", "active-default-count": 1}}},
+        desc,
+        uid="wg_us",
+    )
+    assert sensor.native_value == 1

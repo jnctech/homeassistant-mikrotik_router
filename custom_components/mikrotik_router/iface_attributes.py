@@ -55,6 +55,20 @@ DEVICE_ATTRIBUTES_IFACE_SFP = [
     "eeprom-checksum",
 ]
 
+# /interface/wifi (wifi-qcom*, wifi-mediatek) rows nest their settings as
+# dotted keys (`configuration.ssid`, `channel.band`, ...). The legacy
+# `wireless` keys (mode, radio-name, country, antenna-gain, wds-*, ...) do not
+# exist there, so a dedicated list avoids exposing a dozen `unknown` attributes.
+# Names are flattened onto the legacy `wireless` attribute names so templates
+# work across old and new hardware; the flattening happens in get_wireless() right after the parse.
+DEVICE_ATTRIBUTES_IFACE_WIFI = [
+    "ssid",
+    "mode",
+    "country",
+    "band",
+    "channel-width",
+]
+
 DEVICE_ATTRIBUTES_IFACE_WIRELESS = [
     "ssid",
     "mode",

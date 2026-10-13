@@ -54,7 +54,7 @@ jobs:
         run: python scripts/check_no_homelab_leaks.py
 
   tests:
-    name: Python Tests (${{ matrix.python-version }})
+    name: Python Tests (${{ matrix.python-version }}${{ matrix.librouteros && format(', librouteros {0}', matrix.librouteros) || '' }})
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -64,6 +64,14 @@ jobs:
         # 3.13 = HA 2026.1 - 2026.2 runtime; 3.14 = HA 2026.3+ runtime.
         # See ISS-260509-ha-2026.5-untested for context.
         python-version: ["3.13", "3.14"]
+        # Default legs ("" = unpinned) resolve the newest librouteros the
+        # manifest allows (4.x); the include adds a leg on the manifest floor so
+        # 3.x stays tested too (ENH-260512). librouteros must be a matrix key, or
+        # the include would merge into the 3.13 leg instead of adding one.
+        librouteros: [""]
+        include:
+          - python-version: "3.13"
+            librouteros: "3.4.1"
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
 
@@ -80,6 +88,10 @@ jobs:
           cat /tmp/runtime-requirements.txt
           pip install -r /tmp/runtime-requirements.txt
           pip install pytest pytest-homeassistant-custom-component pytest-cov
+          if [ -n "$LIBROUTEROS" ]; then pip install "librouteros==$LIBROUTEROS"; fi
+          pip show librouteros | grep -i '^version'
+        env:
+          LIBROUTEROS: ${{ matrix.librouteros }}
 
       - name: Test with pytest
         run: >

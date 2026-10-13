@@ -21,6 +21,20 @@ Monitor and control your entire MikroTik network from Home Assistant. This HACS 
 
 ---
 
+## What's New — v2.3.22
+
+Stable release rolling up the v2.3.22 cycle (beta.1, rc.1–rc.3). It adds two opt-in monitoring features from the feature poll, plus reliability and wifi-package fixes, all live-validated on a four-router RouterOS fleet. Both new features are **off by default**; enable them in the integration options.
+
+- **Default-route monitoring (multi-WAN / failover awareness).** For each default route (`0.0.0.0/0`, `::/0`) a connectivity binary_sensor follows the route's RouterOS `active` flag, plus a per-routing-table "active default routes" count. Correct under policy routing (each table tracked separately) and ECMP / dual-uplink. Blackhole kill-switch routes are labelled and read inactive. Entity `unique_id`s use a stable `routing-table`+`dst-address`+`gateway`+`distance` composite, not the volatile RouterOS `.id`. Enable **Default route monitoring sensors**. FEATURE-POLL B4. See [ADR-020](docs/decisions/ADR-020-route-monitoring.md).
+- **WireGuard peer sensors.** For each peer: a `connected` binary_sensor (derived from handshake recency), a stable last-handshake timestamp, and per-peer RX/TX totals. Only routers that have WireGuard get these entities; peer identifiers are redacted from diagnostics and the public-key sensor is disabled by default. Enable **WireGuard peer sensors**. FEATURE-POLL B2. See [ADR-021](docs/decisions/ADR-021-wireguard-peer-sensors.md).
+
+- **Blackhole attribute fix.** A blackhole (kill-switch) route's `blackhole` attribute now reads correctly ([#139](https://github.com/jnctech/homeassistant-mikrotik_router/issues/139)). RouterOS delivers `blackhole` as a bare flag over the API (an empty-string word), which the parser was reading as `False`; it is now presence-detected. The `active` failover signal was always correct.
+- **A refused command no longer takes the integration offline.** When RouterOS refused a single command (a `!trap` reply), the integration treated it as a lost connection. On routers with an `/interface/lte` menu but no modem (e.g. hAP ac², hEX S), the v2.3.21 LTE firmware probe was refused this way, so the config entry never loaded and every entity, device trackers included, stayed `unavailable`. A refusal now keeps the session, is logged once per distinct refusal, and the log names the command and menu. Only transport failures disconnect. Fixes [#144](https://github.com/jnctech/homeassistant-mikrotik_router/issues/144). Contributed by @nowak-mariusz in [#145](https://github.com/jnctech/homeassistant-mikrotik_router/pull/145). See [ADR-022](docs/decisions/ADR-022-trap-is-not-a-disconnect.md).
+- **librouteros 4.x supported.** The `librouteros<4.0` cap from v2.3.14 is lifted to `<5`, matching the librouteros 4.x that Home Assistant core now ships. No behaviour change. CI tests both 3.4.1 and 4.x.
+- **Wifi-package fixes (wifi-qcom-be / wifi-mediatek, and all RouterOS 7.13+ `wifi` installs).** `wifi`-type interfaces now expose their wireless attributes (`ssid`, `mode`, `country`, `band`, `channel-width`, read from the nested `/interface/wifi` schema) under the same names as legacy `wlan` interfaces, with no `unknown` filler. Wireless clients on the new package now report `signal_strength`. `wifi-qcom-be` (e.g. hAP be³) and `wifi-mediatek` are recognised as wifi packages. Existing wifi port connection sensors are unchanged. Contributed by @CommanderROR9 in [#152](https://github.com/jnctech/homeassistant-mikrotik_router/pull/152) ([#146](https://github.com/jnctech/homeassistant-mikrotik_router/issues/146)).
+- **Clearer refusal logs.** A refused switch toggle, setting change or script run now names what was refused and on which path, and a refusal warns again after a reconnect instead of staying muted. Follow-up to #145 by @nowak-mariusz in [#155](https://github.com/jnctech/homeassistant-mikrotik_router/pull/155).
+- **DHCP lease count no longer counts deleted leases.** A lease removed on the router drops out of the per-server lease count on the next poll, not at the next reload ([#160](https://github.com/jnctech/homeassistant-mikrotik_router/issues/160)).
+
 ## What's New — v2.3.21
 
 Stable release rolling up the v2.3.21 beta cycle (beta.1–beta.2). Two contributor-driven additions plus an integration-wide reliability fix, live-validated on a four-controller RouterOS deployment — and the LTE sensors confirmed on real modem hardware by the contributor.
@@ -454,6 +468,29 @@ Track availability of all network devices. All devices visible to the MikroTik d
 Track netwatch probe status.
 
 ![Netwatch](https://raw.githubusercontent.com/tomaae/homeassistant-mikrotik_router/master/docs/assets/images/ui/netwatch_tracker.png)
+
+## WireGuard Peer Monitoring *(new)*
+Per-peer WireGuard state from `/interface/wireguard/peers`. Enable **WireGuard peer sensors** in the integration options.
+
+For each peer you get:
+- a **connected** binary_sensor — derived from handshake recency (last handshake younger than 180 seconds), for "is my remote site up?" alerts and VPN-based presence detection;
+- a **last handshake** timestamp sensor — a stable, graphable time (computed from RouterOS's relative handshake age), not a value that churns every poll;
+- **RX / TX** transfer totals per peer.
+
+Peers are named by their peer `name`, else `comment`, else a short key fingerprint. Only routers that actually have WireGuard get these entities (conditional creation — a non-WireGuard router gets nothing), and the option is off by default because peer identifiers are sensitive.
+
+> **Privacy:** the public key, endpoints and allowed-address are redacted from diagnostics downloads, and the public-key sensor is disabled by default. Peers are keyed by their public key, so `unique_id`s are stable across reboots. See [ADR-021](docs/decisions/ADR-021-wireguard-peer-sensors.md).
+>
+> **Note on "connected":** WireGuard is connectionless — a peer only handshakes when there's traffic (or on a configured keepalive). An idle peer with no keepalive can read disconnected even though it's reachable. This is inherent to WireGuard, not a bug.
+
+## Route Monitoring *(new)*
+Multi-WAN / failover awareness from `/ip/route`. Enable **Default route monitoring sensors** in the integration options.
+
+For each default route (`0.0.0.0/0` and `::/0`) you get a **connectivity binary_sensor** that follows the route's RouterOS `active` flag — so you can alert when a WAN's default route drops and traffic moves to another uplink. Alongside it, an **active default routes** count sensor per routing-table tells you how many default routes are currently up.
+
+It is correct under policy routing (each routing-table is tracked separately) and ECMP / dual-uplink (multiple defaults in one table). Route comments name the entity when set, otherwise it is named `"{routing-table} via {gateway}"`; a blackhole kill-switch route is labelled `"{routing-table} blackhole"`. Attributes include gateway, immediate gateway, distance, scope and the dynamic/static/blackhole flags.
+
+Only default routes become entities — the full route table is never enumerated, so this stays bounded even on a BGP/OSPF router. The option is off by default. Entity `unique_id`s derive from a stable `routing-table`+`dst-address`+`gateway`+`distance` composite, not the volatile RouterOS `.id`, so they survive reboots. See [ADR-020](docs/decisions/ADR-020-route-monitoring.md).
 
 ## Scripts
 Execute MikroTik Router scripts from Home Assistant via automatically created buttons.

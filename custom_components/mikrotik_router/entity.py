@@ -30,6 +30,10 @@ from .const import (
     DEFAULT_SENSOR_NETWATCH_TRACKER,
     CONF_SENSOR_POE,
     DEFAULT_SENSOR_POE,
+    CONF_SENSOR_WIREGUARD,
+    DEFAULT_SENSOR_WIREGUARD,
+    CONF_SENSOR_ROUTE,
+    DEFAULT_SENSOR_ROUTE,
 )
 from .coordinator import MikrotikConfigEntry, MikrotikCoordinator, MikrotikTrackerCoordinator
 from .helper import format_attribute
@@ -37,6 +41,7 @@ from .iface_attributes import (
     DEVICE_ATTRIBUTES_IFACE_CLIENT,
     DEVICE_ATTRIBUTES_IFACE_ETHER,
     DEVICE_ATTRIBUTES_IFACE_SFP,
+    DEVICE_ATTRIBUTES_IFACE_WIFI,
     DEVICE_ATTRIBUTES_IFACE_WIRELESS,
 )
 
@@ -102,6 +107,8 @@ class MikrotikInterfaceEntityMixin:
                 attributes[format_attribute("poe-out")] = poe_out
         elif self._data.get("type") == "wlan":
             copy_attrs(attributes, self._data, DEVICE_ATTRIBUTES_IFACE_WIRELESS)
+        elif self._data.get("type") == "wifi":
+            copy_attrs(attributes, self._data, DEVICE_ATTRIBUTES_IFACE_WIFI, skip_junk=True)
 
         return attributes
 
@@ -113,7 +120,32 @@ def _skip_sensor(config_entry, entity_description, data, uid) -> bool:
         or _skip_device_tracker(config_entry, entity_description)
         or _skip_poe_sensor(config_entry, entity_description, data, uid)
         or _skip_environment_sensor(entity_description, data, uid)
+        or _skip_wireguard_sensor(config_entry, entity_description)
+        or _skip_route_sensor(config_entry, entity_description)
     )
+
+
+def _skip_wireguard_sensor(config_entry, entity_description) -> bool:
+    """Skip WireGuard peer entities when the opt-in option is off.
+
+    Non-WireGuard routers already create nothing (the coordinator's
+    support_wireguard capability gate leaves the data empty); this only guards
+    the user opt-in on a WireGuard router. See ADR-021.
+    """
+    if entity_description.data_path != "wireguard_peers":
+        return False
+    return not config_entry.options.get(CONF_SENSOR_WIREGUARD, DEFAULT_SENSOR_WIREGUARD)
+
+
+def _skip_route_sensor(config_entry, entity_description) -> bool:
+    """Skip route entities (per-route binary_sensor and per-table count) when disabled.
+
+    Both share the opt-in gate; the fetch is already gated in the coordinator,
+    so this only guards entity creation when the option is off. See ADR-020.
+    """
+    if entity_description.data_path not in ("route", "route_table"):
+        return False
+    return not config_entry.options.get(CONF_SENSOR_ROUTE, DEFAULT_SENSOR_ROUTE)
 
 
 def _skip_interface_traffic(config_entry, entity_description, data, uid) -> bool:
@@ -133,6 +165,7 @@ def _skip_interface_traffic(config_entry, entity_description, data, uid) -> bool
 def _skip_binary_sensor(config_entry, entity_description, data, uid) -> bool:
     """Skip port binary sensors on wlan or when tracker disabled."""
     if entity_description.func == "MikrotikPortBinarySensor":
+        # type=wifi keeps its connection sensor (existing entities on the wifi package).
         if data[uid]["type"] == "wlan":
             return True
         if not config_entry.options.get(CONF_SENSOR_PORT_TRACKER, DEFAULT_SENSOR_PORT_TRACKER):

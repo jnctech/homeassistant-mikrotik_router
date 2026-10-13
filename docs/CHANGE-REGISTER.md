@@ -4,6 +4,295 @@ Changes listed in reverse chronological order.
 
 ---
 
+## CR-261014-release-v2.3.22 — promote v2.3.22-rc.3 to stable
+
+**Date:** 2026-10-14
+**Branch:** `chore/release-v2.3.22` → PR to `dev`, then `dev → master`
+**Status:** In Review
+
+### What changed
+- `manifest.json` — `2.3.22-rc.3` → `2.3.22`.
+- `README.md`, `info.md` — What's New retitled from rc.3 to stable v2.3.22. The items are the same as rc.3.
+
+### Why
+rc.3 passed live validation on 2026-10-08: every sensor class was within tolerance against router ground-truth, #160 was confirmed fixed, there were no regressions against rc.2, and no entities were unavailable. It then soaked for 6 days. The only change on `dev` since the `v2.3.22-rc.3` tag is #159 (docs only), so no code differs from what was validated.
+
+### Verification
+- CI on both release PRs. SonarCloud is red on a token error (pre-existing; the operator accepts it as a non-blocker).
+- After merge: tag `v2.3.22` on the `master` merge commit as the latest release, back-merge `master → dev` with a real merge commit, and close #160.
+
+## CR-261007-release-v2.3.22-rc.3 — cut v2.3.22-rc.3 release candidate
+
+**Date:** 2026-10-07
+**Branch:** `chore/release-v2.3.22-rc.3` → PR to `dev`
+**Status:** Merged ([#158](https://github.com/jnctech/homeassistant-mikrotik_router/pull/158)); tagged `v2.3.22-rc.3`. Promoted to stable by CR-261014-release-v2.3.22.
+
+### What changed
+- `manifest.json` — `2.3.22-rc.2` → `2.3.22-rc.3`.
+- `README.md`, `info.md` — What's New rolled to rc.3, adding #152 (wifi-package fixes, @CommanderROR9), #155 (refusal log context, @nowak-mariusz) and #161 (deleted DHCP leases drop out of the lease count, #160).
+
+### Why
+rc.2 soaked clean (2.5 days, re-checked 2026-10-07), but its live validation found #160 (stale DHCP lease count), fixed in #161 and taken into rc.3 as a release-gate fix. A stable cut from the rc.2 commit (#157) was closed because `branch-sync-guard` requires PRs to `master` to come from `dev`. `dev` already carries #152 and #155, so v2.3.22 goes through rc.3 from `dev`, then a normal `dev → master` release. Contributor commits reach `master` unchanged via merge commits.
+
+### Verification
+- CI on the release PR. SonarCloud is red on a token error, pre-existing since 2026-09-07; the operator has accepted it as a non-blocker.
+- Live: deploy rc.3, run `/validate-live-sensors` against the rc.2 numbers, and on the hAP ax³ (`wifi` package) confirm the `_connection` sensors survive, the wifi attributes appear without `unknown`, and clients report `signal_strength`. For #160, confirm each `dhcp_server_lease_count` matches the router's per-server lease count. Then a short soak.
+
+## CR-261007-dhcp-lease-prune — deleted DHCP leases drop out of the lease count (#160)
+
+**Date:** 2026-10-07
+**Branch:** `fix/dhcp-lease-prune` → `dev` ([#161](https://github.com/jnctech/homeassistant-mikrotik_router/pull/161), merge commit `a863c7a`). Fixes [#160](https://github.com/jnctech/homeassistant-mikrotik_router/issues/160).
+**Status:** Merged to `dev`; ships in v2.3.22-rc.3.
+
+### What changed
+- `coordinator.py` `get_dhcp()` — `ds["dhcp"]` is rebuilt from `data={}` each poll instead of merged into, the same pattern as the route and WireGuard-peer datasets. A lease deleted on the router now leaves `ds["dhcp"]` and `dhcp_server_lease_count` on the next poll rather than at the next reload.
+- `query()` returns `None` both on failure and for an empty table (`mikrotikapi.py` `_query_list`). If the connection has dropped, the prior leases are kept so hosts don't lose their DHCP address and interface for a cycle. If it is still up, `None` means zero leases and the dataset is cleared.
+- `tests/test_coordinator.py` — 2 tests: a removed lease leaves the dataset and per-server count (including the all-leases-removed case), and a failed query on a dropped connection keeps the prior leases.
+
+### Why
+`parse_api` merges into the dict it's given and never deletes missing keys, so a deleted lease was counted until reload. Seen in v2.3.22-rc.2 live validation: a server with 0 leases on the router showed 1 in HA.
+
+### Verification
+- ruff (0.9.0) lint and format clean; 783 passed, 5 skipped (Docker, Python 3.13). `get_dhcp` cognitive complexity 3.
+- Readers of `ds["dhcp"]` (`_merge_dhcp_hosts`, host address/name/comment lookups) all guard with `uid in` or iterate, so a pruned lease is safe for them. A host first seen through DHCP stays in `ds["host"]` as before; only its lease data stops refreshing.
+
+## CR-261005-refusal-log-context — name the command in refusal logs; re-warn after a reconnect
+
+**Date:** 2026-10-05
+**Branch:** `nowak-mariusz:fix/refusal-log-context` → `dev` ([#155](https://github.com/jnctech/homeassistant-mikrotik_router/pull/155), merge commit `2e1a178`, authorship preserved). Contributed by @nowak-mariusz. These are follow-ups from the #145 review (ADR-022).
+**Status:** Merged to `dev`; ships in 2.3.23.
+
+### What changed
+- `mikrotikapi.py` — `set_value`, `execute` and `run_script` pass a descriptive location to `_handle_call_error` (`set <param> on path <path>`, `command <cmd> on path <path>`, `run of script <name>`), as `query` already did. A refusal now names what was refused.
+- `mikrotikapi.py` `connect()` — a successful connect clears `_refused_commands`, so a refusal on the new session logs at WARNING again rather than only at DEBUG. A reconnect often follows a firmware or hardware change.
+- `tests/test_mikrotikapi.py` — 4 tests: the three location strings, and re-warn after a reconnect.
+
+### Why
+ADR-022 logs each distinct refusal once. The non-query paths still logged a bare `execute` / `set_value`, so a refused switch toggle wasn't self-explanatory, and a refusal suppressed on one session stayed suppressed after a reconnect.
+
+### Verification
+- CI 13/13 green on the first run.
+- Contributor live check on a hAP ac² running v2.3.22-rc.2 plus this commit: the LTE firmware-probe refusal logged at WARNING once, and again after a router reboot and reconnect.
+- No behaviour change to `!trap` handling: log wording and level only. Not taken into 2.3.22, which is cut from the rc.2 commit.
+
+## CR-261005-wifi-type-schema — wifi-qcom-be / wifi-mediatek detection + `/interface/wifi` schema mapping
+
+**Date:** 2026-10-05
+**Branch:** `CommanderROR9:fix/wifi-type-schema` → `dev` ([#152](https://github.com/jnctech/homeassistant-mikrotik_router/pull/152), merge commit `6ba0ec3`, authorship preserved). Contributed by @CommanderROR9. This is the bugfix half of #146/#147.
+**Status:** Merged to `dev`; ships in 2.3.23.
+
+### What changed
+- `coordinator.py` `_has_wifi_package()` — also recognises `wifi-qcom-be` and `wifi-mediatek`. On 7.13+ the version heuristic already picked `wifi`, so this is for robustness.
+- `get_wireless()` — parses the nested `/interface/wifi` keys (`configuration.ssid/mode/country`, `channel.band/width`) and flattens them onto the legacy names (`ssid`, `mode`, `country`, `band`, `channel-width`) via `_flatten_wifi_keys()` and the module-level `_WIFI_FLAT_MAP`. Absent keys stay absent. The master-interface `unknown` back-fill moved into `_inherit_master_iface()` (ADR-007). `get_wireless` cognitive complexity went from 15 to 8.
+- `get_wireless_hosts()` — maps the wifi registration schema. `signal` is aliased onto `signal-strength` (a device-tracker attribute) only when the legacy field is absent. `tx/rx-bits-per-second`, `bytes` and `band` are collected but inert until the feature half.
+- `entity.py` / `iface_attributes.py` — `type=wifi` interfaces expose `DEVICE_ATTRIBUTES_IFACE_WIFI` with `skip_junk=True`, so there are no `unknown` attributes (ADR-009). The port connection binary_sensor is **kept** for `type=wifi`, because existing wifi-package entities must survive.
+
+### Why
+On wifi-package hardware (be³ reported in #146; also every ax-series router on 7.13+), wifi interfaces had no wireless attributes and clients had no signal strength, because the integration only understood the legacy `wireless` schema. Field evidence: a redacted hAP be³ (ROS 7.25beta5, `wifi-qcom-be`) `/interface/wifi` row, attached to #152.
+
+### Verification
+- CI 13/13 green on `6e5efee`, including both librouteros legs. Static complexipy: no function in `coordinator.py` is above 15.
+- Review: the binary-sensor skip for `wifi` was dropped, because it would have orphaned live `*_wifi*_connection` sensors on a wifi-package hAP ax³. Attribute names were flattened before release to avoid a later breaking rename.
+- **Live: pending.** Deploy with the 2.3.23 beta. On the hAP ax³, confirm the `_connection` sensors survive, the wifi attributes appear without `unknown`, and client trackers gain `signal_strength`.
+
+## CR-261005-stale-never-close-prs — stale bot never auto-closes PRs
+
+**Date:** 2026-10-05
+**Branch:** `chore/stale-never-close-prs` → PR to `dev`
+**Status:** In Review
+
+### What changed
+- `.github/workflows/stale.yml` — `days-before-pr-close: -1`. PRs are still marked stale after 14 days, but are never closed. The PR stale message says so. The issue-close message now says 7 days, matching `days-before-close` (it said 5).
+- New repo label `planned` (already listed in the exempt labels, but it didn't exist) applied to #138 and #147.
+
+### Why
+The bot closed contributor PR #138 on 2026-09-29 while it was waiting on maintainer review, and #145's author had to bump their PR to keep it open. Contributor PRs usually stall on the maintainer, not the author, so auto-closing them penalises the wrong party. Issues keep the existing 14 + 7 day behaviour.
+
+### Verification
+- `days-before-pr-close` checked against the pinned `actions/stale@28ca103` (v9.0.0) `action.yml`, which documents "-1 to never close stale pull requests".
+- actionlint in CI.
+
+## CR-261005-release-v2.3.22-rc.2 — cut v2.3.22-rc.2 release candidate
+
+**Date:** 2026-10-05
+**Branch:** `chore/release-v2.3.22-rc.2` → PR to `dev`
+**Status:** In Review
+
+### What changed
+- `manifest.json` — version `2.3.22-rc.1` → `2.3.22-rc.2`.
+- `README.md`, `info.md` — What's New rolled to rc.2: refused-command fix (#144/#145) and librouteros 4.x support (#149).
+- `docs/decisions/ADR-NEXT-trap-is-not-a-disconnect.md` → `ADR-022-trap-is-not-a-disconnect.md` (number assigned at merge, status Accepted). `docs/decisions/README.md`: index row added, next unused → 025, 023 (#138) and 024 (#147) claimed, 015 marked likely unneeded.
+- `docs/ISSUES.md` — In-flight refreshed; `ISS-260915` → merged.
+
+### Why
+rc.1 is affected by the #144 release-blocker. This rolls the contributor fix (#145, ADR-022) and the librouteros cap-lift (CR-261004-librouteros-4x, which unblocks hassfest) into a new RC, which gets live QA before stable v2.3.22.
+
+### Verification
+- CI on the release PR.
+- Live: deploy to HA, then `/validate-live-sensors`. Record the librouteros version HA loads, and confirm no `!trap`-driven disconnects in the log.
+
+## CR-261004-librouteros-4x — lift librouteros cap to `<5` (unblocks CI / v2.3.22)
+
+**Date:** 2026-10-04
+**Branch:** `fix/librouteros-4x` → PR to `dev`
+**Status:** In Review
+
+### What changed
+- `manifest.json`, `requirements.txt`, `requirements_dev.txt`, `requirements_tests.txt` — `librouteros>=3.4.1,<4.0` → `librouteros>=3.4.1,<5`.
+- `.github/workflows/ci.yml` — tests matrix gains a `Python Tests (3.13, librouteros 3.4.1)` leg pinning the manifest floor; the existing legs resolve the newest allowed (4.x). Each leg prints the installed librouteros version.
+
+### Why
+`dev` CI went red on 2026-10-04: hassfest rejects `librouteros>=3.4.1,<4.0` as incompatible with `librouteros==4.2.2`, which HA core's own `mikrotik` integration requires (HA 2026.9.2 ships `4.1.1`; core `dev` ships `4.2.2` — checked via the core repo's `homeassistant/components/mikrotik/manifest.json`). This blocks v2.3.22.
+
+No code change is needed. The only 4.0 break (`login_methods` → `login_method` callable) was already fixed in CR-260614-librouteros-login-method. Checked against luqasz/librouteros source at tags `3.4.1` and `4.2.2`:
+- `connect()` — 4.x makes kwargs keyword-only; we pass only `encoding`, `login_method`, `port`, `ssl_wrapper`, all valid in both.
+- `Api.path()`, `Path.__iter__`/`__call__`/`update` — same semantics.
+- `TrapError` / `MultiTrapError` (used by #145) — identical classes.
+- `parse_word` — 4.x keeps non-canonical integers as strings (`"00"`, `"+5"`), where 3.x cast them to int. This is a fidelity improvement, and we compare none of those values.
+
+Upstream (tomaae `4871855`/`d5b153d`) added a `TypeError` retry that swaps `login_method`/`login_methods`. We don't need it because we already pass the callable, so it's not ported. The floor stays at 3.4.1; raising it to `>=4.0` remains a v2.4.0 floor-bump item.
+
+### Verification
+- CI: all test legs green (4.x default legs + 3.4.1 floor leg), hassfest green.
+- Live: deploy with rc.2 and run `/validate-live-sensors`. An existing install may keep its already-installed 3.x (it still satisfies `<5`), so check the version the live HA host actually loaded and record it. UNVERIFIED until then.
+
+## CR-260921-inbound-triage — file tracking for inbound issues/PRs; repo-status + prerelease review
+
+**Date:** 2026-09-21
+**Branch:** `claude/repo-status-release-review-ny8z6b` → PR to `dev`
+**Status:** In Review (docs-only; no integration-code changes)
+
+### What changed
+- `docs/ISSUES.md` — new In-flight block (repo aligned; **v2.3.22 promotion blocked on #144**; inbound triage summary; ADR-numbering + authorship-preservation notes). Four new `Active` entries filed as drafts: `ISS-260915-trap-not-a-disconnect` (#144/#145), `ISS-260814-dummy-mac-device-identity` (#138), `ENH-260919-live-interface-rates` (#146/#147), `ISS-260903-via-device-deprecation` (#131).
+- `docs/CHANGE-REGISTER.md` — this entry.
+- Session handoff (code review + drafted PR comments + IDE next-steps) written to gitignored `docs/internal/handoff-260921-inbound-triage.md`.
+
+### Why
+Periodic repo-status + prerelease confirmation and inbound issue/PR triage. Confirmed alignment (`master ⊆ dev` invariant, consistent version files, correctly-flagged prereleases) and surfaced a **v2.3.22 release-blocker** (#144, LTE-probe `!trap` handled as a disconnect; rc.1 affected). Four inbound items reviewed for inclusion and filed as drafts; code review + PR-comment drafts prepared for an IDE test session before any merge. No PRs merged and no integration code touched this session (deliberate — "before any major changes").
+
+### Verification
+- Docs-only change; ruff/tests unaffected. `homelab-leak` gate: entries carry no private IPs/MACs (hardware model names + RouterOS versions only).
+- PR states verified via GitHub: #145/#147 `unstable` (CI pending, fork-run approval needed), #138 `clean` with full CI green (re-verified in the IDE follow-up 2026-09-21, which also reviewed `upstream/master` + `ahharvey/master` — no fork changes to pull; see ISSUES.md In-flight). `master ⊆ dev` re-checked green; version files consistent (master 2.3.21, dev 2.3.22-rc.1); all GitHub releases carry the correct `prerelease` flag.
+- No live-router validation required (tracking/review only). Inclusion decisions, merges (authorship-preserving), and ADR-number assignment deferred to the IDE session per the handoff.
+
+## CR-260909-release-v2.3.22-rc.1 — cut v2.3.22-rc.1 release candidate
+
+**Date:** 2026-09-09
+**Branch:** `chore/release-v2.3.22-rc.1` → PR to `dev`
+**Status:** In Review
+
+### What changed
+- `custom_components/mikrotik_router/manifest.json` — version `2.3.22-beta.1` → `2.3.22-rc.1`.
+- `README.md`, `info.md` — "What's New" heading rolled to `v2.3.22-rc.1`; the beta's blackhole known-issue line replaced with the fix note.
+
+### Why
+Roll the #139 blackhole-attribute fix (CR-260909-route-blackhole-attr, merged to `dev` in #142) into a release candidate off `dev`. RC supersedes v2.3.22-beta.1 — same two opt-in features (route monitoring ADR-020, WireGuard peers ADR-021) with the one attribute-accuracy fix, no other behaviour delta.
+
+### Verification
+- `dev` full suite green (760) at the merge of #142; CI matrix (3.13 + 3.14) green on the release PR.
+- release.yml builds the HACS zip + SBOM on publish of the `v2.3.22-rc.1` tag (pre-release).
+
+## CR-260909-route-blackhole-attr — fix blackhole route attribute reading False (#139)
+
+**Date:** 2026-09-09
+**Branch:** `fix/route-blackhole-attr` → PR to `dev`
+**Status:** In Review
+
+### What changed
+- `custom_components/mikrotik_router/coordinator.py` — `get_route()` now collapses the bare `blackhole` flag to a real bool by key-presence (`entry["blackhole"] = "blackhole" in entry`) before `parse_api`.
+- `tests/test_coordinator.py` — added `_blackhole_route()` fixture mirroring the real librouteros wire shape and two regression tests (bare-flag→True, absent-key→False); corrected the `_route` helper docstring, which wrongly implied librouteros returns *all* flags as bools.
+
+### Why
+A blackhole (kill-switch) default route's `blackhole` attribute read `False` in HA though RouterOS flags it (#139). Root cause, confirmed against a live librouteros dump: `blackhole` is a **bare RouterOS flag** — the API delivers it as an empty-string word (`{'blackhole': ''}`) when set and omits the key entirely otherwise. `from_entry_bool` reads the empty string as neither truthy nor falsy and falls back to the default (`False`), so the flag never registered. The value-bearing flags (`active`/`dynamic`/`static`) arrive as genuine bools and were unaffected — the bug was field-specific, not a general `from_entry_bool` fault. The `active` failover signal was always correct, so this was attribute-accuracy only.
+
+### Verification
+- Root cause captured from live rb4011 debug dump: blackhole route `{'blackhole': '', ...}` (no `active`, no `gateway`); both non-blackhole defaults carry no `blackhole` key — so presence-detection is sound.
+- csr310 inactive-default `distance=""` re-verified correct-by-design (a disabled route has no `distance` key at the router).
+- Full suite **760 passed** (was 758, +2); ruff 0.9.0 format + check clean; homelab-leak gate clean.
+
+## CR-260908-release-v2.3.22-beta.1 — cut v2.3.22-beta.1 pre-release
+
+**Date:** 2026-09-08
+**Branch:** `chore/release-v2.3.22-beta.1` → PR to `dev`
+**Status:** In Review
+
+### What changed
+- `custom_components/mikrotik_router/manifest.json` — version `2.3.21` → `2.3.22-beta.1`.
+- `README.md`, `info.md` — "What's New — v2.3.22-beta.1" section (route monitoring + WireGuard peers, both opt-in).
+- `docs/ISSUES.md` — In-flight refreshed: B4/B2 merged to `dev`, beta cut; #139 tracked as a known-open discrepancy.
+
+### Why
+Roll the two merged FEATURE-POLL features — default-route monitoring (ADR-020, CR-260907-route-monitoring, #136) and WireGuard peer sensors (ADR-021, CR-260907-wireguard-peers, #137) — into a `-beta.1` pre-release off `dev` for HACS opt-in testing. Neither is hardware-gated to absent hardware, so this is a normal beta cadence (not a beta-first hardware gate).
+
+### Verification
+- CI green on `dev` (Python 3.13 + 3.14); full suite 758 passed.
+- **Live validation PASS** on the deployed `dev` code (`origin/dev` @ 74787f8) on the four-router fleet, 2026-09-08: route (policy routing + ECMP + blackhole-inactive) and WireGuard (2 peers, rx/tx within tolerance, capability gate correct) both correct; core-class regression spot-check exact. Per `docs/release-validation.md`.
+- Known-open: [#139](https://github.com/jnctech/homeassistant-mikrotik_router/issues/139) blackhole attribute reads False (low impact; `active` correct) — documented, ships in the beta.
+
+## CR-260907-wireguard-peers — implement WireGuard peer sensors (B2)
+
+**Date:** 2026-09-07
+**Branch:** `feature/wireguard-peers` → PR to `dev`
+**Status:** In Review
+
+### What changed
+- `custom_components/mikrotik_router/coordinator.py` — new `get_wireguard_peers()` getter (path `/interface/wireguard/peers`) with `_wireguard_label()` and `_resolve_wireguard_handshake()` helpers. New `support_wireguard = bool(query("/interface/wireguard"))` capability flag (mirrors `support_lte`); `option_sensor_wireguard`; `"wireguard_peers"` added to `self.ds` and `_ENTITY_UID_PATHS`; registered in the gated getter list behind `support_wireguard and option_sensor_wireguard`.
+- `custom_components/mikrotik_router/const.py` — `CONF_SENSOR_WIREGUARD` / `DEFAULT_SENSOR_WIREGUARD = False`; `WIREGUARD_STALE_SECONDS = 180`; `public-key`, `endpoint-address`, `current-endpoint-address`, `allowed-address` added to `TO_REDACT`.
+- `custom_components/mikrotik_router/binary_sensor_types.py` — per-peer `connected` binary_sensor, `ha_group="WireGuard"`, keyed by `public-key`, `DEVICE_ATTRIBUTES_WIREGUARD_PEER`.
+- `custom_components/mikrotik_router/sensor_types.py` — `last-handshake` (TIMESTAMP), `rx`/`tx` (data_size, total_increasing), and a hidden-by-default `public-key` sensor.
+- `custom_components/mikrotik_router/entity.py` — `_skip_wireguard_sensor()` gates the peer entities on `CONF_SENSOR_WIREGUARD`.
+- `config_flow.py`, `strings.json`, `translations/en.json` — the opt-in toggle + label.
+- `tests/` — 24 new tests.
+
+### Why
+FEATURE-POLL B2, operator-requested (`ENH-260703-wireguard-sensors`). Surfaces per-peer VPN state: a `connected` signal (remote site up/down, VPN-presence automations), a stable last-handshake timestamp, and per-peer transfer. Implements [ADR-021](decisions/ADR-021-wireguard-peer-sensors.md).
+
+### Design notes
+- **Stable keying.** Peers key on `public-key` — globally unique and stable across reboots (unlike `.id`) and a real field on the raw entry, so `parse_api` keys on it directly (the dict key equals the entity uid; no `.id`-churn freeze).
+- **Age → timestamp.** RouterOS reports `last-handshake` as a relative age (`"53s"`, `"1m28s"`), not a timestamp. `_resolve_wireguard_handshake` computes `now − age` with a 10 s drift guard so the timestamp stays stable across polls (the LTE session-uptime model). A never-handshaked peer (field absent) reads `connected` off, timestamp `None`.
+- **Connected heuristic.** `age < WIREGUARD_STALE_SECONDS` (180 s). Documented caveat: an idle peer without a keepalive can read disconnected though reachable — inherent to WireGuard's connectionless model.
+- **Conditional creation + opt-in.** `support_wireguard` (no entities on a non-WG router) AND `CONF_SENSOR_WIREGUARD` (peers are identifying, so surfacing them is explicit opt-in).
+- **Redaction.** `public-key`, `endpoint-address`, `current-endpoint-address`, `allowed-address` added to `TO_REDACT`; the `public-key` sensor is disabled by default (LTE IMEI precedent). The display label uses only a short key fingerprint as a last resort, never the full key. Because the peer map is keyed by `public-key` and `async_redact_data` redacts values (not dict keys), the diagnostics dump additionally re-keys the `wireguard_peers` map to an anonymous index (`diagnostics._redact_wireguard_peer_keys`) so the full key never survives as a dict key — ADR-021 §5 assumed `TO_REDACT` alone covered this, which it does not.
+
+- **v7-only capability probe.** `support_wireguard` is gated on `major_fw_version >= 7` before querying `/interface/wireguard` — WireGuard is a RouterOS v7 feature, and probing the missing menu on v6 could raise "no such command" and force a reconnect each capabilities refresh (the #64 / ISS-260509 disconnect class).
+
+### Accepted scope limits (reviewed)
+- **Live entity attributes are not redacted** — `current-endpoint-address` / `allowed-address` appear on the entity (and in Recorder / Developer Tools) as the user's own network data, per ADR-021 §2 ("attributes … redacted in diagnostics"); `TO_REDACT` covers only shared diagnostics dumps. Consistent with how `mac-address`/`ip-address` are handled integration-wide.
+- **`peer-label` fingerprint** — when a peer has no name or comment, the label falls back to an 8-character public-key fingerprint (not redacted). A short fingerprint is accepted as non-identifying (ADR-021 §2); the full key is never exposed.
+
+### Verification
+- Suite **736 passed, 5 deselected**; ruff clean; cognitive complexity under 15.
+- Live validation on RB4011 (two peers: server `wg-home` + client `wg-us`), a non-WG device (zero peer entities), and a diagnostics redaction check is a release-time gate (ADR-021 test plan), tracked under `ENH-260703`.
+
+## CR-260907-route-monitoring — implement default-route monitoring (B4)
+
+**Date:** 2026-09-07
+**Branch:** `feature/route-monitoring` → PR to `dev`
+**Status:** In Review
+
+### What changed
+- `custom_components/mikrotik_router/coordinator.py` — new `get_route()` getter (path `/ip/route`) with `_route_label()` helper. Filters the route table to default routes (`0.0.0.0/0`, `::/0`) **client-side** (the API wrapper has no server-side filter), so the coordinator only ever holds the failover-relevant set. Builds one row per default route plus a per-routing-table active-default count. Registered in the gated getter list behind the new `option_sensor_route`; `"route"`/`"route_table"` added to `self.ds` and `_ENTITY_UID_PATHS`.
+- `custom_components/mikrotik_router/const.py` — `CONF_SENSOR_ROUTE` / `DEFAULT_SENSOR_ROUTE = False`. Added `"uniq-id"` and `"route-label"` to `TO_REDACT`.
+- `custom_components/mikrotik_router/binary_sensor_types.py` — per-default-route `binary_sensor` (`data_attribute="active"`), `ha_group="Routing"`, keyed by the composite `uniq-id`, `DEVICE_ATTRIBUTES_ROUTE`.
+- `custom_components/mikrotik_router/sensor_types.py` — `route_active_defaults` count sensor, one per routing-table.
+- `custom_components/mikrotik_router/entity.py` — `_skip_route_sensor()` gates both route paths on `CONF_SENSOR_ROUTE`.
+- `custom_components/mikrotik_router/config_flow.py`, `strings.json`, `translations/en.json` — the opt-in toggle + label.
+- `tests/` — 20 new tests (`get_route` parse/filter/composite-UID/multi-table/ECMP/blackhole/fresh-rebuild; entity naming/unique_id/skip-gating; descriptor pins + is_on/native_value).
+
+### Why
+FEATURE-POLL B4, user-voted (`ENH-260907-route-monitoring`). Surfaces multi-WAN failover awareness as HA entities: a per-default-route `active` binary_sensor (which WAN dropped) and a per-table active-default count (how many are up). Correct under policy routing and ECMP. Implements [ADR-020](decisions/ADR-020-route-monitoring.md).
+
+### Design notes
+- **Stable keying.** The ds dict, the `parse_api` `key=`, and the entity `data_reference` are all the synthetic composite `routing-table`+`dst-address`+`gateway`+`distance` — never the RouterOS `.id` (reassigned on reboot and dynamic-route churn). Because `parse_api` reads `key=` from the raw entry (a `val_proc` field is computed too late to key on), the composite is injected onto each raw entry before parsing, so the ds key equals the entity uid and the binding survives an `.id` reassignment. Keying on `.id` here would silently freeze the entity when a dynamic default route renews — the exact failover event this feature watches (ADR-020 §4).
+- **Fresh rebuild each poll** (`data={}`) rather than merge: the default set is tiny and bounded, and a withdrawn route must drop out of the per-table count immediately rather than linger stale.
+- **Diagnostics redaction.** The synthetic `uniq-id` and `route-label` embed the gateway IP, which key-based `async_redact_data` cannot reach inside a combined string, so both are added to `TO_REDACT`. This also closes the pre-existing `to-addresses` leak in the nat/mangle `uniq-id`.
+
+### Verification
+- Suite **727 passed, 5 deselected** (`pytest -m "not integration"`); ruff clean on all changed files. New `get_route`/`_route_label` region fully covered.
+- Live validation on RB4011 (policy routing: `main` + `wg_us` + blackhole), CRS310 (2 defaults) and a single-table device is a release-time gate (per ADR-020 test plan), tracked under `ENH-260907`.
+
+---
+
 ## CR-260907-release-v2321 — cut v2.3.21 stable
 
 **Date:** 2026-09-07

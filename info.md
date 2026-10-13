@@ -10,6 +10,17 @@ Monitor and control your MikroTik router from Home Assistant.
 
 ![Mikrotik Logo](https://raw.githubusercontent.com/tomaae/homeassistant-mikrotik_router/master/docs/assets/images/ui/header.png)
 
+### What's new in v2.3.22
+Stable release rolling up the v2.3.22 cycle (beta.1, rc.1–rc.3): two opt-in monitoring features (off by default), plus reliability and wifi-package fixes, live-validated on a four-router fleet.
+- **Default-route monitoring** — per-default-route `active` binary_sensor + per-table active-default count, for multi-WAN failover awareness. Correct under policy routing + ECMP; blackhole kill-switch routes read inactive. Enable **Default route monitoring sensors**. FEATURE-POLL B4. See ADR-020.
+- **WireGuard peer sensors** — per-peer `connected` (from handshake recency), a stable last-handshake timestamp, and RX/TX totals. Only on routers with WireGuard; peer keys redacted, public-key sensor disabled by default. Enable **WireGuard peer sensors**. FEATURE-POLL B2. See ADR-021.
+- **Blackhole attribute fix** — a blackhole route's `blackhole` attribute now reads correctly (#139); RouterOS delivers it as a bare flag over the API, now presence-detected. The `active` signal was always correct.
+- **Refused command ≠ lost connection** — a `!trap` refusal no longer disconnects. Routers with an LTE menu but no modem (hAP ac², hEX S) were left with every entity `unavailable` (#144). Contributed by @nowak-mariusz (#145). See ADR-022.
+- **librouteros 4.x supported** — cap lifted from `<4.0` to `<5`, matching HA core. No behaviour change.
+- **Wifi-package fixes** — `wifi`-type interfaces (wifi-qcom-be, wifi-mediatek and all 7.13+ `wifi` installs) expose `ssid`/`mode`/`country`/`band`/`channel-width` under the legacy names, with no `unknown` filler; clients now report `signal_strength`. Contributed by @CommanderROR9 (#152).
+- **Clearer refusal logs** — refused toggles, settings and scripts name what was refused, and warn again after a reconnect. @nowak-mariusz (#155).
+- **DHCP lease count fix**: deleted leases drop out of the per-server count on the next poll (#160).
+
 ### What's new in v2.3.21
 Stable release rolling up the v2.3.21 beta cycle (beta.1–beta.2). Two contributor-driven additions + an integration-wide reliability fix, live-validated on a four-controller deployment; the LTE sensors confirmed on real modem hardware by the contributor.
 - **LTE modem sensors** — signal (RSSI/RSRP/RSRQ/SINR/CQI), operator, connection, session uptime, and modem firmware for routers with an `/interface/lte`. Conditional on LTE hardware. IMEI/IMSI/ICCID collected but disabled by default + redacted. Thanks @zvldz for the implementation + live validation on a MikroTik Chateau. Implements tomaae #249. See ADR-019.

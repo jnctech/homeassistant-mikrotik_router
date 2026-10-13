@@ -2824,6 +2824,229 @@ def test_netwatch_name_defaults_empty_when_absent_or_empty():
 
 
 # ---------------------------------------------------------------------------
+# Group AZ: get_route() — default-route monitoring (ADR-020)
+# ---------------------------------------------------------------------------
+
+
+def _route(dst="0.0.0.0/0", table="main", gateway="10.0.0.1", distance=1, active=True, **extra):
+    """Build a raw /ip/route source row.
+
+    librouteros delivers the *value-bearing* flags (`active`, `dynamic`,
+    `static`, `inactive`) as genuine Python bools. It does NOT do so for the
+    *bare* flag `blackhole`: that arrives as an empty-string word when set and
+    is omitted otherwise — see `_blackhole_route` and #139 for the real wire
+    shape. Passing `blackhole=True` here is a convenience for the count/label
+    tests and does not mirror the wire.
+    """
+    row = {
+        ".id": extra.pop("id", f"*{table}{distance}"),
+        "dst-address": dst,
+        "routing-table": table,
+        "gateway": gateway,
+        "distance": distance,
+        "active": active,
+    }
+    row.update(extra)
+    return row
+
+
+def test_route_filters_to_default_routes_only():
+    """Only 0.0.0.0/0 and ::/0 become rows; every non-default route is dropped
+    client-side so the coordinator never holds the full table (ADR-020)."""
+    coordinator = make_coordinator(
+        api_responses={
+            "/ip/route": [
+                _route(id="*1"),
+                _route(dst="192.168.88.0/24", id="*2"),  # connected LAN route — excluded
+                _route(dst="10.5.0.0/16", table="main", id="*3"),  # static non-default — excluded
+                _route(dst="::/0", gateway="fe80::1", id="*4"),  # IPv6 default — included
+            ],
+        }
+    )
+    coordinator.get_route()
+    dsts = {row["dst-address"] for row in coordinator.ds["route"].values()}
+    assert dsts == {"0.0.0.0/0", "::/0"}
+
+
+def test_route_dict_keyed_by_composite_not_id():
+    """The ds['route'] key IS the routing-table:dst:gateway:distance composite,
+    not the unstable RouterOS .id. The dict key is what the entity binds to as
+    its uid, so it must be the stable value (ADR-020 §4)."""
+    coordinator = make_coordinator(api_responses={"/ip/route": [_route(table="wg_us", gateway="wg-us", distance=1, id="*7")]})
+    coordinator.get_route()
+    assert set(coordinator.ds["route"].keys()) == {"wg_us:0.0.0.0/0:wg-us:1"}
+    row = coordinator.ds["route"]["wg_us:0.0.0.0/0:wg-us:1"]
+    assert row["uniq-id"] == "wg_us:0.0.0.0/0:wg-us:1"
+
+
+def test_route_entity_binding_survives_id_reassignment():
+    """A dynamic default route renews (PPPoE/DHCP) and RouterOS hands it a new
+    .id, but routing-table/dst/gateway/distance are unchanged: the ds key stays
+    constant, so the entity's uid binding does not break. This is the failure
+    ADR-020 §4 forbids — keying on .id would freeze the entity here."""
+    coordinator = make_coordinator(api_responses={"/ip/route": [_route(table="main", gateway="10.0.0.1", id="*1")]})
+    coordinator.get_route()
+    first_keys = set(coordinator.ds["route"].keys())
+
+    # Next poll: identical route, reassigned .id, and it has just gone inactive.
+    coordinator.api.responses["/ip/route"] = [_route(table="main", gateway="10.0.0.1", id="*9", active=False)]
+    coordinator.get_route()
+    assert set(coordinator.ds["route"].keys()) == first_keys  # binding preserved
+    assert coordinator.ds["route"]["main:0.0.0.0/0:10.0.0.1:1"]["active"] is False
+
+
+def test_route_per_table_active_default_count():
+    """The count sensor tallies active defaults per routing-table — the multi-WAN
+    signal. Inactive defaults are not counted."""
+    coordinator = make_coordinator(
+        api_responses={
+            "/ip/route": [
+                _route(table="main", gateway="10.0.0.1", active=True, id="*1"),
+                _route(table="wg_us", gateway="wg-us", active=True, distance=1, id="*2"),
+                _route(table="wg_us", gateway="", distance=10, active=False, blackhole=True, id="*3"),
+            ]
+        }
+    )
+    coordinator.get_route()
+    tables = coordinator.ds["route_table"]
+    assert tables["main"]["active-default-count"] == 1
+    assert tables["wg_us"]["active-default-count"] == 1  # blackhole is inactive
+
+
+def test_route_ecmp_two_active_defaults_same_table():
+    """Dual-uplink (ECMP): two active defaults in one table count as 2 and stay
+    distinct entities via their gateway-bearing composite (ADR-020)."""
+    coordinator = make_coordinator(
+        api_responses={
+            "/ip/route": [
+                _route(table="main", gateway="10.0.0.1", id="*1"),
+                _route(table="main", gateway="10.0.1.1", id="*2"),
+            ]
+        }
+    )
+    coordinator.get_route()
+    assert coordinator.ds["route_table"]["main"]["active-default-count"] == 2
+    uids = {row["uniq-id"] for row in coordinator.ds["route"].values()}
+    assert uids == {"main:0.0.0.0/0:10.0.0.1:1", "main:0.0.0.0/0:10.0.1.1:1"}
+
+
+def test_route_label_prefers_comment():
+    """route-label uses the user's route comment when set."""
+    coordinator = make_coordinator(api_responses={"/ip/route": [_route(comment="Primary WAN", id="*1")]})
+    coordinator.get_route()
+    assert coordinator.ds["route"]["main:0.0.0.0/0:10.0.0.1:1"]["route-label"] == "Primary WAN"
+
+
+def test_route_label_composes_table_and_gateway_without_comment():
+    """No comment -> '{routing-table} via {gateway}'."""
+    coordinator = make_coordinator(api_responses={"/ip/route": [_route(table="wg_us", gateway="wg-us", comment="", id="*1")]})
+    coordinator.get_route()
+    assert coordinator.ds["route"]["wg_us:0.0.0.0/0:wg-us:1"]["route-label"] == "wg_us via wg-us"
+
+
+def test_route_label_blackhole_has_no_gateway():
+    """A blackhole kill-switch route has no gateway, so it is labelled by table,
+    not 'via <empty>' (ADR-020)."""
+    coordinator = make_coordinator(api_responses={"/ip/route": [_route(table="wg_us", gateway="", distance=10, active=False, blackhole=True, id="*1")]})
+    coordinator.get_route()
+    assert coordinator.ds["route"]["wg_us:0.0.0.0/0::10"]["route-label"] == "wg_us blackhole"
+
+
+def _blackhole_route():
+    """The exact raw row librouteros returns for a blackhole kill-switch default,
+    captured from a live rb4011 dump (#139): `blackhole` is a bare flag word with
+    an empty-string value, `active` and `gateway` are omitted entirely, and the
+    value-bearing flags arrive as real bools."""
+    return {
+        ".id": "*80000032",
+        "dst-address": "0.0.0.0/0",
+        "routing-table": "wg_us",
+        "blackhole": "",  # bare flag: present-but-empty when set
+        "immediate-gw": "",
+        "distance": 10,
+        "dynamic": False,
+        "inactive": False,
+        "static": True,
+        "comment": "us fail closed (kill-switch)",
+    }
+
+
+def test_route_blackhole_bare_flag_parses_true():
+    """Regression for #139: the `blackhole` attribute must read True from the
+    real wire shape — a bare flag delivered as an empty string — where the old
+    parse (bool coercion of "") silently defaulted it to False. `active` is
+    absent on this route and must stay False (the kill-switch is inactive)."""
+    coordinator = make_coordinator(api_responses={"/ip/route": [_blackhole_route()]})
+    coordinator.get_route()
+    row = coordinator.ds["route"]["wg_us:0.0.0.0/0::10"]
+    assert row["blackhole"] is True
+    assert row["active"] is False
+    assert row["gateway"] == ""
+    assert row["route-label"] == "us fail closed (kill-switch)"
+
+
+def test_route_blackhole_absent_key_parses_false():
+    """A normal default route carries no `blackhole` key at all; presence-detection
+    must not manufacture a True from its absence (#139)."""
+    coordinator = make_coordinator(api_responses={"/ip/route": [_route(table="main", gateway="10.0.0.1", id="*1")]})
+    coordinator.get_route()
+    assert coordinator.ds["route"]["main:0.0.0.0/0:10.0.0.1:1"]["blackhole"] is False
+
+
+def test_route_rebuilt_fresh_drops_withdrawn_routes():
+    """ds['route'] is rebuilt each poll: a withdrawn default disappears (and its
+    count drops) rather than lingering stale (ADR-020)."""
+    coordinator = make_coordinator(
+        api_responses={
+            "/ip/route": [
+                _route(table="main", gateway="10.0.0.1", id="*1"),
+                _route(table="main", gateway="10.0.1.1", id="*2"),
+            ]
+        }
+    )
+    coordinator.get_route()
+    assert coordinator.ds["route_table"]["main"]["active-default-count"] == 2
+
+    # Second poll: the backup uplink route is gone.
+    coordinator.api.responses["/ip/route"] = [_route(table="main", gateway="10.0.0.1", id="*1")]
+    coordinator.get_route()
+    assert len(coordinator.ds["route"]) == 1
+    assert coordinator.ds["route_table"]["main"]["active-default-count"] == 1
+
+
+def test_route_missing_routing_table_defaults_to_main():
+    """RouterOS v6 / single-table gear omits routing-table; default it to 'main'."""
+    coordinator = make_coordinator(api_responses={"/ip/route": [{".id": "*1", "dst-address": "0.0.0.0/0", "gateway": "10.0.0.1", "active": True}]})
+    coordinator.get_route()
+    # No routing-table and no distance in the source -> "main" default, empty distance.
+    row = coordinator.ds["route"]["main:0.0.0.0/0:10.0.0.1:"]
+    assert row["routing-table"] == "main"
+    assert coordinator.ds["route_table"]["main"]["active-default-count"] == 1
+
+
+def test_route_empty_table_yields_no_entities():
+    """No routes at all -> empty dicts, no crash."""
+    coordinator = make_coordinator(api_responses={"/ip/route": []})
+    coordinator.get_route()
+    assert coordinator.ds["route"] == {}
+    assert coordinator.ds["route_table"] == {}
+
+
+def test_route_query_none_keeps_prior_state():
+    """A transient disconnect makes query() return None; get_route must keep the
+    prior route state and not crash on a None iteration (mirrors get_neighbor)."""
+    coordinator = make_coordinator()
+    coordinator.ds["route"] = {"*1": {"active": True, "uniq-id": "main:0.0.0.0/0:10.0.0.1:1"}}
+    coordinator.ds["route_table"] = {"main": {"routing-table": "main", "active-default-count": 1}}
+    coordinator.api.query = MagicMock(return_value=None)
+
+    coordinator.get_route()  # must not raise
+
+    assert coordinator.ds["route"] == {"*1": {"active": True, "uniq-id": "main:0.0.0.0/0:10.0.0.1:1"}}
+    assert coordinator.ds["route_table"]["main"]["active-default-count"] == 1
+
+
+# ---------------------------------------------------------------------------
 # Group AA: get_system_routerboard() — routerboard parsing
 # ---------------------------------------------------------------------------
 
@@ -3125,6 +3348,58 @@ def test_dhcp_server_lease_count_unknown_server_ignored():
     coordinator.get_dhcp_server()
     coordinator.get_dhcp()
     assert coordinator.ds["dhcp-server"]["defconf"]["lease-count"] == 0
+
+
+def _lease(mac, server):
+    return {"mac-address": mac, "address": "192.168.1.10", "server": server, "status": "bound"}
+
+
+def test_dhcp_removed_lease_drops_out_of_count():
+    """#160: a lease deleted on the router leaves ds['dhcp'] and the lease count."""
+    coordinator = make_coordinator(
+        api_responses={
+            "/ip/dhcp-server/lease": [_lease("AA:BB:CC:DD:EE:01", "lan"), _lease("AA:BB:CC:DD:EE:02", "iot")],
+            "/ip/dhcp-server": [
+                {"name": "lan", "interface": "bridge1", "disabled": False},
+                {"name": "iot", "interface": "vlan40", "disabled": False},
+            ],
+        }
+    )
+    coordinator.api.connected = lambda: True
+    coordinator.get_dhcp_server()
+    coordinator.get_dhcp()
+    assert coordinator.ds["dhcp-server"]["iot"]["lease-count"] == 1
+
+    # iot's only lease is deleted: query() returns the remaining lease.
+    coordinator.api.responses["/ip/dhcp-server/lease"] = [_lease("AA:BB:CC:DD:EE:01", "lan")]
+    coordinator.get_dhcp()
+    assert "AA:BB:CC:DD:EE:02" not in coordinator.ds["dhcp"]
+    assert coordinator.ds["dhcp-server"]["iot"]["lease-count"] == 0
+    assert coordinator.ds["dhcp-server"]["lan"]["lease-count"] == 1
+
+    # Every lease deleted: query() returns None while still connected.
+    coordinator.api.responses["/ip/dhcp-server/lease"] = None
+    coordinator.get_dhcp()
+    assert coordinator.ds["dhcp"] == {}
+    assert coordinator.ds["dhcp-server"]["lan"]["lease-count"] == 0
+
+
+def test_dhcp_failed_query_keeps_prior_leases():
+    """A query that fails on a dropped connection keeps the prior leases."""
+    coordinator = make_coordinator(
+        api_responses={
+            "/ip/dhcp-server/lease": [_lease("AA:BB:CC:DD:EE:01", "lan")],
+            "/ip/dhcp-server": [{"name": "lan", "interface": "bridge1", "disabled": False}],
+        }
+    )
+    coordinator.get_dhcp_server()
+    coordinator.get_dhcp()
+
+    coordinator.api.responses["/ip/dhcp-server/lease"] = None
+    coordinator.api.connected = lambda: False
+    coordinator.get_dhcp()
+    assert "AA:BB:CC:DD:EE:01" in coordinator.ds["dhcp"]
+    assert coordinator.ds["dhcp-server"]["lan"]["lease-count"] == 1
 
 
 def test_dhcp_client_parsing():
@@ -3580,6 +3855,7 @@ async def test_async_update_data_continues_after_successful_reconnect():
         "support_ups",
         "support_gps",
         "support_container",
+        "support_wireguard",
     ):
         setattr(coordinator, flag, False)
     coordinator.ds["host_hass"] = {"seed": True}
@@ -5725,3 +6001,310 @@ def test_get_lte_signal_disconnected_session_uptime_is_none():
     coordinator.get_lte_signal()
     assert coordinator.ds["lte"]["connected"] is False
     assert coordinator.ds["lte"]["session-uptime"] is None
+
+
+# ---------------------------------------------------------------------------
+# Group AZ2: get_wireguard_peers() — WireGuard peer sensors (ADR-021)
+# ---------------------------------------------------------------------------
+
+from datetime import timedelta  # noqa: E402  (local to the WireGuard group)
+
+_WG_NOW = datetime(2026, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+
+
+def _peer(public_key="KEYAAA", interface="wg-home", handshake="53s", **extra):
+    """Build a raw /interface/wireguard/peers source row."""
+    row = {"public-key": public_key, "interface": interface, "rx": 100, "tx": 50}
+    if handshake is not None:
+        row["last-handshake"] = handshake
+    row.update(extra)
+    return row
+
+
+def test_wireguard_peers_keyed_by_public_key():
+    """Peers are keyed by the stable public-key, not .id (ADR-021)."""
+    coordinator = make_coordinator(api_responses={"/interface/wireguard/peers": [_peer(public_key="ABC123")]})
+    coordinator.get_wireguard_peers()
+    assert set(coordinator.ds["wireguard_peers"].keys()) == {"ABC123"}
+
+
+def test_wireguard_connected_when_handshake_recent():
+    """last-handshake younger than the stale window -> connected on, timestamp set."""
+    coordinator = make_coordinator(api_responses={"/interface/wireguard/peers": [_peer(handshake="53s")]})
+    coordinator.get_wireguard_peers()
+    peer = coordinator.ds["wireguard_peers"]["KEYAAA"]
+    assert peer["connected"] is True
+    assert peer["last-handshake"] is not None
+
+
+def test_wireguard_disconnected_when_handshake_stale():
+    """last-handshake older than 180 s -> connected off (idle peer)."""
+    coordinator = make_coordinator(api_responses={"/interface/wireguard/peers": [_peer(handshake="5m")]})
+    coordinator.get_wireguard_peers()
+    assert coordinator.ds["wireguard_peers"]["KEYAAA"]["connected"] is False
+
+
+def test_wireguard_never_handshaked_peer():
+    """No last-handshake field -> connected off, timestamp None, no fabricated time."""
+    coordinator = make_coordinator(api_responses={"/interface/wireguard/peers": [_peer(handshake=None)]})
+    coordinator.get_wireguard_peers()
+    peer = coordinator.ds["wireguard_peers"]["KEYAAA"]
+    assert peer["connected"] is False
+    assert peer["last-handshake"] is None
+
+
+def test_wireguard_query_none_keeps_prior_state():
+    """A transient disconnect (query None) keeps prior peer state, no crash."""
+    coordinator = make_coordinator()
+    coordinator.ds["wireguard_peers"] = {"KEYAAA": {"public-key": "KEYAAA", "connected": True}}
+    coordinator.api.query = MagicMock(return_value=None)
+    coordinator.get_wireguard_peers()
+    assert coordinator.ds["wireguard_peers"] == {"KEYAAA": {"public-key": "KEYAAA", "connected": True}}
+
+
+def test_wireguard_rebuilt_fresh_drops_removed_peers():
+    """ds is rebuilt each poll: a removed peer disappears rather than lingering."""
+    coordinator = make_coordinator(api_responses={"/interface/wireguard/peers": [_peer(public_key="A"), _peer(public_key="B")]})
+    coordinator.get_wireguard_peers()
+    assert set(coordinator.ds["wireguard_peers"].keys()) == {"A", "B"}
+    coordinator.api.responses["/interface/wireguard/peers"] = [_peer(public_key="A")]
+    coordinator.get_wireguard_peers()
+    assert set(coordinator.ds["wireguard_peers"].keys()) == {"A"}
+
+
+# --- _resolve_wireguard_handshake: deterministic age->timestamp + drift guard ---
+
+
+def test_resolve_handshake_age_to_timestamp():
+    """now - age, parsed from the '1m28s' duration form."""
+    peer = {"last-handshake-age": "1m28s"}
+    MikrotikCoordinator._resolve_wireguard_handshake(peer, None, _WG_NOW)
+    assert peer["connected"] is True
+    assert peer["last-handshake"] == _WG_NOW - timedelta(seconds=88)
+
+
+def test_resolve_handshake_drift_guard_retains_previous():
+    """A ~consistent age across polls (same actual handshake) keeps the prior
+    timestamp rather than jittering every poll."""
+    previous = _WG_NOW - timedelta(seconds=60)
+    peer = {"last-handshake-age": "1m3s"}  # 63 s -> handshake within 10 s of previous
+    MikrotikCoordinator._resolve_wireguard_handshake(peer, previous, _WG_NOW)
+    assert peer["last-handshake"] is previous
+
+
+def test_resolve_handshake_new_handshake_updates_timestamp():
+    """A fresh handshake (age resets small) jumps the timestamp forward."""
+    previous = _WG_NOW - timedelta(seconds=60)
+    peer = {"last-handshake-age": "5s"}
+    MikrotikCoordinator._resolve_wireguard_handshake(peer, previous, _WG_NOW)
+    assert peer["last-handshake"] == _WG_NOW - timedelta(seconds=5)
+
+
+# --- _wireguard_label: name -> comment -> fingerprint ---
+
+
+def test_wireguard_label_prefers_name():
+    assert MikrotikCoordinator._wireguard_label({"name": "laptop", "comment": "x", "public-key": "K"}) == "laptop"
+
+
+def test_wireguard_label_falls_back_to_comment():
+    assert MikrotikCoordinator._wireguard_label({"name": "", "comment": "remote site", "public-key": "K"}) == "remote site"
+
+
+def test_wireguard_label_fingerprint_last_resort():
+    """No name or comment -> short public-key fingerprint, never the full key."""
+    assert MikrotikCoordinator._wireguard_label({"public-key": "ABCDEFGHIJKL"}) == "peer ABCDEFGH"
+
+
+# --- support_wireguard capability gate (ADR-021 Test Plan: no phantom entities) ---
+
+
+def _wg_caps_coordinator(major_fw, wireguard_response):
+    coordinator = make_coordinator(
+        major_fw_version=major_fw,
+        api_responses={
+            "/system/package": [],
+            "/interface/lte": [],
+            "/interface/wireguard": wireguard_response,
+        },
+    )
+    coordinator.host = "testhost"
+    return coordinator
+
+
+def test_support_wireguard_true_on_v7_with_interface():
+    """A v7 router with a /interface/wireguard menu is detected as WG-capable."""
+    coordinator = _wg_caps_coordinator(7, [{".id": "*1", "name": "wg-home"}])
+    coordinator.get_capabilities()
+    assert coordinator.support_wireguard is True
+
+
+def test_support_wireguard_false_on_v7_without_interface():
+    """A v7 router with no WireGuard interface -> not WG-capable, no phantom peers."""
+    coordinator = _wg_caps_coordinator(7, [])
+    coordinator.get_capabilities()
+    assert coordinator.support_wireguard is False
+
+
+def test_support_wireguard_not_probed_on_v6():
+    """WireGuard is v7+ only; a v6 router is never probed (avoids a 'no such
+    command' disconnect) and is correctly not WG-capable even if a response
+    were present. The `>= 7` guard short-circuits before the query."""
+    coordinator = _wg_caps_coordinator(6, [{".id": "*1", "name": "wg-home"}])
+    coordinator.get_capabilities()
+    assert coordinator.support_wireguard is False
+
+
+def test_wireguard_empty_source_no_phantom_entities():
+    """An empty peer list yields an empty map -> zero peer entities (ADR-021)."""
+    coordinator = make_coordinator(api_responses={"/interface/wireguard/peers": []})
+    coordinator.get_wireguard_peers()
+    assert coordinator.ds["wireguard_peers"] == {}
+
+
+# ---------------------------------------------------------------------------
+# Group AZ3: wifi package detection + wifi registration/interface mapping
+# ---------------------------------------------------------------------------
+
+
+def _wifi_packages(*enabled):
+    """Build a /system/package-style dict with the given packages enabled."""
+    return {name: {"enabled": True} for name in enabled}
+
+
+def test_has_wifi_package_recognises_qcom_be_and_mediatek():
+    """wifi-qcom-be (hAP be3) and wifi-mediatek are detected as wifi packages."""
+    coordinator = make_coordinator(major_fw_version=7)
+    for pkg in ("wifi", "wifi-qcom", "wifi-qcom-ac", "wifi-qcom-be", "wifi-mediatek"):
+        assert coordinator._has_wifi_package(_wifi_packages("routeros", pkg)) is True
+
+
+def test_capabilities_v7_qcom_be_selects_wifi_module():
+    """A be3-style package set (wifi-qcom-be) selects the wifi module."""
+    coordinator = make_coordinator(
+        major_fw_version=7,
+        api_responses={
+            "/system/package": [
+                {"name": "routeros", "disabled": False},
+                {"name": "wifi-qcom-be", "disabled": False},
+            ],
+            "/interface/lte": [],
+            "/interface/wireguard": [],
+        },
+    )
+    coordinator.host = "testhost"
+    coordinator.get_capabilities()
+    assert coordinator._wifimodule == "wifi"
+    assert coordinator.support_wireless is True
+    assert coordinator.support_capsman is False
+
+
+def test_wireless_hosts_wifi_schema_mapping():
+    """Wifi registration rows map signal/bps fields; signal aliases signal-strength."""
+    coordinator = make_coordinator(major_fw_version=7)
+    coordinator.host = "testhost"
+    coordinator._wifimodule = "wifi"
+    coordinator.api = MockMikrotikAPI(
+        responses={
+            "/interface/wifi/registration-table": [
+                {
+                    "mac-address": "AA:BB:CC:DD:EE:01",
+                    "interface": "wifi1",
+                    "uptime": "10m",
+                    "signal": "-44",
+                    "tx-rate": "65Mbps",
+                    "tx-bits-per-second": "1200",
+                    "rx-bits-per-second": "3400",
+                    "bytes": "123456,654321",
+                    "band": "2ghz-n",
+                },
+            ],
+        }
+    )
+    coordinator.get_wireless_hosts()
+    wh = coordinator.ds["wireless_hosts"]["AA:BB:CC:DD:EE:01"]
+    assert wh["signal"] == "-44"
+    assert wh["signal-strength"] == "-44"
+    assert wh["tx-bits-per-second"] == "1200"
+    assert wh["rx-bits-per-second"] == "3400"
+    assert wh["band"] == "2ghz-n"
+
+
+def test_wireless_hosts_legacy_signal_strength_wins():
+    """When both fields exist, the legacy signal-strength is not overwritten."""
+    coordinator = make_coordinator(major_fw_version=7)
+    coordinator._wifimodule = "wireless"
+    coordinator.api = MockMikrotikAPI(
+        responses={
+            "/interface/wireless/registration-table": [
+                {"mac-address": "AA:BB:CC:DD:EE:02", "signal-strength": "-60", "signal": "-44"},
+            ],
+        }
+    )
+    coordinator.get_wireless_hosts()
+    assert coordinator.ds["wireless_hosts"]["AA:BB:CC:DD:EE:02"]["signal-strength"] == "-60"
+
+
+def test_wireless_hosts_signal_absent_stays_absent():
+    """Neither signal field reported -> no fabricated signal-strength."""
+    coordinator = make_coordinator(major_fw_version=7)
+    coordinator._wifimodule = "wifi"
+    coordinator.api = MockMikrotikAPI(responses={"/interface/wifi/registration-table": [{"mac-address": "AA:BB:CC:DD:EE:03"}]})
+    coordinator.get_wireless_hosts()
+    assert not coordinator.ds["wireless_hosts"]["AA:BB:CC:DD:EE:03"].get("signal-strength")
+
+
+def test_get_wireless_wifi_nested_keys_reach_interface():
+    """/interface/wifi dotted keys are flattened onto legacy flat names."""
+    coordinator = make_coordinator(major_fw_version=7)
+    coordinator._wifimodule = "wifi"
+    coordinator.ds["interface"] = {"wifi1": {"name": "wifi1", "type": "wifi"}}
+    coordinator.api = MockMikrotikAPI(
+        responses={
+            "/interface/wifi": [
+                {
+                    "name": "wifi1",
+                    "mac-address": "AA:BB:CC:DD:EE:04",
+                    "configuration.ssid": "ExampleSSID",
+                    "configuration.mode": "ap",
+                    "configuration.country": "Germany",
+                    "channel.band": "2ghz-be",
+                    "channel.width": "20/40mhz",
+                    "running": True,
+                    "disabled": False,
+                },
+            ],
+        }
+    )
+    coordinator.get_wireless()
+    iface = coordinator.ds["interface"]["wifi1"]
+    assert iface["ssid"] == "ExampleSSID"
+    assert iface["mode"] == "ap"
+    assert iface["country"] == "Germany"
+    assert iface["band"] == "2ghz-be"
+    assert iface["channel-width"] == "20/40mhz"
+
+
+def test_get_wireless_wifi_absent_nested_keys_stay_unknown():
+    """Missing nested keys are not fabricated (null-not-guess)."""
+    coordinator = make_coordinator(major_fw_version=7)
+    coordinator._wifimodule = "wifi"
+    coordinator.ds["interface"] = {"wifi1": {"name": "wifi1", "type": "wifi"}}
+    coordinator.api = MockMikrotikAPI(
+        responses={
+            "/interface/wifi": [
+                {
+                    "name": "wifi1",
+                    "mac-address": "AA:BB:CC:DD:EE:05",
+                    "configuration.ssid": "ExampleSSID",
+                    "running": True,
+                    "disabled": False,
+                },
+            ],
+        }
+    )
+    coordinator.get_wireless()
+    iface = coordinator.ds["interface"]["wifi1"]
+    assert iface["ssid"] == "ExampleSSID"
+    assert iface["band"] == "unknown"
+    assert iface["channel-width"] == "unknown"

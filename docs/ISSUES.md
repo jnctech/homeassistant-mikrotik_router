@@ -2,6 +2,26 @@
 
 ## In-flight
 
+> **Updated 2026-10-14 (v2.3.22 stable).** rc.3 passed live validation on 2026-10-08 (#160 fixed, no regressions) and soaked for 6 days. **v2.3.22 stable** is being cut from `dev` (CR-261014-release-v2.3.22): `dev → master`, tag, then a real back-merge. **Next, 2.3.23:** [#164](https://github.com/jnctech/homeassistant-mikrotik_router/pull/164) (container state, fixes #163) is awaiting review. [#154](https://github.com/jnctech/homeassistant-mikrotik_router/pull/154) (live rates, ADR-024) is red on the Python 3.14 tests and over the complexity limit. [#138](https://github.com/jnctech/homeassistant-mikrotik_router/pull/138) (ADR-023) is waiting on the contributor. #162 is a DHCP undercount that predates rc.3 (cross-server duplicate MACs). #131 (`via_device` deprecation) is open with no owner.
+>
+> **Updated 2026-10-05 (rc.2 session).** #144 blocker **fixed on `dev`**: [#145](https://github.com/jnctech/homeassistant-mikrotik_router/pull/145) merged 2026-10-04 (ADR-022). `dev` CI then went red on hassfest (`librouteros<4.0` vs HA core's `==4.2.2`); fixed by [#149](https://github.com/jnctech/homeassistant-mikrotik_router/pull/149) (cap → `<5`, CI floor leg 3.4.1; CR-261004-librouteros-4x). Cutting **v2.3.22-rc.2** (CR-261005) → live QA → soak → stable. **Contributor queue:** [#138](https://github.com/jnctech/homeassistant-mikrotik_router/pull/138) was **auto-closed by the stale bot 2026-09-29** without review feedback reaching the contributor. Reopen it and post the review; it targets 2.3.23, with ADR-023 claimed. #147 is still open (ADR-024 claimed; fork CI not yet approved). The stale-bot timeout is shorter than our review cycle (fixed: #151, PRs never auto-close).
+>
+> **Release path (revised 2026-10-07):** the 2026-10-05 plan to cut stable from the rc.2 commit was abandoned. `branch-sync-guard` only allows `dev → master` PRs (#157 closed). v2.3.22 now goes **rc.3 from `dev`** (rc.2 + #152 + #155; CR-261007-release-v2.3.22-rc.3) → live QA (incl. the hAP ax³ check for #152) → short soak → `dev → master` → real back-merge. SonarCloud is red on a token error since 2026-09-07; the operator accepts it as a non-blocker until the token is renewed.
+>
+> **Updated 2026-09-21 (repo-status + inbound triage session).** Repo aligned: `master ⊆ dev` holds (`master` = v2.3.21 stable, `dev` = v2.3.22-rc.1, post-v2.3.21 back-merge is a real merge commit `da6dfd1`); version files consistent on both branches; all GitHub prereleases correctly flagged (`v2.3.22-beta.1`/`-rc.1` prerelease, `v2.3.21` the latest stable). **v2.3.22 promotion is BLOCKED** on [#144](https://github.com/jnctech/homeassistant-mikrotik_router/issues/144): the v2.3.21 LTE firmware probe (ADR-019) treats a `!trap` refusal as a lost connection, so a router with an `/interface/lte` menu but no modem (hAP ac² / hEX S) never loads its config entry (every entity `unavailable`) — **rc.1 confirmed affected**. Land the trap fix, then cut **v2.3.22-rc.2** before stable.
+>
+> **Inbound triage — filed as drafts; test + merge decisions deferred to an IDE session (no integration-code changes this session):**
+> - `ISS-260915-trap-not-a-disconnect` ([#144](https://github.com/jnctech/homeassistant-mikrotik_router/issues/144) / [PR #145](https://github.com/jnctech/homeassistant-mikrotik_router/pull/145), @nowak-mariusz) — Bug / High, **release-blocker**. Recommend INCLUDE.
+> - `ISS-260814-dummy-mac-device-identity` ([PR #138](https://github.com/jnctech/homeassistant-mikrotik_router/pull/138), @sappsys) — Bug / Medium; `mergeable_state: clean`. Recommend INCLUDE.
+> - `ENH-260919-live-interface-rates` ([#146](https://github.com/jnctech/homeassistant-mikrotik_router/issues/146) / [PR #147](https://github.com/jnctech/homeassistant-mikrotik_router/pull/147), @CommanderROR9, ADR-022) — Feature + wifi-qcom-be bugfix. Maintainer decision; recommend SPLIT (land the wifi-detection / registration-schema bugfix independently).
+> - `ISS-260903-via-device-deprecation` ([#131](https://github.com/jnctech/homeassistant-mikrotik_router/issues/131), @Lieta2) — Bug / Low, HA 2027.8.0 deadline; needs investigation (integration uses the supported `DeviceInfo(via_device=…)` — don't naively swap to `via_device_id`).
+>
+> **Open PRs** all target `dev`: #138 `clean` with **full CI green** (verified 2026-09-21 IDE session); #145 / #147 `unstable` — CI not yet run (fork-run approval needed). **Merge each with authorship preserved** (merge commit, never squash / re-apply) per the contributor-authorship rule. **ADR numbering:** next free is **022** — #147 hard-codes ADR-022, #138 / #145 use `ADR-NEXT`; assign in merge order (022→023→024; 015/016 reserved). Full code review + drafted PR comments in gitignored `docs/internal/handoff-260921-inbound-triage.md`. CR-260921-inbound-triage.
+>
+> **External-fork review (2026-09-21 IDE session):** upstream `tomaae/master` landed ~30 modernisation commits on 2026-09-11 (HA min → 2026.9.0, `runtime_data`, 2026.8 zone-model trackers, serialized RouterOS calls, `DeviceInfo` migration). Overlaps with our inbound queue: upstream `e94160c` resolves the `via_device` deprecation via `device_registry.async_get_device_id_by_identifier()` + `via_device_id=` — the reference fix for `ISS-260903-via-device-deprecation` (availability of `via_device_id` at our HA floor UNVERIFIED); upstream `7fb4b4c` (multi-package `_wifimodules` list) overlaps the wifi-package fix in #147; upstream `c6c8e0d` gates hotspot queries per-command — narrower than #145's generic `!trap` handling, which remains the better fix. `ahharvey/master` carries a librouteros 4.0 compat change (`login_method` callable) already present in `mikrotikapi.py`. No fork changes to pull; upstream is now a divergent modern-HA line (ENH-260512-librouteros-matrix / HA-floor decision carry).
+>
+> **Updated 2026-09-08 (route + WireGuard beta session).** Merged **B4 route monitoring** ([#136](https://github.com/jnctech/homeassistant-mikrotik_router/pull/136), ADR-020) and **B2 WireGuard peers** ([#137](https://github.com/jnctech/homeassistant-mikrotik_router/pull/137), ADR-021) to `dev`; live-validated the deployed `dev` code on the four-router fleet (**PASS**, `docs/release-validation.md`); cut **v2.3.22-beta.1** as a pre-release off `dev` (CR-260908), then **v2.3.22-rc.1** (CR-260909-release-v2.3.22-rc.1) rolling in the #139 blackhole fix. [#139](https://github.com/jnctech/homeassistant-mikrotik_router/issues/139) blackhole attribute reads False — **fixed on `dev`** (CR-260909-route-blackhole-attr): `blackhole` is a bare flag librouteros delivers as an empty string; now presence-detected. Promote to stable **v2.3.22** after beta soak (`dev→master` PR + back-merge).
+>
 > **Updated 2026-09-07 (v2.3.21 release session).** **Cut stable [v2.3.21](https://github.com/jnctech/homeassistant-mikrotik_router/releases/tag/v2.3.21)** — the v2.3.21 beta cycle (beta.1 LTE, beta.2 self-recovery) rolled up to stable via a `dev→master` PR + back-merge (`master ⊆ dev` restored, branch-sync-guard green). CR-260907-release-v2321.
 >
 > **v2.3.21 rolls up:** LTE modem sensors (ADR-019, #116, @zvldz) · self-recovery reconnect-on-poll after a transient API outage (#123/#127, @sappsys) · `unknown`-not-stale base-class fix (#120) · leak-gate governance-token extension (#125) · CONTRIBUTING/ADR-index docs (#119).
@@ -11,8 +31,8 @@
 > **Release validated.** Fresh `/validate-live-sensors` on the deployed beta.2 (2026-09-07): **501 integration entities**, every sensor class cross-checked against router ground-truth within tolerance, **0 phantom LTE entities**; bad-state set benign (documented orphans + by-design `unknown`). Stable == beta.2 code + version bump only. Internal report in gitignored config docs.
 >
 > **NEXT SESSION (lead):**
-> 1. **Route monitoring (`ENH-260907-route-monitoring`, FEATURE-POLL B4)** — user-voted. Surface `/ip/route`: active/default-route presence + gateway reachability for multi-WAN failover awareness. Scope + capability gate + ADR before coding.
-> 2. **WireGuard peer sensors (`ENH-260703-wireguard-sensors`, FEATURE-POLL B2)** — operator-requested. Per-peer state from `/interface/wireguard/peers` (last-handshake→connected/stale, endpoint, per-peer rx/tx); today only interface-level tx/rx exists. Scope keying (`public-key`), capability gate, ADR-020, redaction — see the ENH entry.
+> 1. **Route monitoring (`ENH-260907-route-monitoring`, FEATURE-POLL B4)** — 🟢 **merged to `dev`** (#136, ADR-020, CR-260907-route-monitoring); live-validated PASS on the four-router fleet 2026-09-08; shipping in **v2.3.22-beta.1**.
+> 2. **WireGuard peer sensors (`ENH-260703-wireguard-sensors`, FEATURE-POLL B2)** — 🟢 **merged to `dev`** (#137, ADR-021, CR-260907-wireguard-peers); live-validated PASS on rb4011 (2 peers) + zero phantom entities on non-WG routers 2026-09-08; shipping in **v2.3.22-beta.1**.
 > 3. **librouteros cap-lift** — `ENH-260512-librouteros-test-matrix`: 3.4.1 / latest-3.x / expected-fail-4.x CI matrix, then lift `manifest` to `>=4.0,<5` (the floor-bump is the **v2.4.0** trigger).
 > 4. **Gold/Platinum** — `reconfiguration-flow` (Gold) may be decoupled from the deferred coordinator decomposition; `strict-typing` (Platinum) stays gated on it (would-be ADR-016). Author a `quality_scale.yaml` to make the remaining gaps auditable.
 > 5. **Stale-debt sweep** — write the deferred `ISS-260512-librouteros-concurrency-adr` (Open, doc-only); reconcile stale statuses. **Operator-open:** `ISS-260712` history-scrub decision + `dev` branch-protection requiring the leak gate.
@@ -20,6 +40,7 @@
 > **Tooling:** pytest runs via **CI** (push to a PR triggers the matrix; feature-branch pushes don't). `manifest.json` is CRLF — Edit the version line, don't python-rewrite. Session/tooling specifics (shell, deploy target, test runner) live in gitignored `docs/internal/`, never in this tracked file.
 >
 > **Open threads (durable):**
+> - **`ISS-260907-route-blackhole-attr`** ([#139](https://github.com/jnctech/homeassistant-mikrotik_router/issues/139)) — **Resolved** (CR-260909-route-blackhole-attr, PR to `dev`). Root cause confirmed against a live librouteros dump: `blackhole` is a **bare RouterOS flag** delivered as an empty-string word (`{'blackhole': ''}`) when set and omitted otherwise; `from_entry_bool` read the empty string as the default (`False`). Fix: presence-detect the flag in `get_route()` before `parse_api`. The `active` signal was always correct (attribute-accuracy only). csr310 inactive-default `distance=""` verified correct-by-design (a disabled route has no `distance` key). See ADR-020.
 > - **`ENH-260615-netwatch-host-key-collision`** — Filed/deferred (same-host probe collapse; needs `.id` re-key + unique_id migration). **`ISS-260616-test-fixture-subnet`** — Filed/Low (test_coordinator fixtures use the maintainer's real management subnet; guard excludes tests).
 > - **Upstream-ported enhancements:** `ENH-260614-sfp-temperature` ([tomaae#499], Low — hardware-gated) · `ENH-260614-lte-modem-info` ([tomaae#249], Medium — needs LTE hardware/contributor).
 > - **Test-catch hardening:** deprecation-as-failure `setup_integration` test (folded into `ENH-260608` goldens) + `ENH-260614-ha-canary-ci` (non-blocking HA-latest lane).
@@ -46,11 +67,67 @@
 
 ## Active
 
+### ISS-260915-trap-not-a-disconnect — a refused command (`!trap`) is treated as a lost connection
+**Type:** Bug (availability / setup)
+**Priority:** High — **v2.3.22 release-blocker**
+**Created:** 2026-09-15
+**Status:** 🟢 Merged to `dev` 2026-10-04 — [#145](https://github.com/jnctech/homeassistant-mikrotik_router/pull/145) (@nowak-mariusz), ADR-022; full CI green (incl. `test_reauth_flow_updates_credentials`). Ships in v2.3.22-rc.2; close #144 on stable.
+
+**Symptom:**
+On a router whose `/interface/lte` menu exists with no modem behind it, the v2.3.21 LTE firmware probe (`get_lte_firmware()` → `/interface/lte firmware-upgrade`) is declined by RouterOS with a `!trap` (`failure: Firmware update is not supported on this device!`). `MikrotikAPI` hands every caught exception to `disconnect()`, so the refusal tears down a healthy session; `_async_update_hwinfo()` then `_raise_disconnected()` and `async_setup_entry` never completes — the entry sits in `setup_retry` every 600 s and every entity (device trackers included) stays `unavailable`. Reported on hAP ac² (RBD52G-5HacD2HnD) and hEX S (RB760iGS), RouterOS 7.24.2. **Confirmed affects v2.3.21 and v2.3.22-rc.1** (2.3.20 predates the probe).
+
+**Root cause / class:**
+librouteros raises `TrapError` / `MultiTrapError` for a `!trap` (session survives) vs `OSError` / `ConnectionClosed` for a transport failure (session dead) — the integration collapsed both onto `disconnect()`. Same class as #61 (no UPS → "Mikrotik Disconnected"), which was closed with a per-command capability gate; the underlying "any refused command = disconnect" handling stayed, and the LTE probe walked into it.
+
+**Fix (in review, #145):** route every `except` in `mikrotikapi.py` through a `_handle_call_error()` helper — keep the session on `TrapError` / `MultiTrapError` (WARNING once per distinct location+message, DEBUG thereafter), disconnect on anything else; the location string now carries command + menu. 8 targeted tests (trap-keeps-session across query/execute/arp_ping, transport-still-disconnects, once-per-message, lock-release). ADR included as `ADR-NEXT` (assign at merge). Contributor live-validated on both boards.
+**Review notes:** sound — librouteros keeps the session after a trap. Minor: `_refused_commands` set is unbounded (bounded in practice by distinct location+message). Optional follow-up: gate the LTE probe on the interface being `running` to skip the pointless call (contributor left this out deliberately). Contributor flagged a pre-existing `test_config_flow.py::test_reauth_flow_updates_credentials` failure on clean `dev` — verify via fork-run CI. **API-contract change → ADR warranted (included).**
+
+---
+
+### ISS-260814-dummy-mac-device-identity — virtual interfaces merge across routers in the device registry
+**Type:** Bug (device identity)
+**Priority:** Medium
+**Created:** 2026-08-14 (rebuilt on `dev` 2026-09-07; supersedes closed #129)
+**Status:** 🔵 Filed (draft, 2026-09-21 triage) — contributor fix in [#138](https://github.com/jnctech/homeassistant-mikrotik_router/pull/138) (@sappsys), targets `dev`, `mergeable_state: clean`. **Recommend INCLUDE.** Test + merge deferred to the IDE session.
+
+**Symptom:**
+RouterOS `lo` always reports an all-zero MAC and some tunnels report an empty MAC. For virtual interfaces (`default-name == ""`) the coordinator set `port-mac-address` to `{mac}-{ifname}`, so every router produced the same `CONNECTION_NETWORK_MAC` token. HA's device registry merges on `connections`, so with more than one MikroTik config entry the `lo` / empty-MAC-tunnel entities collapse onto one device and `via_device` follows whichever router wrote last.
+
+**Fix (in review, #138):** serial-prefix dummy/empty MACs (`{serial}-{ifname}`) in the coordinator; register such interfaces with `(DOMAIN, {serial}-{ifname})` identifiers/connections instead of a MAC connection in `device_info`; real ether/wifi MACs unchanged; unique_ids untouched (device-registry identity only). New helpers `_port_mac_for_virtual_iface`, `_real_network_mac`, `_interface_device_ident` with unit + two-router non-collision tests. ADR included as `ADR-NEXT`.
+**Review notes:** clean, well-tested. **Upgrade UX:** already-merged registry devices won't split until the merged device (or its all-zero-MAC `lo` connection) is removed and the integration reloaded — documented in the ADR/PR, not auto-migrated → needs a release-note line. Verify coordinator `device_info` complexity stays ≤15 and ADR-007/009 discipline (run `coordinator-reviewer`). **Device-identity change → ADR warranted (included).**
+
+---
+
+### ENH-260919-live-interface-rates — live per-interface rates (monitor-traffic) + wifi-qcom-be / wifi-type fixes
+**Type:** Enhancement (new sensors) + Bug (wifi-package / registration schema)
+**Priority:** Medium
+**Created:** 2026-09-19
+**Status:** 🟡 Split — **bugfix half merged to `dev` 2026-10-05** ([#152](https://github.com/jnctech/homeassistant-mikrotik_router/pull/152), @CommanderROR9, CR-261005-wifi-type-schema; ships in 2.3.23). **Feature half** (live rates, batched `monitor-traffic`, ADR-024 claimed) is prepared on the contributor's fork, and #147 is the placeholder to be rebased on top of `dev`. Live check on the hAP ax³ (`wifi` package) is pending the 2.3.23 beta. Originally filed 2026-09-21 triage — [#146](https://github.com/jnctech/homeassistant-mikrotik_router/issues/146) / [PR #147](https://github.com/jnctech/homeassistant-mikrotik_router/pull/147).
+
+**Ask:**
+On wifi-qcom-be hardware (hAP be3 Media, ROS 7.25beta5) the integration shows no usable throughput: averaged TX/RX is a 30 s mean (0 on first poll), `wifi-qcom-be` / `wifi-mediatek` aren't recognised wifi packages, the wifi registration schema (`signal`, `tx/rx-bits-per-second`) isn't mapped, and `wifi`-type interfaces get no wireless attributes.
+
+**Implementation (#147, ADR-022):** opt-in `CONF_SENSOR_LIVE_TRAFFIC` (default off) → `get_interface_live_traffic()` runs one `/interface monitor-traffic … once=yes` per non-bridge interface, merging `rx/tx-live` (bit/s) + pps/drops/errors; new `traffic_tx_live` / `traffic_rx_live` sensors (DATA_RATE, MEASUREMENT). Plus the wifi bugfixes: recognise `wifi-qcom-be` / `wifi-mediatek`; parse the wifi registration schema and alias `signal`→`signal-strength` (legacy wins); treat type `wifi` like `wlan`. ~30 tests. Follows opt-in / null-not-guess / stale-clear patterns.
+**Review notes:** **recommend split** — the wifi-package recognition + registration-schema mapping are standalone bugfixes (wifi-qcom-be hardware currently drops per-client signal/rate entirely) that can land now; the opt-in live-rate feature can follow. **Scaling caveat:** one serial monitor call per non-bridge interface per poll — real cost on port-dense switches (opt-in + documented; consider a future cap/interval). ADR-022 is hard-coded — fine if it merges first, else renumber. Verify `coordinator.py` complexity ≤15 (run `coordinator-reviewer`). New data source / entity → ADR warranted (included).
+
+---
+
+### ISS-260903-via-device-deprecation — `DeviceInfo(via_device=…)` triggers HA deprecation warning
+**Type:** Bug (HA deprecation / future-break)
+**Priority:** Low
+**Created:** 2026-09-03
+**Status:** 🔵 Filed (draft, 2026-09-21 triage) — [#131](https://github.com/jnctech/homeassistant-mikrotik_router/issues/131) (@Lieta2), no PR yet. **Needs investigation before any change.**
+
+**Symptom:** HA logs `device_registry.async_get_or_create` called with a deprecated `via_device` parameter (use `via_device_id`), pointing at `entity.py` ~line 222 (`async_add_entities`); breaks in **HA 2027.8.0**. Reporter confirmed "not stale" against the stale-bot.
+**Analysis:** the integration only uses `DeviceInfo(via_device=…)` (`entity.py:415`/`:426`) — the *supported* public API — with no direct `async_get_or_create` call; the warning surfaces through HA's internal `DeviceInfo`→registry mapping. `DeviceInfo.via_device` itself is not deprecated, so a naive swap to `via_device_id` would be wrong / break the device hierarchy. **Next step:** confirm whether HA exposes a `via_device_id` path for `DeviceInfo` (or whether this is an HA-core transitional warning that lands on the integration frame) before touching it. ~2-year runway, Low urgency; keep open.
+
+---
+
 ### ENH-260907-route-monitoring — route / default-gateway monitoring sensors (FEATURE-POLL B4)
 **Type:** Enhancement
 **Priority:** Medium
 **Created:** 2026-09-07
-**Status:** 🔵 Filed — user-voted (FEATURE-POLL B4). Plan before coding.
+**Status:** 🟠 In Review — implemented on `feature/route-monitoring` (CR-260907-route-monitoring), PR to `dev`. **[ADR-020](decisions/ADR-020-route-monitoring.md) Accepted.** **v1 shipped:** per-default-route `binary_sensor` (`active` flag) + active-default-count `sensor` per routing-table; opt-in `CONF_SENSOR_ROUTE`; composite UID (`routing-table`+`dst-address`+`gateway`+`distance`, not `.id`); client-side default-route filter; `uniq-id`/`route-label` redacted in diagnostics. 20 unit/golden tests, suite green. Non-default watch-list deferred to v2. **Remaining gate:** live validation on RB4011 (policy routing + blackhole) / CRS310 (2 defaults) / single-table device at release time (ADR-020 test plan).
 
 **Ask:**
 A user voted for route monitoring in the feature poll (B4). Surface RouterOS `/ip/route` state in Home Assistant for multi-WAN / failover awareness ("WAN1 route disappeared, traffic on WAN2").
@@ -97,7 +174,7 @@ After a transient RouterOS API outage (e.g. an upstream gateway reboot), entitie
 **Type:** Enhancement (new sensors)
 **Priority:** Medium
 **Created:** 2026-07-03
-**Status:** 🔵 Filed — **plan next session** (operator-requested 2026-07-03)
+**Status:** 🟠 In Review — implemented on `feature/wireguard-peers` (CR-260907-wireguard-peers), PR to `dev`. **[ADR-021](decisions/ADR-021-wireguard-peer-sensors.md) Accepted.** **v1 shipped:** per-peer `connected` binary_sensor (last-handshake age < 180s) + `last-handshake` TIMESTAMP (age→timestamp with drift guard) + rx/tx + hidden public-key sensor; keyed by `public-key` (not `.id`); gated by `support_wireguard` capability flag + opt-in `CONF_SENSOR_WIREGUARD`; `public-key`/endpoints/allowed-address in `TO_REDACT`. 24 unit/golden tests, suite green. **Remaining gate:** live validation on RB4011 (two peers) + a non-WG device (0 entities) + a diagnostics redaction check at release time (ADR-021 test plan).
 
 Today the integration surfaces WireGuard only at the **interface** level (per-iface tx/rx + a connection binary_sensor — e.g. `wg-home`, `wg-us` on the RB4011). It does **not** surface **per-peer** state. RouterOS exposes that at `/interface/wireguard/peers` — per peer: `public-key`, `endpoint-address`/`endpoint-port`, `current-endpoint-address`/`-port`, **`last-handshake`**, `rx`/`tx`, `allowed-address`, `disabled`.
 
@@ -106,7 +183,7 @@ Today the integration surfaces WireGuard only at the **interface** level (per-if
 - **Entity identity / keying** — peers keyed by `public-key` (stable) vs name/comment; `unique_id` design + whether it needs a migration. Public keys are identifier-ish → consider hidden-by-default + `TO_REDACT` (same pattern as LTE IMEI/IMSI/ICCID, ADR-019).
 - **Capability gate** — `support_wireguard` via `bool(query("/interface/wireguard"))`; conditional creation so non-WG routers get nothing (same pattern as `support_lte`).
 - **"Connected" heuristic** — WG is connectionless; derive from `last-handshake` age (e.g. < ~3 min = up). Decide the threshold + whether it's a binary_sensor or an attribute.
-- **ADR?** — likely yes (entity identity / new data source) → next unused **ADR-020** (per `docs/decisions/README.md § Numbering`).
+- **ADR?** — likely yes (entity identity / new data source) → reserved as **ADR-021** (per `docs/decisions/README.md § Numbering`).
 - Check upstream/forks for prior art; verify field names on a live RB4011 (`/interface/wireguard/peers print detail`) before descriptors.
 
 Note: this is separate from the `wireguard1`→`wg-home` rename orphans (config-side, not a bug).
@@ -648,7 +725,7 @@ Set `native_unit_of_measurement=MILLIAMPERE`; remove `suggested_unit_of_measurem
 **Type:** Bug
 **Priority:** Critical
 **Created:** 2026-04-17
-**Status:** 🟡 In Progress — hotfix (v2.3.14) pins `librouteros<4.0`. **Reframed by G0 panel 2026-06-14 (see Correction).** **Fix-first done:** the `login_method` callable kwarg is corrected on `fix/librouteros-login-method` (CR-260614-librouteros-login-method); the `<4.0` cap-lift remains separate (`ENH-260512-librouteros-test-matrix`).
+**Status:** 🟡 In Progress — hotfix (v2.3.14) pins `librouteros<4.0`. **Reframed by G0 panel 2026-06-14 (see Correction).** **Fix-first done:** the `login_method` callable kwarg is corrected on `fix/librouteros-login-method` (CR-260614-librouteros-login-method); the `<4.0` cap-lift remains separate (`ENH-260512-librouteros-test-matrix`). **2026-10-04:** cap lifted to `<5` on `fix/librouteros-4x` (CR-261004-librouteros-4x) — forced by hassfest rejecting `<4.0` against HA core's `librouteros==4.2.2`; closes on v2.3.22.
 
 **Correction (G0 panel, 2026-06-14 — verified vs luqasz/librouteros source):**
 The `login_methods`→`login_method` (string→callable) change landed in **librouteros 3.0.0, NOT 4.0.x**. So the current code (`login_methods="plain"`, mikrotikapi.py) is wrong across the **whole pinned range** — the unknown kwarg is dropped and `connect()` falls back to the default `plain` callable, so it "works" by accident; **`login_method="token"` users silently get `plain` (latent auth bug)**. librouteros **4.0.0's only API change** is `cmd` made positional-only — **no impact** (the integration always passes the command positionally); `Path`/`query()`/exceptions are byte-identical 3.4.1↔4.0.0; the library is pure-Python (3.14 fine). **Revised plan:** (1) **fix-first** — map the config string to `librouteros.login.plain`/`token` in `MikrotikAPI.__init__` and pass `login_method=` (callable), under the **current `<4.0` pin**; live-validate plain AND token on a real router (CI mocks are blind — 4.0.0 is already installed locally and the mocked suite passes regardless). (2) **then** lift the cap to `librouteros>=4.0,<5` separately. Renumber the salvage-branch `ADR-010` (librouteros) → **ADR-015**. Naming: the fix can ride a `2.3.x`; the floor-bump is the real **v2.4.0** trigger (with the deferred coordinator decomposition).
@@ -696,6 +773,35 @@ librouteros 4.0.1 renamed the `connect()` keyword argument `login_methods` → `
 
 ## Backlog
 
+### ENH-260922-ha-floor-bump — raise the declared HA minimum (v2.4.0), with a rolling support policy
+**Type:** Enhancement (compatibility / CI honesty)
+**Priority:** Medium (v2.4.0, after v2.3.22 stable)
+**Created:** 2026-09-22 (decided), filed 2026-10-07
+**Status:** 🔴 Open
+
+The declared floor `2024.3.0` (`hacs.json`, README) has never been tested: CI installs current HA, unpinned, on Python 3.13/3.14. Maintainer decision (2026-09-22): raise the floor in **v2.4.0**, with a **two-version grace** — adopt a rolling **"current HA minus 2"** policy, recorded as an ADR (next free number), rather than a fixed version. Scope: `hacs.json`, README, info.md, and the CI matrix pinning the floor. The bump is for our own reasons (CI honesty, unblocking #131 `via_device` → `via_device_id`, deleting dead compatibility paths), not to track upstream.
+
+### ENH-260922-upstream-cherry-picks — take three floor-free fixes from upstream tomaae v2.3
+**Type:** Enhancement
+**Priority:** Medium
+**Created:** 2026-09-22 (analysed), filed 2026-10-07
+**Status:** 🔴 Open
+
+From the 2026-09-22 upstream analysis, none of these needs the HA 2026.9 floor:
+- `c6c8e0d` — hotspot package detection (RouterOS 6 and 7.20+ SMIPS). We have no `support_hotspot` gate. Highest value.
+- `f510aa8` — WDS dynamic source switching. We still run the code upstream replaced.
+- ~~`4871855` + `d5b153d` librouteros 3.x/4.x dual login~~ — **superseded** by CR-261004-librouteros-4x (#149); not needed.
+
+Not a cherry-pick: `7fb4b4c` wifi module detection conflicts with our `_wifimodule` / `_has_wifi_package` structure; #152 covered the package names. Port by hand if needed.
+
+### ENH-260922-upstream-migration-adr — device-rename and config-entry migrations from upstream (out of v2.4.0)
+**Type:** Enhancement (needs ADR)
+**Priority:** Low
+**Created:** 2026-09-22 (analysed), filed 2026-10-07
+**Status:** 🔴 Open — deliberately out of v2.4.0 scope
+
+Upstream changes that require HA 2026.9: `ac1f88f` (UnitOfRatio), `bd093d0` (zone model), `e94160c` (`via_device_id`). One renames users' devices (`default_name` → `name`), and two are **one-way config-entry migrations**. Taking any of them needs its own migration ADR covering rollback and user-visible renames. Not merge-as-is.
+
 ### ISS-260326-tracker-wireless-detection — Device tracker uses old wireless detection logic
 **Type:** Bug
 **Priority:** Medium
@@ -721,7 +827,7 @@ On routers with empty registration tables (hAP ac2 with new WiFi package), wirel
 **Type:** Enhancement (CI)
 **Priority:** Medium
 **Created:** 2026-05-12
-**Status:** 🔴 Open
+**Status:** 🟡 In Review — `fix/librouteros-4x` (CR-261004-librouteros-4x): cap lifted to `<5`; CI default legs resolve 4.x, plus one `librouteros==3.4.1` floor leg. Latest-3.x / expected-fail legs dropped — nothing in our API surface differs between 3.4.1 and 4.2.2 (see CR).
 **Promoted:** 2026-05-30 — was a follow-up bullet under `ISS-260512-ci-manifest-drift`; filed as its own entry (handoff-gap backfill, config `ISS-260526`).
 
 **Need:**
