@@ -10,8 +10,8 @@ Monitor and control your MikroTik router from Home Assistant.
 
 ![Mikrotik Logo](https://raw.githubusercontent.com/tomaae/homeassistant-mikrotik_router/master/docs/assets/images/ui/header.png)
 
-### What's new in v2.3.22-rc.3
-Release candidate adding two opt-in monitoring features (off by default), live-validated on a four-router fleet. Supersedes v2.3.22-rc.2, adding wifi-package support for newer radios and clearer refusal logs.
+### What's new in v2.3.22
+Stable release rolling up the v2.3.22 cycle (beta.1, rc.1–rc.3): two opt-in monitoring features (off by default), plus reliability and wifi-package fixes, live-validated on a four-router fleet.
 - **Default-route monitoring** — per-default-route `active` binary_sensor + per-table active-default count, for multi-WAN failover awareness. Correct under policy routing + ECMP; blackhole kill-switch routes read inactive. Enable **Default route monitoring sensors**. FEATURE-POLL B4. See ADR-020.
 - **WireGuard peer sensors** — per-peer `connected` (from handshake recency), a stable last-handshake timestamp, and RX/TX totals. Only on routers with WireGuard; peer keys redacted, public-key sensor disabled by default. Enable **WireGuard peer sensors**. FEATURE-POLL B2. See ADR-021.
 - **Blackhole attribute fix** — a blackhole route's `blackhole` attribute now reads correctly (#139); RouterOS delivers it as a bare flag over the API, now presence-detected. The `active` signal was always correct.
