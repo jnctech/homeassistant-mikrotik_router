@@ -4,11 +4,28 @@ Changes listed in reverse chronological order.
 
 ---
 
+## CR-261014-release-v2.3.22 — promote v2.3.22-rc.3 to stable
+
+**Date:** 2026-10-14
+**Branch:** `chore/release-v2.3.22` → PR to `dev`, then `dev → master`
+**Status:** In Review
+
+### What changed
+- `manifest.json` — `2.3.22-rc.3` → `2.3.22`.
+- `README.md`, `info.md` — What's New retitled from rc.3 to stable v2.3.22. The items are the same as rc.3.
+
+### Why
+rc.3 passed live validation on 2026-10-08: every sensor class was within tolerance against router ground-truth, #160 was confirmed fixed, there were no regressions against rc.2, and no entities were unavailable. It then soaked for 6 days. The only change on `dev` since the `v2.3.22-rc.3` tag is #159 (docs only), so no code differs from what was validated.
+
+### Verification
+- CI on both release PRs. SonarCloud is red on a token error (pre-existing; the operator accepts it as a non-blocker).
+- After merge: tag `v2.3.22` on the `master` merge commit as the latest release, back-merge `master → dev` with a real merge commit, and close #160.
+
 ## CR-261007-release-v2.3.22-rc.3 — cut v2.3.22-rc.3 release candidate
 
 **Date:** 2026-10-07
 **Branch:** `chore/release-v2.3.22-rc.3` → PR to `dev`
-**Status:** In Review
+**Status:** Merged ([#158](https://github.com/jnctech/homeassistant-mikrotik_router/pull/158)); tagged `v2.3.22-rc.3`. Promoted to stable by CR-261014-release-v2.3.22.
 
 ### What changed
 - `manifest.json` — `2.3.22-rc.2` → `2.3.22-rc.3`.
