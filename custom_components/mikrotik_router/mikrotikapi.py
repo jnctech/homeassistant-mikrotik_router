@@ -93,7 +93,7 @@ class MikrotikAPI:
         all. Anything other than a trap is a transport failure and still
         disconnects.
 
-        See ADR-NEXT-trap-is-not-a-disconnect.
+        See ADR-022-trap-is-not-a-disconnect.
         """
         if isinstance(error, (TrapError, MultiTrapError)):
             key = f"{location}:{error}"

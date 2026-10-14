@@ -603,7 +603,7 @@ class TestRefusedCommand:
     does not implement, or hardware the command needs and this board lacks.
     Disconnecting on it takes every entity of the integration down, and on the
     first poll after a restart it stops the config entry from loading at all.
-    See ISS-260915 / ADR-NEXT-trap-is-not-a-disconnect.
+    See ISS-260915 / ADR-022-trap-is-not-a-disconnect.
     """
 
     REFUSAL = "failure: Firmware update is not supported on this device!"

@@ -1098,7 +1098,7 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
         covers every non-bridge interface (verified on a hAP be3, ROS
         7.25beta5). Interfaces missing from the reply resolve to None
         (null-not-guess). Runs only when the sensor_live_traffic opt-in is
-        enabled. See ADR-NEXT-live-interface-rates.
+        enabled. See ADR-024-live-interface-rates.
         """
         interfaces = {uid: iface for uid, iface in self.ds.get("interface", {}).items() if iface.get("type") != "bridge"}
         if not interfaces:

@@ -26,6 +26,7 @@ Lightweight records of key design decisions for mikrotik_router HACS integration
 | [ADR-020](ADR-020-route-monitoring.md) | Route monitoring (B4) — per-routing-table default-route reachability, bounded by design | Accepted |
 | [ADR-021](ADR-021-wireguard-peer-sensors.md) | WireGuard peer sensors (B2) — per-peer handshake/connectivity, capability-gated and redacted | Accepted |
 | [ADR-022](ADR-022-trap-is-not-a-disconnect.md) | A refused command (`!trap`) is not a lost connection | Accepted |
+| [ADR-024](ADR-024-live-interface-rates.md) | Live interface rates — opt-in, one batched `monitor-traffic` call per poll | Accepted |
 
 ## Numbering — assign before you write
 
@@ -43,7 +44,6 @@ Reserved / claimed (not yet merged, so absent from the table above — do **not*
 |-----|--------------|-------|
 | 015 | librouteros 4.x migration / salvage (`ISS-260417`) | Reserved (unwritten) — likely unneeded: cap lifted to `<5` with no code change (CR-261004-librouteros-4x) |
 | 023 | Dummy-MAC device identity (#138, `ISS-260814`) | Claimed |
-| 024 | Live interface rates (#147, `ENH-260919`) — PR hard-codes 022, renumber at merge | Claimed |
 | 016 | Coordinator decomposition (deferred) | Reserved (unwritten) |
 
 > **Why this section exists:** the index above previously stopped at ADR-014 while
