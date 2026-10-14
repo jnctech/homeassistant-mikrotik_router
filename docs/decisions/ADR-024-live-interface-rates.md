@@ -1,7 +1,7 @@
-# ADR-NEXT: Live interface rates (monitor-traffic)
+# ADR-024: Live interface rates (monitor-traffic)
 
 **Date:** 2026-09-19
-**Status:** Proposed — number assigned at merge (expected ADR-024, see `README.md`). Feature half of #146; the wifi bugfix half ships separately (no ADR needed).
+**Status:** Accepted (merged in #154, 2026-10-14). Feature half of #146; the wifi bugfix half shipped separately in #152 (no ADR needed).
 
 ## Context
 

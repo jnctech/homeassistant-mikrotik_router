@@ -483,6 +483,11 @@ Peers are named by their peer `name`, else `comment`, else a short key fingerpri
 >
 > **Note on "connected":** WireGuard is connectionless — a peer only handshakes when there's traffic (or on a configured keepalive). An idle peer with no keepalive can read disconnected even though it's reachable. This is inherent to WireGuard, not a bug.
 
+## Live Interface Rates *(new)*
+Instantaneous per-interface throughput from `/interface monitor-traffic`. Enable **Live interface rate sensors** in the integration options.
+
+For each non-bridge interface you get **TX live** and **RX live** sensors (bit/s, shown in kbit/s by default), plus packets, drops and errors per second as attributes. These sit alongside the existing TX/RX sensors, which are averaged over the scan interval. All interfaces are read in one batched call per poll, and only while the option is on. An interface missing from the reply reads `unknown` rather than holding a stale value. Contributed by @CommanderROR9 ([#154](https://github.com/jnctech/homeassistant-mikrotik_router/pull/154)). See [ADR-024](docs/decisions/ADR-024-live-interface-rates.md).
+
 ## Route Monitoring *(new)*
 Multi-WAN / failover awareness from `/ip/route`. Enable **Default route monitoring sensors** in the integration options.
 
