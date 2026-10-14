@@ -21,6 +21,13 @@ Monitor and control your entire MikroTik network from Home Assistant. This HACS 
 
 ---
 
+## What's New — v2.3.23-rc.1
+
+Release candidate off `dev`, with two contributions from @CommanderROR9.
+
+- **Container switches fixed on RouterOS 7.x.** RouterOS 7.x reports container state as print flags (`running`, `stopped`, `healthy`, ...), not as a `status` property, so every container switch read off. State is now taken from those flags. A container whose healthcheck fails is still running, so it reads on. Fixes [#163](https://github.com/jnctech/homeassistant-mikrotik_router/issues/163) in [#164](https://github.com/jnctech/homeassistant-mikrotik_router/pull/164).
+- **Live interface rates (opt-in).** TX live / RX live sensors per interface from `/interface monitor-traffic`, plus packets, drops and errors per second as attributes. All interfaces are read in one batched call per poll. Off by default; enable **Live interface rate sensors**. See [Live Interface Rates](#live-interface-rates-new) and [ADR-024](docs/decisions/ADR-024-live-interface-rates.md). Closes [#146](https://github.com/jnctech/homeassistant-mikrotik_router/issues/146) in [#154](https://github.com/jnctech/homeassistant-mikrotik_router/pull/154).
+
 ## What's New — v2.3.22
 
 Stable release rolling up the v2.3.22 cycle (beta.1, rc.1–rc.3). It adds two opt-in monitoring features from the feature poll, plus reliability and wifi-package fixes, all live-validated on a four-router RouterOS fleet. Both new features are **off by default**; enable them in the integration options.

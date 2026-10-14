@@ -4,6 +4,23 @@ Changes listed in reverse chronological order.
 
 ---
 
+## CR-261014-release-v2.3.23-rc.1 — cut v2.3.23-rc.1 release candidate
+
+**Date:** 2026-10-14
+**Branch:** `chore/release-v2.3.23-rc.1` → PR to `dev`
+**Status:** In Review
+
+### What changed
+- `manifest.json`: `2.3.22` → `2.3.23-rc.1`.
+- `README.md`, `info.md`: What's New for rc.1, covering #164 (container state flags) and #154 (live interface rates).
+
+### Why
+These are the first changes on `dev` after v2.3.22. Under branch-sync-guard, stable is always cut from `dev`, so they go through an RC first.
+
+### Verification
+- CI on the release PR.
+- Live: deploy rc.1 and run `/validate-live-sensors` against the v2.3.22-rc.3 numbers. Enable **Live interface rate sensors** on one router and compare TX/RX live with `/interface monitor-traffic`. #163 also needs the reporter to confirm it.
+
 ## CR-261014-live-interface-rates — opt-in live interface rate sensors (#146)
 
 **Date:** 2026-10-14
