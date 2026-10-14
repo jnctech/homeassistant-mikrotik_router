@@ -109,6 +109,21 @@ def utc_from_timestamp(timestamp: float) -> datetime:
     return datetime.fromtimestamp(timestamp, tz=timezone.utc)
 
 
+# /container print flags (RouterOS 7.x), checked in this order. A healthcheck
+# container reports `healthy`/`unhealthy` instead of `running` while it runs;
+# a stopped one reports `stopped` like any other container.
+_CONTAINER_STATE_FLAGS = ("stopped", "stopping", "starting", "unhealthy", "healthy", "running")
+_CONTAINER_RUNNING_STATES = frozenset({"running", "healthy", "unhealthy"})
+
+
+def _container_state_from_flags(entry: dict) -> str | None:
+    """Return the first container state flag set on a /container entry."""
+    for flag in _CONTAINER_STATE_FLAGS:
+        if entry.get(flag) in (True, "true", "yes"):
+            return flag
+    return None
+
+
 _UPTIME_UNITS = [("w", 604800), ("d", 86400), ("h", 3600), ("m", 60), ("s", 1)]
 _PPP_NOT_CONNECTED = "not connected"
 
@@ -1650,9 +1665,10 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
     # ---------------------------
     def get_container(self) -> None:
         """Get container data from Mikrotik"""
+        source = self.api.query("/container")
         self.ds["container"] = parse_api(
             data=self.ds["container"],
-            source=self.api.query("/container"),
+            source=source,
             key=".id",
             vals=[
                 {"name": ".id"},
@@ -1675,8 +1691,16 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
             ],
         )
 
+        # RouterOS 7.x reports the container state as print flags (`running`,
+        # `stopped`, `healthy`, ...), not as a `status` property. The parsed
+        # `status` above is only a fallback for firmware that still sends it.
+        for entry in [source] if isinstance(source, dict) else source or []:
+            state = _container_state_from_flags(entry)
+            if state and entry.get(".id") in self.ds["container"]:
+                self.ds["container"][entry[".id"]]["status"] = state
+
         for uid in self.ds["container"]:
-            self.ds["container"][uid]["running"] = self.ds["container"][uid]["status"] == "running"
+            self.ds["container"][uid]["running"] = self.ds["container"][uid]["status"] in _CONTAINER_RUNNING_STATES
 
     # ---------------------------
     #   get_kidcontrol

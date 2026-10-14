@@ -5202,6 +5202,125 @@ def test_container_defaults():
     assert c["comment"] == ""
 
 
+# Rows as returned by /container print on RouterOS 7.26beta1 (hAP be3 Media),
+# trimmed to the identifying fields. There is no `status` property: the state
+# comes as a print flag (`running`, `stopped`, `healthy`, ...). librouteros
+# turns the API's "true" into True; the raw string form is covered too.
+_ROS726_CONTAINERS = [
+    {
+        ".id": "*1",
+        "name": "app-otbr",
+        "tag": "registry-1.docker.io/openthread/otbr:latest",
+        "os": "linux",
+        "arch": "arm64",
+        "interface": "veth-app-otbr",
+        "start-on-boot": False,
+        "running": True,
+    },
+    {
+        ".id": "*2",
+        "name": "tailscale-be3",
+        "tag": "registry-1.docker.io/tailscale/tailscale:v1.102.3",
+        "os": "linux",
+        "arch": "arm64",
+        "interface": "veth-tailscale",
+        "start-on-boot": False,
+        "stopped": True,
+    },
+    {
+        ".id": "*4",
+        "name": "app-mikrodash",
+        "tag": "registry-1.docker.io/mikrotik/mikrodash:latest",
+        "os": "linux",
+        "arch": "arm64",
+        "interface": "veth-app-mikrodash",
+        "start-on-boot": False,
+        "healthcheck-status": 'good, output: {"ok":true}',
+        "healthy": True,
+    },
+]
+
+
+def test_container_ros726_flags_without_status():
+    """RouterOS 7.26 rows carry state flags, not `status`: running/healthy are on, stopped is off."""
+    coordinator = make_coordinator(api_responses={"/container": [dict(r) for r in _ROS726_CONTAINERS]})
+    coordinator.get_container()
+    ds = coordinator.ds["container"]
+    assert (ds["*1"]["status"], ds["*1"]["running"]) == ("running", True)
+    assert (ds["*2"]["status"], ds["*2"]["running"]) == ("stopped", False)
+    assert (ds["*4"]["status"], ds["*4"]["running"]) == ("healthy", True)
+
+
+def test_container_ros726_flags_as_raw_strings():
+    """The API's raw "true" string is accepted as well as the converted bool."""
+    coordinator = make_coordinator(
+        api_responses={
+            "/container": [
+                {".id": "*1", "name": "a", "running": "true"},
+                {".id": "*2", "name": "b", "stopped": "true"},
+                {".id": "*3", "name": "c", "healthy": "true"},
+            ]
+        }
+    )
+    coordinator.get_container()
+    ds = coordinator.ds["container"]
+    assert [ds[u]["running"] for u in ("*1", "*2", "*3")] == [True, False, True]
+
+
+def test_container_ros726_healthcheck_container_stopped():
+    """A stopped healthcheck container reports `stopped`; a stale health status must not keep it on."""
+    coordinator = make_coordinator(
+        api_responses={
+            "/container": [
+                {
+                    ".id": "*4",
+                    "name": "app-mikrodash",
+                    "healthcheck-status": 'good, output: {"ok":true}',
+                    "stopped": True,
+                },
+                # Defensive: if a stale `healthy` flag ever came along with `stopped`, stopped wins.
+                {".id": "*5", "name": "hc-stale", "stopped": True, "healthy": True},
+            ]
+        }
+    )
+    coordinator.get_container()
+    ds = coordinator.ds["container"]
+    assert (ds["*4"]["status"], ds["*4"]["running"]) == ("stopped", False)
+    assert (ds["*5"]["status"], ds["*5"]["running"]) == ("stopped", False)
+
+
+def test_container_ros726_transitional_and_unhealthy_flags():
+    """starting/stopping are off; unhealthy is a running container whose healthcheck fails, so on."""
+    coordinator = make_coordinator(
+        api_responses={
+            "/container": [
+                {".id": "*1", "name": "a", "starting": True},
+                {".id": "*2", "name": "b", "stopping": True},
+                {".id": "*3", "name": "c", "unhealthy": True},
+            ]
+        }
+    )
+    coordinator.get_container()
+    ds = coordinator.ds["container"]
+    assert [(ds[u]["status"], ds[u]["running"]) for u in ("*1", "*2", "*3")] == [
+        ("starting", False),
+        ("stopping", False),
+        ("unhealthy", True),
+    ]
+
+
+def test_container_state_follows_flags_across_polls():
+    """A container stopped between polls turns off on the next poll."""
+    coordinator = make_coordinator(api_responses={"/container": [{".id": "*1", "name": "a", "running": True}]})
+    coordinator.get_container()
+    assert coordinator.ds["container"]["*1"]["running"] is True
+
+    coordinator.api.responses["/container"] = [{".id": "*1", "name": "a", "stopped": True}]
+    coordinator.get_container()
+    assert coordinator.ds["container"]["*1"]["status"] == "stopped"
+    assert coordinator.ds["container"]["*1"]["running"] is False
+
+
 # =====================================================================
 # _is_wireless_host — bridge/interface-based wireless detection
 # =====================================================================
