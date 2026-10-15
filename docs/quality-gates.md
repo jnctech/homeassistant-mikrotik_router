@@ -118,8 +118,7 @@ gitleaks, ruff, bandit, trailing-whitespace, end-of-file-fixer, check-yaml, no-c
 4. Code review agent
 5. **Docs audit:**
    - README/info.md version and feature list match code
-   - CHANGE-REGISTER.md has CR entry for this branch
-   - ISSUES.md statuses updated for resolved/progressed issues
+   - PR description records the change (Summary / Post-Deploy Actions / Test Plan) and links issues with `Fixes #N` / `Closes #N`. `docs/CHANGE-REGISTER.md` and `docs/ISSUES.md` have been deprecated read-only history since 2026-10-15, so don't add entries.
    - ADR created if decision changes data format, entity identity, API contract, or migration
    - architecture.md updated if new patterns or structural changes introduced
 6. Branch up to date, working tree clean
