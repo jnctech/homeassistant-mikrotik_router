@@ -10,6 +10,11 @@ Monitor and control your MikroTik router from Home Assistant.
 
 ![Mikrotik Logo](https://raw.githubusercontent.com/tomaae/homeassistant-mikrotik_router/master/docs/assets/images/ui/header.png)
 
+### What's new in v2.3.23
+Stable release, promoted from v2.3.23-rc.1 after live validation. Contributed by @CommanderROR9.
+- **Container switches fixed on RouterOS 7.x**: container state is now read from RouterOS's print flags, so running containers no longer all show as off (#163, #164).
+- **Live interface rates (opt-in)**: TX/RX live sensors from `monitor-traffic`, read in one batched call per poll. Enable **Live interface rate sensors**. See ADR-024 (#154).
+
 ### What's new in v2.3.22
 Stable release rolling up the v2.3.22 cycle (beta.1, rc.1–rc.3): two opt-in monitoring features (off by default), plus reliability and wifi-package fixes, live-validated on a four-router fleet.
 - **Default-route monitoring** — per-default-route `active` binary_sensor + per-table active-default count, for multi-WAN failover awareness. Correct under policy routing + ECMP; blackhole kill-switch routes read inactive. Enable **Default route monitoring sensors**. FEATURE-POLL B4. See ADR-020.

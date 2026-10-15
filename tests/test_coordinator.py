@@ -5202,6 +5202,125 @@ def test_container_defaults():
     assert c["comment"] == ""
 
 
+# Rows as returned by /container print on RouterOS 7.26beta1 (hAP be3 Media),
+# trimmed to the identifying fields. There is no `status` property: the state
+# comes as a print flag (`running`, `stopped`, `healthy`, ...). librouteros
+# turns the API's "true" into True; the raw string form is covered too.
+_ROS726_CONTAINERS = [
+    {
+        ".id": "*1",
+        "name": "app-otbr",
+        "tag": "registry-1.docker.io/openthread/otbr:latest",
+        "os": "linux",
+        "arch": "arm64",
+        "interface": "veth-app-otbr",
+        "start-on-boot": False,
+        "running": True,
+    },
+    {
+        ".id": "*2",
+        "name": "tailscale-be3",
+        "tag": "registry-1.docker.io/tailscale/tailscale:v1.102.3",
+        "os": "linux",
+        "arch": "arm64",
+        "interface": "veth-tailscale",
+        "start-on-boot": False,
+        "stopped": True,
+    },
+    {
+        ".id": "*4",
+        "name": "app-mikrodash",
+        "tag": "registry-1.docker.io/mikrotik/mikrodash:latest",
+        "os": "linux",
+        "arch": "arm64",
+        "interface": "veth-app-mikrodash",
+        "start-on-boot": False,
+        "healthcheck-status": 'good, output: {"ok":true}',
+        "healthy": True,
+    },
+]
+
+
+def test_container_ros726_flags_without_status():
+    """RouterOS 7.26 rows carry state flags, not `status`: running/healthy are on, stopped is off."""
+    coordinator = make_coordinator(api_responses={"/container": [dict(r) for r in _ROS726_CONTAINERS]})
+    coordinator.get_container()
+    ds = coordinator.ds["container"]
+    assert (ds["*1"]["status"], ds["*1"]["running"]) == ("running", True)
+    assert (ds["*2"]["status"], ds["*2"]["running"]) == ("stopped", False)
+    assert (ds["*4"]["status"], ds["*4"]["running"]) == ("healthy", True)
+
+
+def test_container_ros726_flags_as_raw_strings():
+    """The API's raw "true" string is accepted as well as the converted bool."""
+    coordinator = make_coordinator(
+        api_responses={
+            "/container": [
+                {".id": "*1", "name": "a", "running": "true"},
+                {".id": "*2", "name": "b", "stopped": "true"},
+                {".id": "*3", "name": "c", "healthy": "true"},
+            ]
+        }
+    )
+    coordinator.get_container()
+    ds = coordinator.ds["container"]
+    assert [ds[u]["running"] for u in ("*1", "*2", "*3")] == [True, False, True]
+
+
+def test_container_ros726_healthcheck_container_stopped():
+    """A stopped healthcheck container reports `stopped`; a stale health status must not keep it on."""
+    coordinator = make_coordinator(
+        api_responses={
+            "/container": [
+                {
+                    ".id": "*4",
+                    "name": "app-mikrodash",
+                    "healthcheck-status": 'good, output: {"ok":true}',
+                    "stopped": True,
+                },
+                # Defensive: if a stale `healthy` flag ever came along with `stopped`, stopped wins.
+                {".id": "*5", "name": "hc-stale", "stopped": True, "healthy": True},
+            ]
+        }
+    )
+    coordinator.get_container()
+    ds = coordinator.ds["container"]
+    assert (ds["*4"]["status"], ds["*4"]["running"]) == ("stopped", False)
+    assert (ds["*5"]["status"], ds["*5"]["running"]) == ("stopped", False)
+
+
+def test_container_ros726_transitional_and_unhealthy_flags():
+    """starting/stopping are off; unhealthy is a running container whose healthcheck fails, so on."""
+    coordinator = make_coordinator(
+        api_responses={
+            "/container": [
+                {".id": "*1", "name": "a", "starting": True},
+                {".id": "*2", "name": "b", "stopping": True},
+                {".id": "*3", "name": "c", "unhealthy": True},
+            ]
+        }
+    )
+    coordinator.get_container()
+    ds = coordinator.ds["container"]
+    assert [(ds[u]["status"], ds[u]["running"]) for u in ("*1", "*2", "*3")] == [
+        ("starting", False),
+        ("stopping", False),
+        ("unhealthy", True),
+    ]
+
+
+def test_container_state_follows_flags_across_polls():
+    """A container stopped between polls turns off on the next poll."""
+    coordinator = make_coordinator(api_responses={"/container": [{".id": "*1", "name": "a", "running": True}]})
+    coordinator.get_container()
+    assert coordinator.ds["container"]["*1"]["running"] is True
+
+    coordinator.api.responses["/container"] = [{".id": "*1", "name": "a", "stopped": True}]
+    coordinator.get_container()
+    assert coordinator.ds["container"]["*1"]["status"] == "stopped"
+    assert coordinator.ds["container"]["*1"]["running"] is False
+
+
 # =====================================================================
 # _is_wireless_host — bridge/interface-based wireless detection
 # =====================================================================
@@ -6308,3 +6427,166 @@ def test_get_wireless_wifi_absent_nested_keys_stay_unknown():
     assert iface["ssid"] == "ExampleSSID"
     assert iface["band"] == "unknown"
     assert iface["channel-width"] == "unknown"
+
+
+# ---------------------------------------------------------------------------
+# Group AZ4: live interface rates (batched monitor-traffic)
+# ---------------------------------------------------------------------------
+
+
+def _live_coordinator(interfaces, monitor_rows):
+    """Build a coordinator with preset interfaces and canned monitor-traffic rows."""
+    coordinator = make_coordinator()
+    coordinator.host = "testhost"
+    coordinator.ds["interface"] = interfaces
+    coordinator.api = MockMikrotikAPI(responses={("/interface", "monitor-traffic"): monitor_rows})
+    return coordinator
+
+
+def _iface(name, itype="ether", **extra):
+    return {"default-name": name, "name": name, "type": itype, **extra}
+
+
+def test_live_traffic_happy_path():
+    """One batched row per interface populates rx/tx-live plus pps/drops/errors as floats."""
+    coordinator = _live_coordinator(
+        {"ether1": _iface("ether1"), "wifi1": _iface("wifi1", "wifi")},
+        [
+            {
+                "name": "ether1",
+                "rx-bits-per-second": "277000",
+                "tx-bits-per-second": 318000,
+                "rx-packets-per-second": "10",
+                "tx-packets-per-second": "12",
+                "rx-drops-per-second": "0",
+                "tx-drops-per-second": "0",
+                "rx-errors-per-second": "0",
+                "tx-errors-per-second": "0",
+            },
+            {"name": "wifi1", "rx-bits-per-second": "5", "tx-bits-per-second": "6"},
+        ],
+    )
+    coordinator.get_interface_live_traffic()
+    iface = coordinator.ds["interface"]["ether1"]
+    assert iface["rx-live"] == 277000.0
+    assert iface["tx-live"] == 318000.0
+    assert iface["rx-packets-per-second"] == 10.0
+    assert iface["tx-errors-per-second"] == 0.0
+    assert coordinator.ds["interface"]["wifi1"]["rx-live"] == 5.0
+    assert coordinator.ds["interface"]["wifi1"]["tx-errors-per-second"] is None
+
+
+def test_live_traffic_single_batched_call():
+    """All non-bridge interfaces are requested in ONE comma-separated call."""
+    coordinator = _live_coordinator(
+        {"ether1": _iface("ether1"), "bridge1": _iface("bridge1", "bridge"), "wifi1": _iface("wifi1", "wifi")},
+        [{"name": "ether1", "rx-bits-per-second": "1"}, {"name": "wifi1", "rx-bits-per-second": "2"}],
+    )
+    calls = []
+    original = coordinator.api.query
+
+    def spy(*args, **kwargs):
+        calls.append((args, kwargs))
+        return original(*args, **kwargs)
+
+    coordinator.api.query = spy
+    coordinator.get_interface_live_traffic()
+    assert len(calls) == 1
+    assert calls[0][1]["args"]["interface"] == "ether1,wifi1"
+    assert calls[0][1]["args"]["once"] is True
+
+
+def test_live_traffic_no_data_clears_to_none():
+    """A silent monitor call clears live fields to None (null-not-guess, no stale)."""
+    coordinator = _live_coordinator({"ether1": _iface("ether1", **{"rx-live": 5.0, "tx-live": 6.0})}, [])
+    coordinator.get_interface_live_traffic()
+    assert coordinator.ds["interface"]["ether1"]["rx-live"] is None
+    assert coordinator.ds["interface"]["ether1"]["tx-live"] is None
+
+
+def test_live_traffic_interface_missing_from_reply_is_none():
+    """An interface absent from the batched reply reads None, not a stale value."""
+    coordinator = _live_coordinator(
+        {"ether1": _iface("ether1", **{"rx-live": 9.0}), "ether2": _iface("ether2")},
+        [{"name": "ether2", "rx-bits-per-second": "7"}],
+    )
+    coordinator.get_interface_live_traffic()
+    assert coordinator.ds["interface"]["ether1"]["rx-live"] is None
+    assert coordinator.ds["interface"]["ether2"]["rx-live"] == 7.0
+
+
+def test_live_traffic_non_numeric_is_none():
+    """Non-numeric monitor tokens never become fabricated rates."""
+    coordinator = _live_coordinator(
+        {"wifi1": _iface("wifi1", "wifi")},
+        [{"name": "wifi1", "rx-bits-per-second": "n/a", "tx-bits-per-second": ""}],
+    )
+    coordinator.get_interface_live_traffic()
+    assert coordinator.ds["interface"]["wifi1"]["rx-live"] is None
+    assert coordinator.ds["interface"]["wifi1"]["tx-live"] is None
+
+
+def test_live_traffic_skips_bridge():
+    """Bridge interfaces are left untouched by the live poll."""
+    coordinator = _live_coordinator(
+        {"bridge1": _iface("bridge1", "bridge", **{"rx-live": 5.0}), "ether1": _iface("ether1")},
+        [{"name": "ether1", "rx-bits-per-second": "100", "tx-bits-per-second": "200"}],
+    )
+    coordinator.get_interface_live_traffic()
+    assert coordinator.ds["interface"]["bridge1"]["rx-live"] == 5.0
+    assert coordinator.ds["interface"]["ether1"]["rx-live"] == 100.0
+
+
+def test_live_traffic_no_interfaces_is_noop():
+    """An empty interface map returns early without querying."""
+    coordinator = _live_coordinator({}, [{"name": "ether1", "rx-bits-per-second": "100"}])
+    coordinator.get_interface_live_traffic()
+    assert coordinator.ds["interface"] == {}
+
+
+def test_live_traffic_excludes_stale_interface_from_batch():
+    """A vanished interface lingering in ds is not batched (one unknown name refuses the call)."""
+    coordinator = _live_coordinator(
+        {"ether1": _iface("ether1"), "pppoe-gone": _iface("pppoe-gone", "pppoe-out", **{"rx-live": 9.0})},
+        [{"name": "ether1", "rx-bits-per-second": "1"}],
+    )
+    coordinator._interface_names_seen = {"ether1"}
+    calls = []
+    original = coordinator.api.query
+
+    def spy(*args, **kwargs):
+        calls.append((args, kwargs))
+        return original(*args, **kwargs)
+
+    coordinator.api.query = spy
+    coordinator.get_interface_live_traffic()
+    assert len(calls) == 1
+    assert calls[0][1]["args"]["interface"] == "ether1"
+    assert coordinator.ds["interface"]["ether1"]["rx-live"] == 1.0
+    assert coordinator.ds["interface"]["pppoe-gone"]["rx-live"] is None
+
+
+def test_live_traffic_all_stale_skips_call():
+    """If every known interface is stale, no monitor-traffic call is made."""
+    coordinator = _live_coordinator({"ether9": _iface("ether9", **{"rx-live": 3.0})}, [])
+    coordinator._interface_names_seen = {"ether1"}
+    calls = []
+    coordinator.api.query = lambda *a, **k: calls.append(a)
+    coordinator.get_interface_live_traffic()
+    assert calls == []
+    assert coordinator.ds["interface"]["ether9"]["rx-live"] is None
+
+
+def test_get_interface_records_names_seen():
+    """get_interface records the names from the /interface reply without an extra call."""
+    coordinator = make_coordinator()
+    coordinator.api = MockMikrotikAPI(
+        responses={
+            "/interface": [
+                {"default-name": "ether1", "name": "ether1", ".id": "*1", "type": "ether", "running": "true", "disabled": "false"},
+                {"default-name": "pppoe-out1", "name": "pppoe-out1", ".id": "*2", "type": "pppoe-out", "running": "true", "disabled": "false"},
+            ]
+        }
+    )
+    coordinator.get_interface()
+    assert coordinator._interface_names_seen == {"ether1", "pppoe-out1"}

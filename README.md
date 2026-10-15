@@ -21,6 +21,13 @@ Monitor and control your entire MikroTik network from Home Assistant. This HACS 
 
 ---
 
+## What's New — v2.3.23
+
+Stable release, promoted from v2.3.23-rc.1 after live validation on a four-router RouterOS fleet. Both changes are contributions from @CommanderROR9, and the container fix was confirmed on RouterOS 7.26.
+
+- **Container switches fixed on RouterOS 7.x.** RouterOS 7.x reports container state as print flags (`running`, `stopped`, `healthy`, ...), not as a `status` property, so every container switch read off. State is now taken from those flags. A container whose healthcheck fails is still running, so it reads on. Fixes [#163](https://github.com/jnctech/homeassistant-mikrotik_router/issues/163) in [#164](https://github.com/jnctech/homeassistant-mikrotik_router/pull/164).
+- **Live interface rates (opt-in).** TX live / RX live sensors per interface from `/interface monitor-traffic`, plus packets, drops and errors per second as attributes. All interfaces are read in one batched call per poll. Off by default; enable **Live interface rate sensors**. See [Live Interface Rates](#live-interface-rates-new) and [ADR-024](docs/decisions/ADR-024-live-interface-rates.md). Closes [#146](https://github.com/jnctech/homeassistant-mikrotik_router/issues/146) in [#154](https://github.com/jnctech/homeassistant-mikrotik_router/pull/154).
+
 ## What's New — v2.3.22
 
 Stable release rolling up the v2.3.22 cycle (beta.1, rc.1–rc.3). It adds two opt-in monitoring features from the feature poll, plus reliability and wifi-package fixes, all live-validated on a four-router RouterOS fleet. Both new features are **off by default**; enable them in the integration options.
@@ -482,6 +489,11 @@ Peers are named by their peer `name`, else `comment`, else a short key fingerpri
 > **Privacy:** the public key, endpoints and allowed-address are redacted from diagnostics downloads, and the public-key sensor is disabled by default. Peers are keyed by their public key, so `unique_id`s are stable across reboots. See [ADR-021](docs/decisions/ADR-021-wireguard-peer-sensors.md).
 >
 > **Note on "connected":** WireGuard is connectionless — a peer only handshakes when there's traffic (or on a configured keepalive). An idle peer with no keepalive can read disconnected even though it's reachable. This is inherent to WireGuard, not a bug.
+
+## Live Interface Rates *(new)*
+Instantaneous per-interface throughput from `/interface monitor-traffic`. Enable **Live interface rate sensors** in the integration options.
+
+For each non-bridge interface you get **TX live** and **RX live** sensors (bit/s, shown in kbit/s by default), plus packets, drops and errors per second as attributes. These sit alongside the existing TX/RX sensors, which are averaged over the scan interval. All interfaces are read in one batched call per poll, and only while the option is on. An interface missing from the reply reads `unknown` rather than holding a stale value. Contributed by @CommanderROR9 ([#154](https://github.com/jnctech/homeassistant-mikrotik_router/pull/154)). See [ADR-024](docs/decisions/ADR-024-live-interface-rates.md).
 
 ## Route Monitoring *(new)*
 Multi-WAN / failover awareness from `/ip/route`. Enable **Default route monitoring sensors** in the integration options.

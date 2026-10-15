@@ -74,6 +74,8 @@ from .const import (
     DEFAULT_SENSOR_WIREGUARD,
     CONF_SENSOR_ROUTE,
     DEFAULT_SENSOR_ROUTE,
+    CONF_SENSOR_LIVE_TRAFFIC,
+    DEFAULT_SENSOR_LIVE_TRAFFIC,
 )
 from .mikrotikapi import MikrotikAPI
 
@@ -332,6 +334,10 @@ class MikrotikControllerOptionsFlowHandler(OptionsFlowWithConfigEntry):
                     vol.Optional(
                         CONF_SENSOR_ROUTE,
                         default=self._options.get(CONF_SENSOR_ROUTE, DEFAULT_SENSOR_ROUTE),
+                    ): bool,
+                    vol.Optional(
+                        CONF_SENSOR_LIVE_TRAFFIC,
+                        default=self._options.get(CONF_SENSOR_LIVE_TRAFFIC, DEFAULT_SENSOR_LIVE_TRAFFIC),
                     ): bool,
                 },
             ),

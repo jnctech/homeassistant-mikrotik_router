@@ -4,11 +4,65 @@ Changes listed in reverse chronological order.
 
 ---
 
+## CR-261014-release-v2.3.23-rc.1 — cut v2.3.23-rc.1 release candidate
+
+**Date:** 2026-10-14
+**Branch:** `chore/release-v2.3.23-rc.1` → PR to `dev`
+**Status:** In Review
+
+### What changed
+- `manifest.json`: `2.3.22` → `2.3.23-rc.1`.
+- `README.md`, `info.md`: What's New for rc.1, covering #164 (container state flags) and #154 (live interface rates).
+
+### Why
+These are the first changes on `dev` after v2.3.22. Under branch-sync-guard, stable is always cut from `dev`, so they go through an RC first.
+
+### Verification
+- CI on the release PR.
+- Live: deploy rc.1 and run `/validate-live-sensors` against the v2.3.22-rc.3 numbers. Enable **Live interface rate sensors** on one router and compare TX/RX live with `/interface monitor-traffic`. #163 also needs the reporter to confirm it.
+
+## CR-261014-live-interface-rates — opt-in live interface rate sensors (#146)
+
+**Date:** 2026-10-14
+**Branch:** `CommanderROR9:feature/live-interface-rates-v2` → `dev` ([#154](https://github.com/jnctech/homeassistant-mikrotik_router/pull/154), merge commit `ea82314`, authorship preserved). Contributed by @CommanderROR9. Feature half of #146/#147; the bugfix half was #152.
+**Status:** Merged to `dev`; targets 2.3.23.
+
+### What changed
+- New opt-in `sensor_live_traffic` (default off). `get_interface_live_traffic()` reads `/interface monitor-traffic` for every non-bridge interface in one batched call, and merges `rx-live`/`tx-live` (bit/s) plus packets/drops/errors per second into `ds["interface"]`.
+- New `traffic_tx_live` / `traffic_rx_live` sensors (DATA_RATE, MEASUREMENT). The averaged TX/RX sensors are unchanged and still gate on `sensor_port_traffic`.
+- Only interfaces present in the current `/interface` reply are batched. RouterOS refuses the whole `monitor-traffic` call if any one name is unknown, so a deleted or renamed interface would otherwise blank every live sensor. Stale entries read None, and if nothing current remains the call is skipped.
+- ADR-NEXT → [ADR-024](decisions/ADR-024-live-interface-rates.md), Accepted. README gets a Live Interface Rates section. Also fixes two leftover `ADR-NEXT-trap-is-not-a-disconnect` references to ADR-022 (`mikrotikapi.py`, `tests/test_mikrotikapi.py`).
+
+### Why
+The existing TX/RX sensors are a byte-counter delta averaged over the scan interval, which hides bursts. `monitor-traffic` gives RouterOS's own instantaneous rate. It is opt-in because it adds one API call per poll.
+
+### Verification
+- CI green on the PR head `d77d6ba` (the Python 3.14 job was re-run after a pip network reset). Cognitive complexity: `get_interface_live_traffic` 10, `_merge_live_rows` 6, `_split_stale_interfaces` 6 (complexipy).
+- The batched-call refusal and the down-interface behaviour were verified read-only on an RB4011 (2026-10-07). Live validation of the sensors is pending the 2.3.23 RC.
+
+## CR-261014-container-state-flags — container switches follow RouterOS print flags (#163)
+
+**Date:** 2026-10-14
+**Branch:** `CommanderROR9:fix/container-state-flags` → `dev` ([#164](https://github.com/jnctech/homeassistant-mikrotik_router/pull/164), merge commit `a6dfcb8`, authorship preserved). Contributed by @CommanderROR9. Fixes [#163](https://github.com/jnctech/homeassistant-mikrotik_router/issues/163).
+**Status:** Merged to `dev`; targets 2.3.23.
+
+### What changed
+- `coordinator.py` adds `_container_state_from_flags()`. It returns the first state flag set on a `/container` row, checked in this order: `stopped`, `stopping`, `starting`, `unhealthy`, `healthy`, `running`. It accepts both a bool and the raw `"true"`/`"yes"` string.
+- `get_container()` writes that state into `status`. `running` is on for `running`, `healthy` and `unhealthy`. A row with no flags falls back to the parsed `status`, which defaults to `stopped`.
+- `tests/test_coordinator.py` adds 5 tests built from RouterOS 7.26 rows.
+
+### Why
+RouterOS 7.x reports container state as print flags, not as a `status` property. Since `status` always took its default `stopped`, every container switch read off.
+
+### Verification
+- CI green. Cognitive complexity: `get_container` 7, `_container_state_from_flags` 3 (complexipy).
+- Contributor: 4 of the 5 new tests fail without the fix. The flag names come from the contributor's RouterOS 7.26 output; the maintainer fleet has not checked them live.
+
 ## CR-261014-release-v2.3.22 — promote v2.3.22-rc.3 to stable
 
 **Date:** 2026-10-14
 **Branch:** `chore/release-v2.3.22` → PR to `dev`, then `dev → master`
-**Status:** In Review
+**Status:** Released. [#165](https://github.com/jnctech/homeassistant-mikrotik_router/pull/165) and [#166](https://github.com/jnctech/homeassistant-mikrotik_router/pull/166) merged, tagged `v2.3.22` on `62c49ce`, and back-merged into `dev` (`608666f`).
 
 ### What changed
 - `manifest.json` — `2.3.22-rc.3` → `2.3.22`.
