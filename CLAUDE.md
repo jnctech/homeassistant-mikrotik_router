@@ -9,7 +9,7 @@
 
 ## AI Model Selection
 
-Under the maintainer's current Claude Max subscription, default to **Opus 4.7 (1M context)** for all work in this repo — bug fixes, refactoring, tests, architecture, design. Co-author tag: `Claude Opus 4.7 (1M context)`.
+Under the maintainer's current Claude Max subscription, default to **Opus 5.5** for all work in this repo — bug fixes, refactoring, tests, architecture, design. Co-author tag: `Claude Opus 5.5`.
 
 The per-context tiering (Sonnet for routine, Opus for design) only applies if the maintainer is back on a metered plan; revisit then.
 
