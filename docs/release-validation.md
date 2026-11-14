@@ -134,10 +134,11 @@ Precedents: PoE-out energy (beta-gated on @Dillton's metering hardware, [#59](ht
       hardware (router + switch + AP; legacy + new Wi-Fi; read-only + full-access user).
 - [ ] No entity stuck `unknown`/`unavailable` without an explained cause.
 - [ ] Any discrepancy filed as an issue and fixed before tagging the stable release.
-- [ ] `CHANGE-REGISTER.md` updated.
+- [ ] Release note written (PR description + GitHub release); `CHANGE-REGISTER.md` is deprecated (#171).
 
 ## Validation log
 
 | Version | Live validation | Outcome |
 |---|---|---|
 | `v2.3.19-beta.2` | Full per-class cross-check against a live multi-device RouterOS deployment (router + switch + APs on legacy & new Wi-Fi; read-only HA user) | All sensor classes report router truth within tolerance. One state-quality issue found and fixed: empty/transient environment variables (`ISS-260608` → [#105](https://github.com/jnctech/homeassistant-mikrotik_router/pull/105)). |
+| `v2.3.24-rc.1` | In-place upgrade from v2.3.23 on a live four-router RouterOS fleet; 1 h soak | All four config entries migrated 2.1 → 3.1 and loaded; no migration errors. Each router got its own serial-keyed `lo` device with the correct `via_device` (#138); the old dummy-MAC devices were left empty ([#175](https://github.com/jnctech/homeassistant-mikrotik_router/issues/175)). Per-server DHCP lease counts matched the router's lease table exactly, where v2.3.23 undercounted the servers sharing MACs (#162). Entity and unavailable counts were unchanged from the v2.3.23 baseline. |

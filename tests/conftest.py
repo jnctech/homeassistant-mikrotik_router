@@ -102,6 +102,7 @@ def make_mock_coordinator(data=None, options=None, name="TestRouter", host="10.0
     cfg = MagicMock()
     cfg.data = {CONF_NAME: name, CONF_HOST: host}
     cfg.options = options or {}
+    cfg.entry_id = "mock-entry-id"
     coord.config_entry = cfg
     coord.set_value = MagicMock(return_value=True)
     coord.execute = MagicMock()

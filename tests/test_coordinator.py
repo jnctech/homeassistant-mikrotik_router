@@ -12,7 +12,9 @@ from custom_components.mikrotik_router.apiparser import (
 )
 from custom_components.mikrotik_router.coordinator import (
     MikrotikCoordinator,
+    _iface_identity_serial,
     _parse_uptime_to_seconds,
+    _port_mac_for_virtual_iface,
     as_local,
     utc_from_timestamp,
 )
@@ -39,7 +41,7 @@ def make_coordinator(options=None, api_responses=None, major_fw_version=6):
 
     coordinator.ds = {
         "access": ["write", "policy", "reboot", "test"],
-        "routerboard": {},
+        "routerboard": {"serial-number": "unknown"},
         "resource": {},
         "health": {},
         "health7": {},
@@ -87,7 +89,9 @@ def make_coordinator(options=None, api_responses=None, major_fw_version=6):
 
     cfg = MagicMock()
     cfg.options = options or {}
+    cfg.entry_id = "test-entry-id"
     coordinator.config_entry = cfg
+    coordinator.name = "TestRouter"
 
     return coordinator
 
@@ -2048,6 +2052,92 @@ def test_interface_virtual_interface_naming():
     assert "vlan100" in iface["port-mac-address"]
 
 
+def test_port_mac_for_virtual_iface_dummy_and_empty():
+    """Dummy/empty MACs are serial-prefixed; real MACs keep the hardware address."""
+    assert _port_mac_for_virtual_iface("00:00:00:00:00:00", "lo", "HGR1234567") == "HGR1234567-lo"
+    assert _port_mac_for_virtual_iface("", "wireguard1", "HGR1234567") == "HGR1234567-wireguard1"
+    assert _port_mac_for_virtual_iface(None, "pppoe-out1", "HGR1234567") == "HGR1234567-pppoe-out1"
+    assert _port_mac_for_virtual_iface("AA:BB:CC:DD:EE:01", "vlan100", "HGR1234567") == "AA:BB:CC:DD:EE:01-vlan100"
+
+
+def test_interface_loopback_dummy_mac_uses_serial():
+    """lo always reports 00:00:00:00:00:00; port-mac must include the router serial."""
+    coordinator = make_coordinator(
+        options={CONF_SENSOR_PORT_TRAFFIC: False},
+        api_responses={
+            "/interface": [
+                {
+                    ".id": "*1",
+                    "name": "lo",
+                    "type": "loopback",
+                    "disabled": False,
+                    "mac-address": "00:00:00:00:00:00",
+                }
+            ],
+            "/interface/ethernet": [],
+        },
+    )
+    coordinator.ds["routerboard"]["serial-number"] = "HGR1234567"
+    coordinator.get_interface()
+    iface = coordinator.ds["interface"]["lo"]
+    assert iface["default-name"] == "lo"
+    assert iface["port-mac-address"] == "HGR1234567-lo"
+
+
+def test_interface_empty_mac_tunnel_uses_serial():
+    """Tunnels with an empty MAC are serial-prefixed so they do not collide across routers."""
+    coordinator = make_coordinator(
+        options={CONF_SENSOR_PORT_TRAFFIC: False},
+        api_responses={
+            "/interface": [
+                {
+                    ".id": "*1",
+                    "name": "wireguard1",
+                    "type": "wg",
+                    "disabled": False,
+                    "mac-address": "",
+                }
+            ],
+            "/interface/ethernet": [],
+        },
+    )
+    coordinator.ds["routerboard"]["serial-number"] = "HGR1234567"
+    coordinator.get_interface()
+    iface = coordinator.ds["interface"]["wireguard1"]
+    assert iface["port-mac-address"] == "HGR1234567-wireguard1"
+
+
+def test_iface_identity_serial_falls_back_for_chr_placeholders():
+    """CHR/x86 placeholders are not unique; entry_id closes the interface collision."""
+    assert _iface_identity_serial("HGR1234567", "entry-a") == "HGR1234567"
+    assert _iface_identity_serial("N/A", "entry-a") == "entry-a"
+    assert _iface_identity_serial("unknown", "entry-b") == "entry-b"
+    assert _iface_identity_serial("", "entry-c") == "entry-c"
+
+
+def test_interface_chr_placeholder_serial_uses_entry_id():
+    """Two CHR entries would collide on N/A-lo; entry_id makes port-mac unique."""
+    coordinator = make_coordinator(
+        options={CONF_SENSOR_PORT_TRAFFIC: False},
+        api_responses={
+            "/interface": [
+                {
+                    ".id": "*1",
+                    "name": "lo",
+                    "type": "loopback",
+                    "disabled": False,
+                    "mac-address": "00:00:00:00:00:00",
+                }
+            ],
+            "/interface/ethernet": [],
+        },
+    )
+    coordinator.ds["routerboard"]["serial-number"] = "N/A"
+    coordinator.config_entry.entry_id = "chr-entry-1"
+    coordinator.get_interface()
+    assert coordinator.ds["interface"]["lo"]["port-mac-address"] == "chr-entry-1-lo"
+
+
 def test_interface_bonding_detected():
     """Bonding interfaces populate bonding and bonding_slaves dicts."""
     coordinator = make_coordinator(
@@ -3325,6 +3415,45 @@ def test_dhcp_server_lease_count():
     coordinator.get_dhcp()
     assert coordinator.ds["dhcp-server"]["defconf"]["lease-count"] == 2
     assert coordinator.ds["dhcp-server"]["guest"]["lease-count"] == 1
+
+
+def test_dhcp_server_lease_count_same_mac_on_two_servers():
+    """A MAC leased on two servers counts once on each server (#162)."""
+    coordinator = make_coordinator(
+        api_responses={
+            "/ip/dhcp-server/lease": [
+                {
+                    "mac-address": "AA:BB:CC:DD:EE:01",
+                    "address": "192.168.1.10",
+                    "server": "defconf",
+                    "status": "bound",
+                },
+                {
+                    "mac-address": "AA:BB:CC:DD:EE:01",
+                    "address": "192.168.2.10",
+                    "server": "guest",
+                    "status": "bound",
+                },
+                {
+                    "mac-address": "AA:BB:CC:DD:EE:02",
+                    "address": "192.168.1.11",
+                    "server": "defconf",
+                    "status": "bound",
+                },
+                {"address": "192.168.2.99", "server": "guest", "status": "offered"},
+            ],
+            "/ip/dhcp-server": [
+                {"name": "defconf", "interface": "bridge1", "disabled": False},
+                {"name": "guest", "interface": "bridge-guest", "disabled": False},
+            ],
+        }
+    )
+    coordinator.get_dhcp_server()
+    coordinator.get_dhcp()
+    assert coordinator.ds["dhcp-server"]["defconf"]["lease-count"] == 2
+    assert coordinator.ds["dhcp-server"]["guest"]["lease-count"] == 1
+    # ds["dhcp"] stays MAC-keyed for host/tracker merging.
+    assert len(coordinator.ds["dhcp"]) == 2
 
 
 def test_dhcp_server_lease_count_unknown_server_ignored():

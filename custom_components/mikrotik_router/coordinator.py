@@ -161,6 +161,26 @@ _WIFI_FLAT_MAP = {
 }
 
 
+def _iface_identity_serial(serial: str, entry_id: str) -> str:
+    """Prefer routerboard serial; fall back to entry_id for CHR/x86 placeholders."""
+    if serial in ("", "N/A", "unknown"):
+        return entry_id
+    return serial
+
+
+def _port_mac_for_virtual_iface(mac: str | None, ifname: str, serial: str) -> str:
+    """Build a per-router port-mac token for virtual interfaces.
+
+    Ethernet already has a unique hardware MAC. Virtual ifaces (lo, tunnels)
+    often share an all-zero or empty MAC, which HA's device registry
+    would merge across config entries if used as CONNECTION_NETWORK_MAC.
+    """
+    compact = str(mac or "").replace(":", "").lower()
+    if compact in ("", "000000000000"):
+        return f"{serial}-{ifname}"
+    return f"{mac}-{ifname}"
+
+
 @dataclass
 class MikrotikData:
     """Data for the mikrotik integration."""
@@ -1346,7 +1366,11 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
 
             if vals["default-name"] == "":
                 iface["default-name"] = vals["name"]
-                iface["port-mac-address"] = f"{vals['port-mac-address']}-{vals['name']}"
+                serial = _iface_identity_serial(
+                    self.ds["routerboard"]["serial-number"],
+                    self.config_entry.entry_id,
+                )
+                iface["port-mac-address"] = _port_mac_for_virtual_iface(vals.get("port-mac-address"), vals["name"], serial)
 
             if iface["type"] == "ether":
                 self._monitor_ethernet_port(vals)
@@ -2773,7 +2797,7 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
             self._normalize_dhcp_lease(uid)
             dhcpserver_query = self._resolve_dhcp_interface(uid, dhcpserver_query)
 
-        self._count_leases_per_server()
+        self._count_leases_per_server(source)
 
     def _normalize_dhcp_lease(self, uid: str) -> None:
         """Validate and normalize address/MAC for a single DHCP lease."""
@@ -2806,12 +2830,19 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
 
         return dhcpserver_queried
 
-    def _count_leases_per_server(self) -> None:
-        """Count active leases per DHCP server."""
+    def _count_leases_per_server(self, source) -> None:
+        """Count leases per DHCP server from the raw lease rows.
+
+        Counted from the query rows, not the MAC-keyed ds["dhcp"]: a MAC with
+        leases on two servers is one entry there, so one server undercounted
+        (#162). Rows without a MAC are skipped, as parse_api skips them.
+        """
         for server_name in self.ds["dhcp-server"]:
             self.ds["dhcp-server"][server_name]["lease-count"] = 0
-        for uid in self.ds["dhcp"]:
-            server = self.ds["dhcp"][uid].get("server", "unknown")
+        for row in source or ():
+            if not row.get("mac-address"):
+                continue
+            server = row.get("server", "unknown")
             if server in self.ds["dhcp-server"]:
                 self.ds["dhcp-server"][server]["lease-count"] += 1
 

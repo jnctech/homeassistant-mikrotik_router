@@ -20,7 +20,13 @@ from homeassistant.util import slugify
 from homeassistant.const import CONF_NAME, CONF_VERIFY_SSL
 from homeassistant.exceptions import HomeAssistantError
 
-from .const import PLATFORMS, DOMAIN, DEFAULT_VERIFY_SSL
+from .const import (
+    PLATFORMS,
+    DOMAIN,
+    DEFAULT_VERIFY_SSL,
+    CONFIG_ENTRY_VERSION,
+    CONFIG_ENTRY_MINOR_VERSION,
+)
 from .coordinator import (
     MikrotikConfigEntry,
     MikrotikData,
@@ -331,20 +337,45 @@ async def async_remove_config_entry_device(
 #   async_migrate_entry
 # ---------------------------
 async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry):
+    """Migrate a config entry to the current schema version (ADR-025).
+
+    1 -> 2 adds ``verify_ssl``. 2 -> 3 changes no data: version 3 is the number
+    the upstream integration writes, adopted so its entries are not refused as
+    a downgrade (#172). Entries already at 3.x, including upstream's 3.2/3.3,
+    are left as they are. A newer major version is refused.
+    """
     _LOGGER.debug(
         "Migrating configuration from version %s.%s",
         config_entry.version,
         config_entry.minor_version,
     )
 
+    if config_entry.version > CONFIG_ENTRY_VERSION:
+        _LOGGER.error(
+            "Config entry %s has version %s, newer than this integration supports (%s)",
+            config_entry.title,
+            config_entry.version,
+            CONFIG_ENTRY_VERSION,
+        )
+        return False
+
+    if config_entry.version == CONFIG_ENTRY_VERSION:
+        return True
+
+    new_data = {**config_entry.data}
     if config_entry.version < 2:
-        new_data = {**config_entry.data}
         new_data[CONF_VERIFY_SSL] = DEFAULT_VERIFY_SSL
-        hass.config_entries.async_update_entry(config_entry, data=new_data, version=2)
+
+    hass.config_entries.async_update_entry(
+        config_entry,
+        data=new_data,
+        version=CONFIG_ENTRY_VERSION,
+        minor_version=CONFIG_ENTRY_MINOR_VERSION,
+    )
 
     _LOGGER.debug(
         "Migration to configuration version %s.%s successful",
-        config_entry.version,
-        config_entry.minor_version,
+        CONFIG_ENTRY_VERSION,
+        CONFIG_ENTRY_MINOR_VERSION,
     )
     return True
