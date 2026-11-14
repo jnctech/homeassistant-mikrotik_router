@@ -21,16 +21,16 @@ Monitor and control your entire MikroTik network from Home Assistant. This HACS 
 
 ---
 
-## What's New — v2.3.24-rc.1
+## What's New — v2.3.24
 
-Release candidate. **Read the rollback warning before upgrading.**
+Stable release, promoted from v2.3.24-rc.1 after live validation on a four-router RouterOS fleet, including an in-place upgrade of v2.3.23 config entries to 3.1. **Read the rollback warning before upgrading.**
 
 > [!WARNING]
 > **Rollback needs a backup.** This release moves config entries to schema version **3.1** ([ADR-025](docs/decisions/ADR-025-config-entry-version-3.md)). Once upgraded, **v2.3.23 and older cannot load them**: Home Assistant refuses them with *"has version 3 which is higher than the current version 2"*. To roll back, restore a Home Assistant backup taken **before** the upgrade, or delete and re-add the integration. Take a backup before installing.
 
 - **Config entries from the upstream integration now load.** Upstream moved its entries to version 3, so anyone switching from upstream to this fork hit *"has version 3 which is higher than the current version 2"*. The flow handler is now at 3.1. Version 1/2 entries are migrated, and upstream 3.x entries load unchanged. If you come from upstream, a non-`home` per-tracker zone falls back to this integration's `zone` option. Fixes [#172](https://github.com/jnctech/homeassistant-mikrotik_router/issues/172) in [#173](https://github.com/jnctech/homeassistant-mikrotik_router/pull/173).
 - **DHCP lease count is now correct per server.** A MAC with leases on two DHCP servers was counted on only one of them. Leases are now counted per lease row. Fixes [#162](https://github.com/jnctech/homeassistant-mikrotik_router/issues/162) in [#173](https://github.com/jnctech/homeassistant-mikrotik_router/pull/173).
-- **`lo` and empty-MAC tunnels no longer merge across routers.** With several routers configured, every router's `lo` (all-zero MAC) landed on one shared device. These interfaces are now identified by router serial, so each router gets its own device. Entity unique_ids are unchanged. An existing merged device does not split by itself: remove it (or its all-zero-MAC connection) and reload. See [ADR-023](docs/decisions/ADR-023-dummy-mac-device-identity.md). Contributed by @sappsys in [#138](https://github.com/jnctech/homeassistant-mikrotik_router/pull/138).
+- **`lo` and empty-MAC tunnels no longer merge across routers.** With several routers configured, every router's `lo` (all-zero MAC) landed on one shared device. These interfaces are now identified by router serial, so each router gets its own device. Entity unique_ids are unchanged. After upgrading, the old dummy-MAC device stays behind with no entities; delete it from its device page ([#175](https://github.com/jnctech/homeassistant-mikrotik_router/issues/175) tracks automatic cleanup). A device that was already merged across routers does not split by itself: remove it and reload. See [ADR-023](docs/decisions/ADR-023-dummy-mac-device-identity.md). Contributed by @sappsys in [#138](https://github.com/jnctech/homeassistant-mikrotik_router/pull/138).
 ## What's New — v2.3.23
 
 Stable release, promoted from v2.3.23-rc.1 after live validation on a four-router RouterOS fleet. Both changes are contributions from @CommanderROR9, and the container fix was confirmed on RouterOS 7.26.
