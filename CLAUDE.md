@@ -2,7 +2,7 @@
 
 ## Project
 
-- **Domain:** `mikrotik_router` | **Version:** 2.3.23 | **IoT:** `local_polling` (30s)
+- **Domain:** `mikrotik_router` | **Version:** 2.3.24 | **IoT:** `local_polling` (30s)
 - **HA Min:** 2024.3.0 | **Python:** 3.13 | **Fork of:** `tomaae/homeassistant-mikrotik_router`
 - **Deps:** `librouteros>=3.4.1,<5`, `mac-vendor-lookup>=0.1.12`
 - **Platforms:** sensor, binary_sensor, switch, button, device_tracker, update

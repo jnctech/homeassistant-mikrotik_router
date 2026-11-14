@@ -10,11 +10,11 @@ Monitor and control your MikroTik router from Home Assistant.
 
 ![Mikrotik Logo](https://raw.githubusercontent.com/tomaae/homeassistant-mikrotik_router/master/docs/assets/images/ui/header.png)
 
-### What's new in v2.3.24-rc.1
-Release candidate. **Back up before upgrading:** config entries move to schema 3.1 and **v2.3.23 or older cannot load them afterwards**. Rolling back needs a pre-upgrade HA backup, or deleting and re-adding the integration (ADR-025).
+### What's new in v2.3.24
+Stable release, promoted from v2.3.24-rc.1 after live validation. **Back up before upgrading:** config entries move to schema 3.1 and **v2.3.23 or older cannot load them afterwards**. Rolling back needs a pre-upgrade HA backup, or deleting and re-adding the integration (ADR-025).
 - **Upstream config entries load**: entries created by the upstream integration (version 3) no longer fail with "higher than the current version 2" (#172, #173).
 - **Per-server DHCP lease count**: a MAC leased on two servers is now counted on both (#162, #173).
-- **Per-router `lo` devices**: dummy/empty-MAC interfaces are identified by router serial, so they no longer merge across routers. Remove an already-merged device and reload. Contributed by @sappsys (#138, ADR-023).
+- **Per-router `lo` devices**: dummy/empty-MAC interfaces are identified by router serial, so they no longer merge across routers. The old, now-empty device can be deleted from its device page (#175). Contributed by @sappsys (#138, ADR-023).
 ### What's new in v2.3.23
 Stable release, promoted from v2.3.23-rc.1 after live validation. Contributed by @CommanderROR9.
 - **Container switches fixed on RouterOS 7.x**: container state is now read from RouterOS's print flags, so running containers no longer all show as off (#163, #164).
