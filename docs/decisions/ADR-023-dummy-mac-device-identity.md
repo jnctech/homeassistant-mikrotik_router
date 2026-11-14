@@ -1,8 +1,7 @@
-# ADR-NEXT: Per-router identity for dummy-MAC virtual interfaces
+# ADR-023: Per-router identity for dummy-MAC virtual interfaces
 
 **Date:** 2026-08-14
-**Status:** Proposed
-**Numbering note:** Maintainer will number at merge (planned ADR-023; #145 took 022). 015/016 remain reserved.
+**Status:** Accepted (merged via #138, 2026-11-14)
 
 ## Context
 
