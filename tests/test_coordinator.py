@@ -3417,6 +3417,45 @@ def test_dhcp_server_lease_count():
     assert coordinator.ds["dhcp-server"]["guest"]["lease-count"] == 1
 
 
+def test_dhcp_server_lease_count_same_mac_on_two_servers():
+    """A MAC leased on two servers counts once on each server (#162)."""
+    coordinator = make_coordinator(
+        api_responses={
+            "/ip/dhcp-server/lease": [
+                {
+                    "mac-address": "AA:BB:CC:DD:EE:01",
+                    "address": "192.168.1.10",
+                    "server": "defconf",
+                    "status": "bound",
+                },
+                {
+                    "mac-address": "AA:BB:CC:DD:EE:01",
+                    "address": "192.168.2.10",
+                    "server": "guest",
+                    "status": "bound",
+                },
+                {
+                    "mac-address": "AA:BB:CC:DD:EE:02",
+                    "address": "192.168.1.11",
+                    "server": "defconf",
+                    "status": "bound",
+                },
+                {"address": "192.168.2.99", "server": "guest", "status": "offered"},
+            ],
+            "/ip/dhcp-server": [
+                {"name": "defconf", "interface": "bridge1", "disabled": False},
+                {"name": "guest", "interface": "bridge-guest", "disabled": False},
+            ],
+        }
+    )
+    coordinator.get_dhcp_server()
+    coordinator.get_dhcp()
+    assert coordinator.ds["dhcp-server"]["defconf"]["lease-count"] == 2
+    assert coordinator.ds["dhcp-server"]["guest"]["lease-count"] == 1
+    # ds["dhcp"] stays MAC-keyed for host/tracker merging.
+    assert len(coordinator.ds["dhcp"]) == 2
+
+
 def test_dhcp_server_lease_count_unknown_server_ignored():
     """Leases with unknown server don't crash the count."""
     coordinator = make_coordinator(

@@ -15,6 +15,12 @@ PLATFORMS = [
 
 DOMAIN = "mikrotik_router"
 DEFAULT_NAME = "Mikrotik Router"
+
+# Config entry schema version (ADR-025). 3 matches the version the upstream
+# tomaae integration writes, so entries created there load here instead of
+# being refused by Home Assistant as a downgrade (#172).
+CONFIG_ENTRY_VERSION = 3
+CONFIG_ENTRY_MINOR_VERSION = 1
 ATTRIBUTION = "Data provided by Mikrotik"
 
 DEFAULT_ENCODING = "ISO-8859-1"
