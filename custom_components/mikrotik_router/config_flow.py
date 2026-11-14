@@ -24,6 +24,8 @@ from homeassistant.core import callback
 
 from .const import (
     DOMAIN,
+    CONFIG_ENTRY_VERSION,
+    CONFIG_ENTRY_MINOR_VERSION,
     CONF_TRACK_IFACE_CLIENTS,
     DEFAULT_TRACK_IFACE_CLIENTS,
     CONF_SCAN_INTERVAL,
@@ -97,7 +99,8 @@ def configured_instances(hass):
 class MikrotikControllerConfigFlow(ConfigFlow, domain=DOMAIN):
     """MikrotikControllerConfigFlow class"""
 
-    VERSION = 2
+    VERSION = CONFIG_ENTRY_VERSION
+    MINOR_VERSION = CONFIG_ENTRY_MINOR_VERSION
 
     def __init__(self):
         """Initialize MikrotikControllerConfigFlow."""

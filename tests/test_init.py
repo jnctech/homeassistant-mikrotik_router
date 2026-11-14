@@ -110,58 +110,59 @@ def _hass_with_loaded_entry(mikrotik_data):
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
-async def test_migrate_entry_v1_to_v2_adds_verify_ssl():
-    """Version 1 entry gets CONF_VERIFY_SSL injected and bumped to version 2."""
-    hass = MagicMock()
+def _migrate_entry(version, minor_version, data):
     config_entry = MagicMock()
-    config_entry.version = 1
-    config_entry.minor_version = 0
-    config_entry.data = {"host": "10.0.0.1", "username": "admin"}
+    config_entry.version = version
+    config_entry.minor_version = minor_version
+    config_entry.data = data
+    return config_entry
 
-    result = await async_migrate_entry(hass, config_entry)
 
-    assert result is True
+def _update_kwargs(hass):
     hass.config_entries.async_update_entry.assert_called_once()
-    call_kwargs = hass.config_entries.async_update_entry.call_args
-    new_data = call_kwargs.kwargs.get("data") or call_kwargs[1].get("data")
-    assert new_data[CONF_VERIFY_SSL] == DEFAULT_VERIFY_SSL
-    version = call_kwargs.kwargs.get("version") or call_kwargs[1].get("version")
-    assert version == 2
+    return hass.config_entries.async_update_entry.call_args.kwargs
 
 
 @pytest.mark.asyncio
-async def test_migrate_entry_v2_is_noop():
-    """Version 2 entry is already current — no update call."""
+async def test_migrate_entry_v1_to_v3_adds_verify_ssl():
+    """Version 1 entry gets CONF_VERIFY_SSL injected and goes straight to 3.1."""
     hass = MagicMock()
-    config_entry = MagicMock()
-    config_entry.version = 2
-    config_entry.minor_version = 0
-    config_entry.data = {"host": "10.0.0.1", CONF_VERIFY_SSL: False}
+    config_entry = _migrate_entry(1, 0, {"host": "10.0.0.1", "username": "admin"})
 
     result = await async_migrate_entry(hass, config_entry)
 
     assert result is True
-    hass.config_entries.async_update_entry.assert_not_called()
+    kwargs = _update_kwargs(hass)
+    assert kwargs["data"][CONF_VERIFY_SSL] == DEFAULT_VERIFY_SSL
+    assert kwargs["version"] == 3
+    assert kwargs["minor_version"] == 1
+
+
+@pytest.mark.asyncio
+async def test_migrate_entry_v2_to_v3_keeps_data_unchanged():
+    """Version 2 entry is bumped to 3.1 with its data untouched."""
+    hass = MagicMock()
+    data = {"host": "10.0.0.1", CONF_VERIFY_SSL: False}
+    config_entry = _migrate_entry(2, 1, data)
+
+    result = await async_migrate_entry(hass, config_entry)
+
+    assert result is True
+    kwargs = _update_kwargs(hass)
+    assert kwargs["data"] == data
+    assert kwargs["version"] == 3
+    assert kwargs["minor_version"] == 1
 
 
 @pytest.mark.asyncio
 async def test_migrate_entry_preserves_existing_data():
     """Migration preserves all existing config data while adding verify_ssl."""
     hass = MagicMock()
-    config_entry = MagicMock()
-    config_entry.version = 1
-    config_entry.minor_version = 0
-    config_entry.data = {
-        "host": "10.0.0.1",
-        "username": "admin",
-        "password": "secret",
-    }
+    config_entry = _migrate_entry(1, 0, {"host": "10.0.0.1", "username": "admin", "password": "secret"})
 
     await async_migrate_entry(hass, config_entry)
 
-    call_kwargs = hass.config_entries.async_update_entry.call_args
-    new_data = call_kwargs.kwargs.get("data") or call_kwargs[1].get("data")
+    new_data = _update_kwargs(hass)["data"]
     assert new_data["host"] == "10.0.0.1"
     assert new_data["username"] == "admin"
     assert new_data["password"] == "secret"
@@ -169,18 +170,38 @@ async def test_migrate_entry_preserves_existing_data():
 
 
 @pytest.mark.asyncio
-async def test_migrate_entry_future_version_is_noop():
-    """A future version (>2) should not trigger v1→v2 migration."""
+@pytest.mark.parametrize("minor_version", [1, 2, 3])
+async def test_migrate_entry_v3_is_noop(minor_version):
+    """3.x entries, including upstream's 3.2/3.3 (#172), load without a rewrite."""
     hass = MagicMock()
-    config_entry = MagicMock()
-    config_entry.version = 3
-    config_entry.minor_version = 0
-    config_entry.data = {"host": "10.0.0.1"}
+    config_entry = _migrate_entry(3, minor_version, {"host": "10.0.0.1"})
 
     result = await async_migrate_entry(hass, config_entry)
 
     assert result is True
     hass.config_entries.async_update_entry.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_migrate_entry_newer_major_version_is_refused():
+    """A major version newer than ours is refused rather than loaded blind."""
+    hass = MagicMock()
+    config_entry = _migrate_entry(4, 1, {"host": "10.0.0.1"})
+
+    result = await async_migrate_entry(hass, config_entry)
+
+    assert result is False
+    hass.config_entries.async_update_entry.assert_not_called()
+
+
+def test_config_flow_declares_version_3():
+    """The flow handler version gates HA's downgrade check (#172)."""
+    from custom_components.mikrotik_router.config_flow import (
+        MikrotikControllerConfigFlow,
+    )
+
+    assert MikrotikControllerConfigFlow.VERSION == 3
+    assert MikrotikControllerConfigFlow.MINOR_VERSION == 1
 
 
 # ---------------------------------------------------------------------------
