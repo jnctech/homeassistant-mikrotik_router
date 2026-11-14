@@ -2797,7 +2797,7 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
             self._normalize_dhcp_lease(uid)
             dhcpserver_query = self._resolve_dhcp_interface(uid, dhcpserver_query)
 
-        self._count_leases_per_server()
+        self._count_leases_per_server(source)
 
     def _normalize_dhcp_lease(self, uid: str) -> None:
         """Validate and normalize address/MAC for a single DHCP lease."""
@@ -2830,12 +2830,19 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
 
         return dhcpserver_queried
 
-    def _count_leases_per_server(self) -> None:
-        """Count active leases per DHCP server."""
+    def _count_leases_per_server(self, source) -> None:
+        """Count leases per DHCP server from the raw lease rows.
+
+        Counted from the query rows, not the MAC-keyed ds["dhcp"]: a MAC with
+        leases on two servers is one entry there, so one server undercounted
+        (#162). Rows without a MAC are skipped, as parse_api skips them.
+        """
         for server_name in self.ds["dhcp-server"]:
             self.ds["dhcp-server"][server_name]["lease-count"] = 0
-        for uid in self.ds["dhcp"]:
-            server = self.ds["dhcp"][uid].get("server", "unknown")
+        for row in source or ():
+            if not row.get("mac-address"):
+                continue
+            server = row.get("server", "unknown")
             if server in self.ds["dhcp-server"]:
                 self.ds["dhcp-server"][server]["lease-count"] += 1
 
